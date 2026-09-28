@@ -13,7 +13,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sqlx = { version = "0.8", features = ["postgres", "mysql", "sqlite", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "sync"] }
 keyring = { version = "3", features = ["apple-native"] }
-dirs = "6"
+dirs = "7"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
