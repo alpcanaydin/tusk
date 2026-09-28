@@ -1,0 +1,204 @@
+<div align="center">
+
+<img src="assets/icon/tusk-1024.png" width="128" alt="Tusk icon">
+
+# Tusk
+
+**The gentle giant for your databases.**
+
+A fast, native, keyboard-driven database client for macOS. It's written in Rust
+on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framework behind the Zed editor.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+![Rust](https://img.shields.io/badge/rust-2024_edition-orange)
+
+<img src="docs/screenshots/ai-panel.png" alt="Tusk: SQL editor with results and the AI panel" width="100%">
+
+</div>
+
+## Why Tusk
+
+- **Native and fast.** No Electron and no web view. Tables with millions of rows scroll smoothly because the grid is virtualized and GPU-rendered.
+- **One app for 20 databases.** PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB and more.
+- **Keyboard first.** Everything is in the command palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>), and the common actions have shortcuts.
+- **AI that doesn't take the wheel.** Ask about your data in plain English. The agent reads your schema and writes a query into a new tab. It never runs SQL on its own.
+- **Your credentials stay yours.** Passwords are stored only in the macOS Keychain. There's no account and no telemetry.
+
+## Features
+
+### Connect to anything
+
+<img src="docs/screenshots/new-connection.png" alt="New connection: 20 database engines" width="49%"> <img src="docs/screenshots/connections.png" alt="Connection manager with groups and tags" width="49%">
+
+Supported engines: PostgreSQL, Amazon Redshift, CockroachDB, Greenplum, Vertica, MySQL, MariaDB, SQLite, DuckDB, LibSQL, Cloudflare D1, Microsoft SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB, Cassandra and DynamoDB.
+
+- Organize connections with groups, tags and status colors (for example, red for production).
+- Connect through an **SSH tunnel** with a password or a key, and choose any SSL mode.
+- Import existing connections from **TablePlus**, a **Docker Compose** file, or a connection URL.
+
+### A data grid you can actually edit
+
+<img src="docs/screenshots/grid.png" alt="Data grid" width="100%">
+
+- Virtualized scrolling. Column widths fit the content, and your resized widths are remembered per table.
+- Double-click a cell to edit it with a typed editor (dates, enums, numbers). Pending edits and deletes are highlighted and saved together in **one transaction** with <kbd>⌘</kbd><kbd>S</kbd>.
+- Full undo and redo.
+- Right-click a row to copy it as TSV, CSV, JSON, `INSERT`, `UPDATE` or Markdown, filter by its value, sort, or set a cell to `NULL` or empty.
+
+<img src="docs/screenshots/row-menu.png" alt="Row context menu" width="49%"> <img src="docs/screenshots/filters.png" alt="Filters" width="49%">
+
+Filters support a per-column operator, raw SQL conditions, and one-click export of the filtered rows.
+
+### Structure, indexes and DDL
+
+<img src="docs/screenshots/structure.png" alt="Structure editor" width="49%"> <img src="docs/screenshots/indexes.png" alt="Index editor" width="49%">
+
+Edit columns, types, defaults, nullability, comments and indexes right in the grid. Tusk generates each engine's own DDL. If an engine can't make a change in place (for example, changing a column type in SQLite), Tusk tells you before you save, not after. You can also design new tables and views from the sidebar's `+` menu.
+
+### SQL editor
+
+<img src="docs/screenshots/sql.png" alt="SQL editor with results" width="100%">
+
+- Completions and diagnostics come from a bundled language server: [postgres-language-server](https://github.com/supabase-community/postgres-language-server) for Postgres, and [sqls](https://github.com/sqls-server/sqls) for most other SQL engines. For the rest, completions come from the live catalog.
+- **Run Current** (<kbd>⌘</kbd><kbd>↵</kbd>) runs the statement under the cursor. **Run All** (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>↵</kbd>) runs everything, and each `SELECT` gets its own result tab.
+- When a query fails, **Ask AI to Fix** sends the error and your query to the agent.
+
+<img src="docs/screenshots/completion.png" alt="Column completions" width="49%"> <img src="docs/screenshots/sql-error.png" alt="Query error with Ask AI to Fix" width="49%">
+
+### An AI assistant that shows its work
+
+<img src="docs/screenshots/ai-panel.png" alt="AI panel writing a query" width="100%">
+
+Open the AI panel with <kbd>⌘</kbd><kbd>L</kbd> and ask a question. The agent reads the structure of the tables it needs, writes a query into a new tab, and explains its assumptions. **You review it and run it.** Tusk doesn't let the agent execute SQL.
+
+Tusk talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com), so you can use Claude, Codex or Gemini CLI, or add your own. The agents reach your open connection through Tusk's built-in MCP server.
+
+> [!NOTE]
+> The agent runs on your machine through the CLI you choose, under that CLI's own account and settings. Tusk doesn't send your data anywhere itself.
+
+### Everything is one keystroke away
+
+<img src="docs/screenshots/palette.png" alt="Command palette" width="49%"> <img src="docs/screenshots/sidebar-menu.png" alt="Sidebar context menu" width="49%">
+
+The command palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) lists every action along with its shortcut. It also switches connections, databases, schemas and themes. The console shows every statement Tusk sends. History keeps the queries you've run, and you can search it.
+
+<img src="docs/screenshots/console.png" alt="Console" width="49%"> <img src="docs/screenshots/history.png" alt="Query history" width="49%">
+
+### Make it yours
+
+<img src="docs/screenshots/theme-tokyo.png" alt="Tokyo Night theme" width="49%"> <img src="docs/screenshots/theme-light.png" alt="Catppuccin Latte theme" width="49%">
+
+Tusk ships with more than 30 light and dark themes: Tusk, Kanagawa, Catppuccin, Tokyo Night, Gruvbox, One, Rosé Pine, Nord, Solarized and more. You can change the accent color, the UI and table fonts, the editor settings, the grid settings, and the **Safe Mode** confirmations for destructive statements.
+
+<img src="docs/screenshots/settings-themes.png" alt="Settings" width="60%">
+
+### Also included
+
+- **Backup and restore** for PostgreSQL with bundled `pg_dump`, `pg_restore` and `psql`, so you don't need Homebrew.
+- **Export** tables and results as CSV, JSON or SQL, and **import** from CSV.
+- **Process list** with cancel and kill, for every engine.
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| Command palette | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd> |
+| Quick open table | <kbd>⌘</kbd><kbd>P</kbd> |
+| New connection / Open connection | <kbd>⌘</kbd><kbd>N</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>O</kbd> |
+| New SQL tab | <kbd>⌘</kbd><kbd>T</kbd> |
+| Run current / Run all | <kbd>⌘</kbd><kbd>↵</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>↵</kbd> |
+| Save pending changes | <kbd>⌘</kbd><kbd>S</kbd> |
+| Undo / Redo | <kbd>⌘</kbd><kbd>Z</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Z</kbd> |
+| AI panel | <kbd>⌘</kbd><kbd>L</kbd> |
+| Settings | <kbd>⌘</kbd><kbd>,</kbd> |
+
+## Getting started
+
+> [!IMPORTANT]
+> Tusk runs on **macOS 14 (Sonoma) or later** on Apple Silicon.
+
+### Download
+
+Get the latest `Tusk-<version>-arm64.dmg` from the [Releases page](https://github.com/alpcanaydin/tusk/releases/latest). Open it and drag **Tusk** into **Applications**.
+
+Or install it with Homebrew:
+
+```sh
+brew install alpcanaydin/tusk/tusk
+```
+
+Releases are signed with a Developer ID and notarized by Apple, so they open without Gatekeeper warnings. PostgreSQL's client tools and the SQL language servers are bundled, so you don't need to install anything else.
+
+### Updates
+
+Tusk updates itself. It checks for a new version once a day and downloads it in the background. When the update is ready, a **Restart to Update** button appears in the top bar. If you don't click it, the update installs the next time you quit Tusk. You can also check right away with **Tusk ▸ Check for Updates…**. Updates are signed, and Tusk verifies each one before installing it.
+
+If you installed with Homebrew, `brew upgrade tusk` works too.
+
+### Build from source
+
+Prerequisites: a recent stable [Rust](https://rustup.rs) toolchain (edition 2024) and the Xcode Command Line Tools.
+
+```sh
+git clone https://github.com/alpcanaydin/tusk.git && cd tusk
+cargo run --release
+```
+
+To build a standalone `Tusk.app` with the bundled language servers and PostgreSQL client tools, run:
+
+```sh
+scripts/bundle.sh            # → target/release/bundle/Tusk.app
+```
+
+### Releasing (maintainers)
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`). The workflow:
+
+1. Builds the app and signs it with the Developer ID.
+2. Notarizes and staples both the app and the DMG.
+3. Signs the DMG for Sparkle and writes the update feed (`appcast.xml`).
+4. Publishes a GitHub release with the DMG and the feed.
+5. Updates the Homebrew cask.
+
+One-time setup: run `scripts/setup-release.sh`. The wizard walks you through the certificate, the notarization key, the update-signing key and the Homebrew token, and checks each one. After that, a release is one command:
+
+```sh
+scripts/tag-release.sh 0.2.0   # bumps the version, commits, tags v0.2.0, pushes
+```
+
+To build a release locally, run `scripts/release.sh`. It uses the same signing and notarization credentials, stored in your keychain.
+
+> [!TIP]
+> If you have an Apple Development certificate, `cargo run` signs the dev binary with it (see `scripts/sign-dev.sh`). Then the Keychain's **Always Allow** keeps working across rebuilds. Without one, the binary runs unsigned and macOS asks for Keychain access again after each rebuild.
+
+### Try it with sample data
+
+The repo includes a Docker Compose file that starts PostgreSQL 17 with a seeded demo database. It has three schemas, views, functions, and a 500,000-row `events` table.
+
+```sh
+docker compose up -d                # PostgreSQL on localhost:55432
+```
+
+In Tusk, choose **Import from Docker Compose…** on the welcome screen and pick this repo's `docker-compose.yml`.
+
+### Run the tests
+
+```sh
+cargo test
+```
+
+Some integration tests need the Docker database above. Tests for other engines use their own containers and are skipped when those aren't running.
+
+## Where your data lives
+
+| What | Where |
+| --- | --- |
+| Connection profiles, groups, settings, history | `~/Library/Application Support/tusk/` |
+| Passwords and SSH passphrases | macOS Keychain (`tusk-postgres`, `tusk-ssh`) |
+
+Set `TUSK_DATA_DIR` to use a different folder, which is handy for a clean test profile.
+
+## Built with
+
+[GPUI](https://github.com/zed-industries/zed) and [gpui-component](https://github.com/longbridge/gpui-component) for the UI, [sqlx](https://github.com/launchbadge/sqlx) and a native driver per engine, [russh](https://github.com/warp-tech/russh) for SSH tunnels, and [tree-sitter](https://tree-sitter.github.io) for SQL highlighting. Tusk vendors small patches to `gpui-component` and `gpui-base` in `vendor/`, and those keep their Apache-2.0 licenses.

@@ -1,0 +1,15 @@
+/target
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Launch video (promo/): dependencies, renders, QA frames, the agent skills
+# the Remotion CLI installs, and the licensed music track.
+/promo/node_modules/
+/promo/out/
+/promo/.agents/
+/promo/.claude/
+/promo/public/music/
+
+# macOS
+.DS_Store

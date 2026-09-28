@@ -1,0 +1,42 @@
+[
+  {
+    "id": "00-hook",
+    "text": "Still paying every year just to look at your own database?"
+  },
+  {
+    "id": "01-reveal",
+    "text": "Meet Tusk. A faster, native Mac database client. Free and open source."
+  },
+  {
+    "id": "02-connect",
+    "text": "Connect to twenty databases, from PostgreSQL to MongoDB and Redis."
+  },
+  {
+    "id": "03-grid",
+    "text": "Browse millions of rows in a GPU-rendered grid that never stutters."
+  },
+  {
+    "id": "04-edit",
+    "text": "Edit cells, columns and indexes, then save everything in a single transaction."
+  },
+  {
+    "id": "05-sql",
+    "text": "Write SQL with real language-server completions, and run it with one keystroke."
+  },
+  {
+    "id": "06-ai",
+    "text": "Or just ask. The AI reads your schema and writes the query into a new tab. You decide when it runs."
+  },
+  {
+    "id": "07-palette",
+    "text": "Every action is one keystroke away."
+  },
+  {
+    "id": "08-themes",
+    "text": "Make it yours with over thirty light and dark themes."
+  },
+  {
+    "id": "09-outro",
+    "text": "Tusk. Free and open source. Download it today."
+  }
+]

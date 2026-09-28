@@ -1,0 +1,58 @@
+name: weekly
+
+'on':
+  schedule:
+    # Monday 05:00 UTC.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secrets in the full history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: betterleaks
+
+      - name: Scan the history
+        run: mise exec -- betterleaks git --no-banner --redact
+
+  # The release packaging (bundled tools, Sparkle, notices) without signing,
+  # so a broken bundle shows up before release day.
+  bundle:
+    name: Unsigned bundle
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain and bundled tools
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          brew install --quiet libpq go
+
+      - name: Bundle
+        run: scripts/bundle.sh
+
+      - name: Bundle contents
+        run: |
+          app=target/release/bundle/Tusk.app
+          test -x "$app/Contents/MacOS/Tusk"
+          test -d "$app/Contents/Frameworks/Sparkle.framework"
+          test -x "$app/Contents/Resources/pgtools/bin/pg_dump"
+          test -x "$app/Contents/Resources/bin/postgres-language-server"
+          test -x "$app/Contents/Resources/bin/sqls"
+          test -s "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
+          /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$app/Contents/Info.plist"
