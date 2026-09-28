@@ -16,8 +16,30 @@ permissions:
   contents: read
 
 jobs:
+  # GitHub can deliver one tag push twice; the second run finds the release
+  # already published and stops here instead of failing after a rebuild.
+  check:
+    name: Not yet published
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      published: ${{ steps.check.outputs.published }}
+    steps:
+      - id: check
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::$GITHUB_REF_NAME is already published"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build:
     name: Build and publish
+    needs: check
+    if: needs.check.outputs.published != 'true'
     runs-on: macos-15
     timeout-minutes: 90
     # The signing secrets live in this environment only.
