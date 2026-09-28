@@ -12,7 +12,10 @@ git pull --ff-only -q
 sed -i '' "s/^version = \".*\"/version = \"$version\"/" Cargo.toml
 cargo update -p tusk --offline -q 2>/dev/null || cargo update -p tusk -q
 git add Cargo.toml Cargo.lock
-git commit -q -m "Release $version"
+# Already at this version (e.g. the first release): tag the current commit.
+if ! git diff --cached --quiet; then
+  git commit -q -m "Release $version"
+fi
 git tag -a "v$version" -m "Tusk $version"
 git push -q origin main "v$version"
 echo "Tagged v$version. Follow the build: gh run watch \$(gh run list -w release -L1 --json databaseId -q '.[0].databaseId')"
