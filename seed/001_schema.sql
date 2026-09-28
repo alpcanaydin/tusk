@@ -1,5 +1,5 @@
--- Veri dev seed: schema (001)
--- PG17, db veri_dev, user veri
+-- Tusk dev seed: schema (001)
+-- PG17, db tusk_dev, user tusk
 
 CREATE SCHEMA IF NOT EXISTS analytics;
 CREATE SCHEMA IF NOT EXISTS audit;

@@ -801,8 +801,8 @@ mod live_edit_tests {
                 r#"SELECT * FROM "tusk_edit" WHERE id = 1"#,
             ),
             E::Postgres => (
-                "SELECT id, v, upper(v) AS shout FROM veri_scratch.tusk_edit WHERE id = 1",
-                "SELECT v FROM veri_scratch.tusk_edit WHERE id = 1",
+                "SELECT id, v, upper(v) AS shout FROM tusk_scratch.tusk_edit WHERE id = 1",
+                "SELECT v FROM tusk_scratch.tusk_edit WHERE id = 1",
             ),
             E::Cassandra => (
                 "SELECT id, v, writetime(v) AS shout FROM tusk_edit WHERE id = 1",
@@ -920,14 +920,14 @@ mod live_edit_tests {
             case(
                 E::Postgres,
                 55432,
-                "veri",
-                "veri_dev",
-                "veri",
-                "veri_scratch",
+                "tusk",
+                "tusk_dev",
+                "tusk",
+                "tusk_scratch",
                 vec![
-                    "DROP TABLE IF EXISTS veri_scratch.tusk_edit",
-                    "CREATE TABLE veri_scratch.tusk_edit (id int PRIMARY KEY, v text)",
-                    "INSERT INTO veri_scratch.tusk_edit VALUES (1, 'a'), (2, 'b')",
+                    "DROP TABLE IF EXISTS tusk_scratch.tusk_edit",
+                    "CREATE TABLE tusk_scratch.tusk_edit (id int PRIMARY KEY, v text)",
+                    "INSERT INTO tusk_scratch.tusk_edit VALUES (1, 'a'), (2, 'b')",
                 ],
             ),
             case(
@@ -1074,7 +1074,7 @@ mod live_edit_tests {
             // instead: a self-join's columns of one table stay editable).
             if !matches!(c.engine, E::MongoDb | E::Postgres) {
                 let join = if c.engine == E::Postgres {
-                    "SELECT a.id, a.v FROM veri_scratch.tusk_edit a JOIN veri_scratch.tusk_edit b ON a.id = b.id"
+                    "SELECT a.id, a.v FROM tusk_scratch.tusk_edit a JOIN tusk_scratch.tusk_edit b ON a.id = b.id"
                 } else {
                     "SELECT a.id, a.v FROM tusk_edit a JOIN tusk_edit b ON a.id = b.id"
                 };
@@ -1092,7 +1092,7 @@ mod live_edit_tests {
             let _ = rt.block_on(d.exec(match c.engine {
                 E::MongoDb => "db.tusk_edit.drop()".into(),
                 E::Cassandra => "DROP KEYSPACE tusk_edit_ks".into(),
-                E::Postgres => "DROP TABLE veri_scratch.tusk_edit".into(),
+                E::Postgres => "DROP TABLE tusk_scratch.tusk_edit".into(),
                 _ => "DROP TABLE tusk_edit".into(),
             }));
         }

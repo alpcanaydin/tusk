@@ -1,4 +1,4 @@
--- Veri dev seed: data (002)
+-- Tusk dev seed: data (002)
 -- generate_series ile hizli uretim; events ~500k satir.
 
 -- ---- customers (5.000) ----

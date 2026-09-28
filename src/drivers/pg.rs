@@ -524,11 +524,11 @@ mod tests {
     #[test]
     fn live_postgres_scratch_and_cockroach() {
         if live::reachable(55432) {
-            // veri_scratch is the table tests may write to (seed data stays untouched).
+            // tusk_scratch is the table tests may write to (seed data stays untouched).
             live::exercise(
-                live::conn(Engine::Postgres, 55432, "veri", "veri_dev"),
-                "veri",
-                "veri_scratch",
+                live::conn(Engine::Postgres, 55432, "tusk", "tusk_dev"),
+                "tusk",
+                "tusk_scratch",
                 "status",
             );
         }

@@ -1181,8 +1181,8 @@ mod live_tests {
         let ep = Endpoint {
             host: "127.0.0.1".into(),
             port: 55432,
-            user: "veri".into(),
-            password: "veri".into(),
+            user: "tusk".into(),
+            password: "tusk".into(),
             ssl: crate::db::SslMode::Disable,
         };
         let file = std::env::temp_dir().join(format!("tusk-rt-{}.dump", std::process::id()));
@@ -1197,7 +1197,7 @@ mod live_tests {
         ]
         .map(String::from)
         .to_vec();
-        if run_tool(&t.dir, "pg_dump", &ep, "veri_dev", &args).is_err() {
+        if run_tool(&t.dir, "pg_dump", &ep, "tusk_dev", &args).is_err() {
             return; // no database running
         }
         assert!(
@@ -1209,14 +1209,14 @@ mod live_tests {
             &t.dir,
             "psql",
             &ep,
-            "veri_dev",
+            "tusk_dev",
             &["-c".into(), "DROP DATABASE IF EXISTS tusk_rt".into()],
         );
         run_tool(
             &t.dir,
             "psql",
             &ep,
-            "veri_dev",
+            "tusk_dev",
             &["-c".into(), "CREATE DATABASE tusk_rt".into()],
         )
         .unwrap();
@@ -1236,7 +1236,7 @@ mod live_tests {
             &t.dir,
             "psql",
             &ep,
-            "veri_dev",
+            "tusk_dev",
             &["-c".into(), "DROP DATABASE IF EXISTS tusk_rt".into()],
         );
         let _ = std::fs::remove_file(&file);

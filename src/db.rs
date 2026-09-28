@@ -205,8 +205,8 @@ pub fn dev_default() -> SavedConnection {
         name: "Local Docker".to_string(),
         host: "127.0.0.1".to_string(),
         port: 55432,
-        database: "veri_dev".to_string(),
-        user: "veri".to_string(),
+        database: "tusk_dev".to_string(),
+        user: "tusk".to_string(),
         ssl: SslMode::Prefer,
         folder: None,
         tag: Some(ConnTag::Local),
@@ -231,6 +231,7 @@ pub(crate) fn app_dir() -> PathBuf {
         }
         let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
         let dir = base.join("tusk");
+        // The data folder under the app's previous name, Veri (copied once).
         let old = base.join("veri");
         if !dir.exists() && old.is_dir() {
             let _ = std::fs::create_dir_all(&dir);
@@ -321,7 +322,8 @@ pub fn forget_last_connection() {
 // ---- Keychain (passwords never touch the JSON file) ----
 
 const KEYCHAIN_SERVICE: &str = "tusk-postgres";
-/// Services used under the app's previous name (read once, then migrated).
+/// Keychain services under the app's previous name, Veri: read once and
+/// copied to the ones above, so passwords saved before the rename keep working.
 const LEGACY_SERVICE: &str = "veri-postgres";
 const LEGACY_SSH_SERVICE: &str = "veri-ssh";
 
@@ -1687,9 +1689,9 @@ mod tests {
         connect_options(
             "127.0.0.1",
             55432,
-            "veri_dev",
-            "veri",
-            "veri",
+            "tusk_dev",
+            "tusk",
+            "tusk",
             SslMode::Prefer,
         )
     }
@@ -1698,7 +1700,7 @@ mod tests {
     fn test_connection_ok_against_docker() {
         let v = RUNTIME
             .handle()
-            .block_on(test_connect(dev_default(), "veri".into(), None))
+            .block_on(test_connect(dev_default(), "tusk".into(), None))
             .expect("docker PG reachable");
         assert!(v.contains("PostgreSQL"), "unexpected version: {v}");
     }
@@ -1778,9 +1780,9 @@ mod tests {
             .block_on(async {
                 // NOTE: TEMP tables are per-session; the pool may use another
                 // connection, so the test uses a real table + cleanup.
-                pg_run_exec(&pool, "CREATE TABLE veri_test_tmp (a INT)").await?;
-                let n = pg_run_exec(&pool, "INSERT INTO veri_test_tmp VALUES (1),(2)").await?;
-                pg_run_exec(&pool, "DROP TABLE veri_test_tmp").await?;
+                pg_run_exec(&pool, "CREATE TABLE tusk_test_tmp (a INT)").await?;
+                let n = pg_run_exec(&pool, "INSERT INTO tusk_test_tmp VALUES (1),(2)").await?;
+                pg_run_exec(&pool, "DROP TABLE tusk_test_tmp").await?;
                 Ok::<_, String>(n)
             })
             .expect("ddl+insert");
@@ -1909,15 +1911,15 @@ mod tests {
     /// that feature keyring silently falls back to an in-memory mock).
     #[test]
     fn keychain_password_roundtrip() {
-        let name = format!("veri-test-{}", std::process::id());
+        let name = format!("tusk-test-{}", std::process::id());
         save_password(&name, "s3cret-ü").expect("save");
         assert_eq!(load_password(&name).expect("load"), "s3cret-ü");
         keyring_entry(&name).unwrap().delete_credential().ok();
     }
 
-    /// End-to-end SSH tunnel: jump host = the `veri-ssh-test` container
+    /// End-to-end SSH tunnel: jump host = the `tusk-ssh-test` container
     /// (openssh-server on :2222, same Docker network as Postgres), target
-    /// `veri-postgres:5432` resolved *on the jump host*. Skipped when the
+    /// `tusk-postgres:5432` resolved *on the jump host*. Skipped when the
     /// container isn't running.
     #[test]
     fn ssh_tunnel_reaches_postgres() {
@@ -1925,23 +1927,23 @@ mod tests {
             eprintln!("skip: no ssh test container on :2222");
             return;
         }
-        let kh = std::env::temp_dir().join(format!("veri-kh-{}", std::process::id()));
+        let kh = std::env::temp_dir().join(format!("tusk-kh-{}", std::process::id()));
         // SAFETY: single-threaded setup before the connect below.
         unsafe { std::env::set_var("TUSK_KNOWN_HOSTS", &kh) };
         let mut conn = dev_default();
-        conn.host = "veri-postgres".into();
+        conn.host = "tusk-postgres".into();
         conn.port = 5432;
         conn.ssh = Some(SshConfig {
             host: "127.0.0.1".into(),
             port: 2222,
-            user: "veri".into(),
+            user: "tusk".into(),
             key_path: None,
         });
         let v = RUNTIME
             .handle()
             .block_on(test_connect(
                 conn.clone(),
-                "veri".into(),
+                "tusk".into(),
                 Some("sshpass".into()),
             ))
             .expect("postgres through the ssh tunnel");
@@ -1949,7 +1951,7 @@ mod tests {
         // Wrong SSH password → a real SSH auth error, not a hang.
         let err = RUNTIME
             .handle()
-            .block_on(test_connect(conn, "veri".into(), Some("nope".into())))
+            .block_on(test_connect(conn, "tusk".into(), Some("nope".into())))
             .expect_err("bad ssh password");
         assert!(err.contains("SSH authentication"), "{err}");
         let _ = std::fs::remove_file(kh);
@@ -1959,7 +1961,7 @@ mod tests {
     fn connections_json_roundtrip() {
         let list = vec![dev_default()];
         let json = serde_json::to_string(&list).unwrap();
-        assert!(!json.contains("veri\"") || true); // password must never be here
+        assert!(!json.contains("tusk\"") || true); // password must never be here
         let back: Vec<SavedConnection> = serde_json::from_str(&json).unwrap();
         assert_eq!(back[0].port, 55432);
     }

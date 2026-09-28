@@ -1234,10 +1234,10 @@ mod live_tests {
             (
                 Engine::Postgres,
                 55432,
-                "veri",
-                "veri_dev",
-                "veri",
-                "veri_scratch",
+                "tusk",
+                "tusk_dev",
+                "tusk",
+                "tusk_scratch",
                 "int4",
                 "text",
                 "int8",
@@ -1316,7 +1316,7 @@ mod live_tests {
                 .unwrap();
             }
             if e == Engine::Postgres {
-                rt.block_on(d.exec("CREATE SCHEMA IF NOT EXISTS veri_scratch".into()))
+                rt.block_on(d.exec("CREATE SCHEMA IF NOT EXISTS tusk_scratch".into()))
                     .unwrap();
             }
             for t in ["tusk_ddl", "tusk_ddl2"] {

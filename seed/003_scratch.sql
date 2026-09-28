@@ -1,6 +1,6 @@
 -- A table the live tests may write to (drivers::live::exercise), so the
 -- seeded data above stays untouched.
-CREATE TABLE public.veri_scratch (
+CREATE TABLE public.tusk_scratch (
     id serial PRIMARY KEY,
     status public.order_status NOT NULL DEFAULT 'pending',
     active boolean,
@@ -8,7 +8,7 @@ CREATE TABLE public.veri_scratch (
     seen_at timestamptz
 );
 
-INSERT INTO public.veri_scratch (status, active, born, seen_at) VALUES
+INSERT INTO public.tusk_scratch (status, active, born, seen_at) VALUES
     ('pending', true, '1990-05-17', now()),
     ('paid', false, '1985-11-02', now() - interval '1 day'),
     ('shipped', NULL, NULL, NULL),
