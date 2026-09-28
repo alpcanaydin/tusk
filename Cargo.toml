@@ -23,7 +23,7 @@ russh = "0.63"
 # Embedded engines / clients for the other databases.
 duckdb = { version = "1", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-hmac = "0.12"
+hmac = "0.13"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
