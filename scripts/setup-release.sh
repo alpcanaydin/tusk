@@ -21,13 +21,15 @@ fail() { printf '%s✗%s %s\n' "$red" "$reset" "$1" >&2; exit 1; }
 ask() { local a; read -r -p "$1 " a; printf '%s' "$a"; }
 ask_secret() { local a; read -r -s -p "$1 " a; echo >&2; printf '%s' "$a"; }
 yes() { local a; read -r -p "$1 [Y/n] " a; [[ -z "$a" || "$a" =~ ^[Yy] ]]; }
+no() { local a; read -r -p "$1 [y/N] " a; [[ ! "$a" =~ ^[Yy] ]]; }
 pause() { read -r -p "${dim}Press Enter when done…${reset}" _; }
 has_secret() { gh secret list --repo "$REPO" --env "$ENV_NAME" --json name -q '.[].name' 2>/dev/null | grep -qx "$1"; }
 set_secret() { printf '%s' "$2" | gh secret set "$1" --repo "$REPO" --env "$ENV_NAME" >/dev/null && ok "secret $1 saved"; }
 skip_if_set() {
   local all=1 s
   for s in "$@"; do has_secret "$s" || all=0; done
-  [ "$all" = 1 ] && ! yes "Already set ($*). Replace?" && { ok "kept"; return 0; }
+  # Replacing is the exception: Enter keeps what's there.
+  [ "$all" = 1 ] && no "Already set ($*). Replace?" && { ok "kept"; return 0; }
   return 1
 }
 
