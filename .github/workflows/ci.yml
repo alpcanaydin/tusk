@@ -86,6 +86,11 @@ jobs:
     # GPUI renders with Metal: the app builds and tests on macOS.
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      # No debug info in CI: faster compiles and links, a smaller cache.
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
