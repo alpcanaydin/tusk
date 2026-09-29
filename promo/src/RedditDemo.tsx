@@ -2,7 +2,7 @@
 // stage (gradient or photo), rounded and shadowed, with a big cursor. No
 // zoom, no captions, no audio.
 import React from "react";
-import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video } from "@remotion/media";
 import { Grain } from "./fx";
 
@@ -173,7 +173,6 @@ const Stage: React.FC<{ bg: Bg }> = ({ bg }) => {
 void clampOpts;
 
 export const RedditDemo: React.FC<{ bg: Bg }> = ({ bg }) => {
-  const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // Window frame on the stage: as large as fits with padding.
   const pad = 48;
@@ -182,7 +181,6 @@ export const RedditDemo: React.FC<{ bg: Bg }> = ({ bg }) => {
   const fh = fw / aspect;
   const fx = (width - fw) / 2;
   const fy = (height - fh) / 2;
-  const intro = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp", easing: Easing.bezier(0.16, 1, 0.3, 1) });
   return (
     <AbsoluteFill>
       <Stage bg={bg} />
@@ -197,8 +195,6 @@ export const RedditDemo: React.FC<{ bg: Bg }> = ({ bg }) => {
           overflow: "hidden",
           background: "#000",
           boxShadow: "0 40px 120px rgba(8,4,30,0.65), 0 12px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.12)",
-          opacity: intro,
-          scale: String(0.97 + 0.03 * intro),
         }}
       >
         <Video src={staticFile("reddit/tusk-reddit-full.mp4")} muted style={{ width: "100%", height: "100%", display: "block" }} />
