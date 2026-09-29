@@ -1,5 +1,6 @@
 # Weekly and grouped: at most one pull request per ecosystem, so updates
-# don't each start a macOS build.
+# don't each start a macOS build. Cargo gets minor and patch updates only;
+# major versions change APIs and are upgraded by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -14,6 +15,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       cargo:
         patterns: ['*']
