@@ -377,7 +377,7 @@ impl ConnDialog {
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
             if let Err(e) = db::save_password(&conn.name, &password) {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
+                self.form.notice = Some((false, format!("Credential store error: {e}")));
                 cx.notify();
                 return;
             }
@@ -385,11 +385,11 @@ impl ConnDialog {
                 Ok(back) if back == password => {}
                 Ok(_) => {
                     keychain_warning =
-                        Some("the Keychain gave back a different password".to_string());
+                        Some("the credential store gave back a different password".to_string());
                 }
                 Err(e) => {
                     keychain_warning = Some(format!(
-                        "the password can't be read back from the Keychain ({e})"
+                        "the password can't be read back from the credential store ({e})"
                     ));
                 }
             }
@@ -400,7 +400,7 @@ impl ConnDialog {
             && let Err(e) = db::save_ssh_secret(&conn.name, &ssh_secret)
         {
             {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
+                self.form.notice = Some((false, format!("Credential store error: {e}")));
                 cx.notify();
                 return;
             }
@@ -645,7 +645,7 @@ impl ConnDialog {
         use crate::engine::{Engine, Form};
         let engine = self.form.engine;
         let keychain = Checkbox::new("dlg-save-pw")
-            .label("Store in keychain")
+            .label("Store in system keyring")
             .checked(self.form.save_password)
             .on_click(cx.listener(|this, checked: &bool, _, cx| {
                 this.form.save_password = *checked;

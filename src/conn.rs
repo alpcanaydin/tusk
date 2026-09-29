@@ -109,7 +109,7 @@ impl ConnectionForm {
             port: input(window, cx, "5432", initial.port.to_string()),
             database: input(window, cx, "mydb", initial.database.clone()),
             user: input(window, cx, "postgres", initial.user.clone()),
-            password: secret(window, cx, "Password (stored in Keychain)"),
+            password: secret(window, cx, "Password (stored in system keyring)"),
             folder: input(
                 window,
                 cx,
@@ -148,7 +148,7 @@ impl ConnectionForm {
                     .and_then(|s| s.key_path.clone())
                     .unwrap_or_default(),
             ),
-            ssh_secret: secret(window, cx, "Stored in Keychain"),
+            ssh_secret: secret(window, cx, "Stored in system keyring"),
             editing: None,
             saved: db::load_connections(),
             selected: None,

@@ -205,7 +205,7 @@ pub fn run_sql_file(ep: &Endpoint, db: &str, file: &Path) -> Result<String, Stri
     let tools = installed_tools();
     let t = pick_tools(&tools, None)
         .and_then(|i| tools.get(i))
-        .ok_or("psql not found (bundled with Tusk.app, or install libpq)")?;
+        .ok_or("psql not found; install PostgreSQL client tools or set TUSK_PG_BIN")?;
     let args: Vec<String> = [
         "-X",
         "-q",

@@ -925,6 +925,7 @@ mod live_edit_tests {
                 "tusk",
                 "tusk_scratch",
                 vec![
+                    "CREATE SCHEMA IF NOT EXISTS tusk_scratch",
                     "DROP TABLE IF EXISTS tusk_scratch.tusk_edit",
                     "CREATE TABLE tusk_scratch.tusk_edit (id int PRIMARY KEY, v text)",
                     "INSERT INTO tusk_scratch.tusk_edit VALUES (1, 'a'), (2, 'b')",

@@ -237,7 +237,12 @@ impl LspClient {
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<DiagnosticsEvent>)> {
         let name = spec.binary;
         let bin = find_binary(name).ok_or_else(|| {
-            anyhow!("{name} not found (bundled with Tusk.app; for dev builds run scripts/bundle-*.sh target/debug/pgls)")
+            let env = if name == "sqls" {
+                "TUSK_SQLS"
+            } else {
+                "TUSK_PGLS"
+            };
+            anyhow!("{name} not found; install it on PATH or set {env}")
         })?;
         let root = dirs::cache_dir()
             .unwrap_or_else(std::env::temp_dir)

@@ -36,9 +36,41 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+  linux:
+    name: Linux archive
+    needs: check
+    if: needs.check.outputs.published != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake golang-go pkg-config libasound2-dev libdbus-1-dev libfontconfig-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan-dev
+          rustup show active-toolchain || rustup toolchain install
+          scripts/install-linux.sh
+          install -Dm644 LICENSE "$HOME/.local/share/doc/tusk/LICENSE"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          mkdir -p target/release/bundle
+          tar -C "$HOME/.local" -czf "target/release/bundle/Tusk-${version}-linux-x86_64.tar.gz" \
+            bin/tusk bin/postgres-language-server bin/sqls \
+            share/applications/tusk.desktop share/icons/hicolor/1024x1024/apps/tusk.png \
+            share/doc/tusk/LICENSE
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-build
+          path: target/release/bundle/Tusk-*-linux-x86_64.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
   build:
     name: Build and publish
-    needs: check
+    needs: [check, linux]
     if: needs.check.outputs.published != 'true'
     runs-on: macos-15
     timeout-minutes: 90
@@ -82,6 +114,23 @@ jobs:
         run: |
           gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
             -f tag_name="$GITHUB_REF_NAME" --jq .body > "$RUNNER_TEMP/notes.md"
+          cat >> "$RUNNER_TEMP/notes.md" <<'EOF'
+
+          ### Linux build (x86_64)
+
+          Download the Linux tarball below and install it with:
+
+          ```sh
+          mkdir -p ~/.local
+          tar -C ~/.local -xzf Tusk-*-linux-x86_64.tar.gz
+          ~/.local/bin/tusk
+          ```
+
+          This build runs on Wayland with Xwayland fallback. It includes both SQL
+          language servers. Install your distribution's PostgreSQL client tools
+          for backup and restore, and use a Secret Service provider to save passwords.
+          See the README for system dependencies and source build instructions.
+          EOF
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -101,10 +150,17 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
+      - name: Download Linux archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-build
+          path: target/release/bundle
+
       - name: Publish the release
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "target/release/bundle/Tusk-$VERSION-arm64.dmg" \
+            "target/release/bundle/Tusk-$VERSION-linux-x86_64.tar.gz" \
             target/release/bundle/appcast.xml \
             --repo "$GITHUB_REPOSITORY" --title "Tusk $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
         env:

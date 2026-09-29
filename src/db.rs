@@ -1,5 +1,5 @@
 //! PostgreSQL connection layer: saved-connection persistence (JSON, no passwords),
-//! macOS Keychain via `keyring`, tokio runtime bridge for sqlx, connect/test helpers.
+//! System credential store via `keyring`, tokio runtime bridge for sqlx, connect/test helpers.
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -1907,14 +1907,22 @@ mod tests {
         assert!(audit.functions.contains(&"log_action".to_string()));
     }
 
-    /// Real macOS Keychain round trip (keyring's `apple-native` store — without
-    /// that feature keyring silently falls back to an in-memory mock).
+    /// Real credential-store round trip. Linux needs a running Secret Service;
+    /// opt in for local testing, since headless CI has no session bus.
     #[test]
-    fn keychain_password_roundtrip() {
+    fn credential_store_roundtrip() {
+        if cfg!(target_os = "linux") && std::env::var_os("TUSK_TEST_KEYRING").is_none() {
+            eprintln!("skip: set TUSK_TEST_KEYRING=1 with a Secret Service session");
+            return;
+        }
         let name = format!("tusk-test-{}", std::process::id());
         save_password(&name, "s3cret-ü").expect("save");
         assert_eq!(load_password(&name).expect("load"), "s3cret-ü");
-        keyring_entry(&name).unwrap().delete_credential().ok();
+        keyring_entry(&name)
+            .unwrap()
+            .delete_credential()
+            .expect("delete");
+        assert!(load_password(&name).is_err());
     }
 
     /// End-to-end SSH tunnel: jump host = the `tusk-ssh-test` container

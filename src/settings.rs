@@ -516,7 +516,7 @@ impl SettingsWindow {
                         )
                         .default_value(SharedString::from(d.appearance.label())),
                     )
-                    .description("System follows macOS light / dark appearance."),
+                    .description("System follows the desktop light / dark appearance."),
                 )
                 .item(
                     SettingItem::new(
@@ -725,7 +725,7 @@ impl SettingsWindow {
                     ))
                     .item(switch(
                         "Confirm Before Saving",
-                        "Ask before ⌘S writes pending changes to the database.",
+                        "Ask before saving pending changes to the database.",
                         |p| p.confirm_save,
                         |p, v| p.confirm_save = v,
                         d.confirm_save,

@@ -853,7 +853,7 @@ impl TuskApp {
         match db::save_password(&conn.name, &password) {
             Ok(()) => {}
             Err(e) => {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
+                self.form.notice = Some((false, format!("Credential store error: {e}")));
                 cx.notify();
                 return;
             }
@@ -862,9 +862,9 @@ impl TuskApp {
         // silently drop Keychain writes must not get a false "Saved").
         let keychain_warning = match db::load_password(&conn.name) {
             Ok(back) if back == password => None,
-            Ok(_) => Some("the Keychain gave back a different password".to_string()),
+            Ok(_) => Some("the credential store gave back a different password".to_string()),
             Err(e) => Some(format!(
-                "the password can't be read back from the Keychain ({e})"
+                "the password can't be read back from the credential store ({e})"
             )),
         };
         if let Some(ix) = self.form.saved.iter().position(|c| c.name == conn.name) {
@@ -1794,7 +1794,7 @@ impl TuskApp {
                                 (Some(src), _) => (
                                     Some(IconName::Pencil),
                                     format!("{}.{}", src.schema, src.table),
-                                    "Editable — double-click a cell, cmd-s to save".to_string(),
+                                    "Editable — double-click a cell, then save changes".to_string(),
                                 ),
                                 (None, Some(note)) => {
                                     (Some(IconName::Lock), "read-only".into(), note.clone())

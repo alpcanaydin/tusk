@@ -132,7 +132,7 @@ impl TuskApp {
         let answer = window.prompt(
             PromptLevel::Warning,
             &format!("Delete “{name}”?"),
-            Some("The saved profile and its Keychain passwords are removed."),
+            Some("The saved profile and its stored passwords are removed."),
             &["Delete", "Cancel"],
             cx,
         );
