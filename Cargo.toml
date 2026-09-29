@@ -13,7 +13,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sqlx = { version = "0.8", features = ["postgres", "mysql", "sqlite", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "sync"] }
 keyring = { version = "3", features = ["apple-native"] }
-dirs = "6"
+dirs = "7"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -23,14 +23,14 @@ russh = "0.63"
 # Embedded engines / clients for the other databases.
 duckdb = { version = "1", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 hex = "0.4"
-base64 = "0.22"
-jsonwebtoken = "9"
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono"] }
+base64 = "0.23"
+jsonwebtoken = "11"
+tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
 tokio-util = { version = "0.7", features = ["compat"] }
-redis = { version = "0.32", features = ["tokio-comp", "aio", "connection-manager"] }
+redis = { version = "1.7", features = ["tokio-comp", "aio", "connection-manager"] }
 mongodb = "3.9.1"
 scylla = "1.9.0"
 async-trait = "0.1.92"
