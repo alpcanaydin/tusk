@@ -20,7 +20,7 @@ export const RemotionRoot: React.FC = () => (
       width={1920}
       height={1080}
       fps={REDDIT_FPS}
-      durationInFrames={REDDIT_FRAMES}
+      durationInFrames={REDDIT_FRAMES} defaultProps={{ bg: "aurora" as const }}
     />
   </>
 );
