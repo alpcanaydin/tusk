@@ -53,4 +53,4 @@ gpui-base = { path = "vendor/gpui-base" }
 objc2 = "0.6"
 block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSProcessInfo", "NSString", "NSObject"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSProcessInfo", "NSString", "NSObject"] }

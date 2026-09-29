@@ -1,0 +1,41 @@
+name: Bug report
+description: Something doesn't work the way it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect to …
+        2. Open …
+        3. …
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Database engine
+      options: [PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, Oracle, ClickHouse, DuckDB, Snowflake, BigQuery, Redis, MongoDB, Cassandra, DynamoDB, CockroachDB, Redshift, Other / not specific]
+    validations:
+      required: true
+  - type: input
+    id: tusk
+    attributes:
+      label: Tusk version
+      description: Tusk ▸ About Tusk
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.6"
+    validations:
+      required: true

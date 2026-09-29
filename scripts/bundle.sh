@@ -42,6 +42,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconName</key><string>Tusk</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Reyz Inc. Free and open source (MIT).</string>
   <key>SUFeedURL</key><string>https://github.com/alpcanaydin/tusk/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>wFCNHPe+tnFm2E71og2InjbeJqLB+lpWg3vYmiTlmWY=</string>
   <key>SUEnableAutomaticChecks</key><true/>
