@@ -1,36 +1,68 @@
 // Screen Studio–style cut of the raw demo recording: the app window on a
-// soft gradient stage, rounded and shadowed, with smooth zooms toward the
-// action. No captions, no audio.
+// stage (gradient or photo), rounded and shadowed, with a big cursor. No
+// zoom, no captions, no audio.
 import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video } from "@remotion/media";
 import { Grain } from "./fx";
 
 export const REDDIT_FPS = 60;
-export const REDDIT_FRAMES = Math.round(20.03 * REDDIT_FPS);
+export const REDDIT_FRAMES = 1200;
 const SRC = { w: 2880, h: 1724 };
 
-/** A zoom toward (x, y) (0–1 of the recording) held between `from` and `to` seconds. */
-type Zoom = { from: number; to: number; z: number; x: number; y: number };
-const ZOOMS: Zoom[] = [
-  { from: 0.15, to: 1.2, z: 1.35, x: 0.4, y: 0.56 }, // the get-started screen
-  { from: 5.05, to: 7.45, z: 1.9, x: 0.66, y: 0.2 }, // editing a cell in place
-  { from: 7.95, to: 12.55, z: 1.75, x: 0.3, y: 0.12 }, // SQL + autocomplete
-  { from: 14.45, to: 18.35, z: 1.22, x: 0.9, y: 0.62 }, // the AI panel: question at the bottom, steps at the top
-];
-const RAMP = 0.42; // seconds in and out
-const ease = Easing.bezier(0.65, 0, 0.35, 1);
+// The recording hides the real cursor; its logged path (cursor-track.json,
+// one point per output frame, in recording pixels) drives a big cursor.
+import track from "./cursor-track.json";
 
-function camera(t: number): { z: number; x: number; y: number } {
-  for (const k of ZOOMS) {
-    if (t >= k.from - RAMP && t <= k.to + RAMP) {
-      const pin = interpolate(t, [k.from - RAMP, k.from], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease });
-      const pout = interpolate(t, [k.to, k.to + RAMP], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease });
-      return { z: 1 + (k.z - 1) * Math.min(pin, pout), x: k.x, y: k.y };
-    }
-  }
-  return { z: 1, x: 0.5, y: 0.5 };
-}
+const BigCursor: React.FC = () => {
+  const frame = useCurrentFrame();
+  const p = track.frames[Math.min(frame, track.frames.length - 1)];
+  const t = frame / REDDIT_FPS;
+  const size = 64; // px on the 1920 output (about 2.5x a normal cursor)
+  const pulses = track.clicks
+    .map((c) => t - c)
+    .filter((d) => d >= 0 && d < 0.45)
+    .map((d, i) => {
+      const k = d / 0.45;
+      return (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            left: `${(p[0] / track.w) * 100}%`,
+            top: `${(p[1] / track.h) * 100}%`,
+            width: 90 * (0.3 + 0.7 * k),
+            height: 90 * (0.3 + 0.7 * k),
+            translate: "-50% -50%",
+            borderRadius: "50%",
+            border: "4px solid rgba(255,255,255,0.9)",
+            opacity: 1 - k,
+          }}
+        />
+      );
+    });
+  const pressed = track.clicks.some((c) => t - c >= 0 && t - c < 0.12);
+  return (
+    <>
+      {pulses}
+      <svg
+        width={size * 0.72}
+        height={size}
+        viewBox="0 0 20 28"
+        style={{
+          position: "absolute",
+          left: `${(p[0] / track.w) * 100}%`,
+          top: `${(p[1] / track.h) * 100}%`,
+          scale: pressed ? "0.85" : "1",
+          transformOrigin: "0 0",
+          filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.55))",
+        }}
+      >
+        <path d="M1.5 1.5 L1.5 22 L6.6 17 L10 25 L13.4 23.6 L10.1 15.8 L17 15.8 Z" fill="black" stroke="white" strokeWidth="1.6" strokeLinejoin="round" />
+      </svg>
+    </>
+  );
+};
 
 /** A built-in style, or "photo:<file in public/reddit/bg>". */
 export type Bg = "aurora" | "silk" | "grid" | "mesh" | `photo:${string}`;
@@ -143,20 +175,13 @@ void clampOpts;
 export const RedditDemo: React.FC<{ bg: Bg }> = ({ bg }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
-  const t = frame / REDDIT_FPS;
-  const cam = camera(t);
   // Window frame on the stage: as large as fits with padding.
-  const pad = 130;
+  const pad = 48;
   const aspect = SRC.w / SRC.h;
   const fw = Math.min(width - pad * 2, (height - pad * 2) * aspect);
   const fh = fw / aspect;
   const fx = (width - fw) / 2;
   const fy = (height - fh) / 2;
-  // Zoom inside the frame, pinned at the focus point, clamped so no edge shows.
-  const cw = fw * cam.z;
-  const ch = fh * cam.z;
-  const left = Math.min(0, Math.max(fw - cw, fw * cam.x - cw * cam.x));
-  const top = Math.min(0, Math.max(fh - ch, fh * cam.y - ch * cam.y));
   const intro = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp", easing: Easing.bezier(0.16, 1, 0.3, 1) });
   return (
     <AbsoluteFill>
@@ -176,9 +201,8 @@ export const RedditDemo: React.FC<{ bg: Bg }> = ({ bg }) => {
           scale: String(0.97 + 0.03 * intro),
         }}
       >
-        <div style={{ position: "absolute", left, top, width: cw, height: ch }}>
-          <Video src={staticFile("reddit/tusk-reddit-full.mp4")} muted style={{ width: "100%", height: "100%" }} />
-        </div>
+        <Video src={staticFile("reddit/tusk-reddit-full.mp4")} muted style={{ width: "100%", height: "100%", display: "block" }} />
+        <BigCursor />
       </div>
       <Grain />
     </AbsoluteFill>
