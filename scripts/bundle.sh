@@ -42,7 +42,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconName</key><string>Tusk</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>© 2026 Reyz Inc. Free and open source (MIT).</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Alpcan Aydın. Free and open source (MIT).</string>
   <key>SUFeedURL</key><string>https://github.com/alpcanaydin/tusk/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>wFCNHPe+tnFm2E71og2InjbeJqLB+lpWg3vYmiTlmWY=</string>
   <key>SUEnableAutomaticChecks</key><true/>
@@ -50,10 +50,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>SUVerifyUpdateBeforeExtraction</key><true/>
 </dict></plist>
 PLIST
-# Distribution signature: Reyz Inc. Developer ID, hardened runtime,
+# Distribution signature: a Developer ID, hardened runtime,
 # timestamped (what notarization needs). $TUSK_DIST_IDENTITY overrides.
 dist="${TUSK_DIST_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
-  | sed -n 's/.*"\(Developer ID Application: Reyz Inc[^"]*\)".*/\1/p' | head -1)}"
+  | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}"
 if [ -n "$dist" ]; then
   # Nested code first (the pg tools, Sparkle's helpers inside out), then the app.
   for f in "$app"/Contents/Resources/pgtools/lib/* "$app"/Contents/Resources/pgtools/bin/* \

@@ -9,7 +9,7 @@
 set -euo pipefail
 bin="$1"
 id="${TUSK_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
-  | sed -n 's/.*"\(Apple Development: [^"]*@reyz\.ai[^"]*\)".*/\1/p' | head -1)}"
+  | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -1)}"
 if [ -n "$id" ]; then
   codesign --force --sign "$id" --identifier ai.reyz.tusk "$bin" 2>/dev/null || \
     echo "sign-dev: codesign failed, running unsigned" >&2
