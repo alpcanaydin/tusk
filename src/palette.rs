@@ -700,6 +700,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         IconName::ArrowDownToLine,
         Box::new(CheckForUpdates),
     );
+    action("app: about tusk", IconName::Info, Box::new(ShowAbout));
     action("app: hide", IconName::EyeOff, Box::new(HideApp));
     action("app: quit", IconName::Power, Box::new(Quit));
     (items, runs)
