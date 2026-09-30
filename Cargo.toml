@@ -48,6 +48,9 @@ serde_norway = "0.9"
 gpui-component = { path = "vendor/gpui-component" }
 # Inline Markdown code at the text size (see vendor/gpui-base, "Tusk patch").
 gpui-base = { path = "vendor/gpui-base" }
+# Don't swap a closing window's content view back to its original class under
+# AppKit's KVO; it aborted on macOS 14 (see vendor/accesskit_macos, "Tusk patch").
+accesskit_macos = { path = "vendor/accesskit_macos" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
