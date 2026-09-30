@@ -25,7 +25,7 @@ impl TuskApp {
     }
 
     /// All group names: explicit (groups.json) ∪ referenced by profiles.
-    fn folders(&self) -> Vec<String> {
+    pub(super) fn folders(&self) -> Vec<String> {
         let mut f: Vec<String> = self.groups.clone();
         f.extend(self.form.saved.iter().filter_map(|c| c.folder.clone()));
         f.sort_by_key(|s| s.to_lowercase());
@@ -111,7 +111,7 @@ impl TuskApp {
     }
 
     /// Delete a group; its profiles move to the top level (nothing is lost).
-    fn delete_group(&mut self, name: String, cx: &mut Context<Self>) {
+    pub(super) fn delete_group(&mut self, name: String, cx: &mut Context<Self>) {
         if self.conn_pick == FolderPick::Group(name.clone()) {
             self.conn_pick = FolderPick::All;
         }
@@ -151,7 +151,7 @@ impl TuskApp {
         .detach();
     }
 
-    fn matches_search(&self, ix: usize, q: &str) -> bool {
+    pub(super) fn matches_search(&self, ix: usize, q: &str) -> bool {
         if q.is_empty() {
             return true;
         }
@@ -230,74 +230,83 @@ impl TuskApp {
                 this.on_pick_saved(ix, true, window, cx);
             }))
             .context_menu(move |menu, window, cx| {
-                let call = |f: fn(&mut TuskApp, usize, &mut Window, &mut Context<TuskApp>)| {
-                    move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| f(this, ix, window, cx));
-                    }
-                };
-                let folders = folders.clone();
-                let move_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
-                    m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
-                    }));
-                    for f in &folders {
-                        let go = f.clone();
-                        m = m.item(PopupMenuItem::new(f.clone()).on_click(move |_, _, cx| {
-                            let view = cx.global::<TuskHandle>().0.clone();
-                            view.update(cx, |this, cx| {
-                                this.move_to_folder(ix, Some(go.clone()), cx)
-                            });
-                        }));
-                    }
-                    m
-                });
-                let new_menu = PopupMenu::build(window, cx, |m, _, _| {
-                    m.item(PopupMenuItem::new("Connection…").on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(NewConnection), cx);
-                    }))
-                    .item(PopupMenuItem::new("Group").on_click(|_, window, cx| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| this.new_group(window, cx));
-                    }))
-                });
-                menu.item(
-                    PopupMenuItem::new("Connect")
-                        .on_click(call(|this, ix, w, cx| this.on_pick_saved(ix, true, w, cx))),
-                )
-                .separator()
-                .item(PopupMenuItem::submenu("New", new_menu))
-                .item(
-                    PopupMenuItem::new("Edit…").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix).cloned() {
-                            ConnDialog::open_edit(c, false, cx);
-                        }
-                    })),
-                )
-                .item(
-                    PopupMenuItem::new("Duplicate").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix).cloned() {
-                            ConnDialog::open_edit(c, true, cx);
-                        }
-                    })),
-                )
-                .separator()
-                .item(
-                    PopupMenuItem::new("Copy as URL").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix) {
-                            cx.write_to_clipboard(ClipboardItem::new_string(c.url()));
-                        }
-                    })),
-                )
-                .item(PopupMenuItem::submenu("Move to Group", move_menu))
-                .separator()
-                .item(
-                    PopupMenuItem::new("Delete…")
-                        .on_click(call(|this, ix, w, cx| this.delete_connection(ix, w, cx))),
-                )
+                Self::connection_menu(ix, folders.clone(), menu, window, cx)
             })
             .into_any_element()
+    }
+
+    /// Right-click menu of a saved connection (welcome list, connection
+    /// manager, connections-tree sidebar).
+    pub(super) fn connection_menu(
+        ix: usize,
+        folders: Vec<String>,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> PopupMenu {
+        let call = |f: fn(&mut TuskApp, usize, &mut Window, &mut Context<TuskApp>)| {
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| f(this, ix, window, cx));
+            }
+        };
+        let move_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
+            m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
+            }));
+            for f in &folders {
+                let go = f.clone();
+                m = m.item(PopupMenuItem::new(f.clone()).on_click(move |_, _, cx| {
+                    let view = cx.global::<TuskHandle>().0.clone();
+                    view.update(cx, |this, cx| this.move_to_folder(ix, Some(go.clone()), cx));
+                }));
+            }
+            m
+        });
+        let new_menu = PopupMenu::build(window, cx, |m, _, _| {
+            m.item(PopupMenuItem::new("Connection…").on_click(|_, window, cx| {
+                window.dispatch_action(Box::new(NewConnection), cx);
+            }))
+            .item(PopupMenuItem::new("Group").on_click(|_, window, cx| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| this.new_group(window, cx));
+            }))
+        });
+        menu.item(
+            PopupMenuItem::new("Connect")
+                .on_click(call(|this, ix, w, cx| this.open_saved(ix, w, cx))),
+        )
+        .separator()
+        .item(PopupMenuItem::submenu("New", new_menu))
+        .item(
+            PopupMenuItem::new("Edit…").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix).cloned() {
+                    ConnDialog::open_edit(c, false, cx);
+                }
+            })),
+        )
+        .item(
+            PopupMenuItem::new("Duplicate").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix).cloned() {
+                    ConnDialog::open_edit(c, true, cx);
+                }
+            })),
+        )
+        .separator()
+        .item(
+            PopupMenuItem::new("Copy as URL").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix) {
+                    cx.write_to_clipboard(ClipboardItem::new_string(c.url()));
+                }
+            })),
+        )
+        .item(PopupMenuItem::submenu("Move to Group", move_menu))
+        .separator()
+        .item(
+            PopupMenuItem::new("Delete…")
+                .on_click(call(|this, ix, w, cx| this.delete_connection(ix, w, cx))),
+        )
     }
 
     pub(super) fn toggle_conn_manager(&mut self, cx: &mut Context<Self>) {

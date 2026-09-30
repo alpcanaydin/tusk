@@ -115,6 +115,11 @@ pub struct Prefs {
     pub confirm_save: bool,
     /// Accent (primary) color name, see [`ACCENTS`]; "Theme" = the theme's own.
     pub accent: String,
+    // ---- sidebar ----
+    /// What the left sidebar lists: see [`SIDEBAR_LAYOUTS`].
+    pub sidebar_layout: String,
+    /// Connection groups folded in the "Connections tree" sidebar.
+    pub sidebar_collapsed_groups: Vec<String>,
     // ---- filter bar defaults (its ☰ menu) ----
     /// Column picker order: "Table order" | "Alphabetical".
     pub filter_column_sort: String,
@@ -141,6 +146,9 @@ pub struct Prefs {
 pub const FILTER_COLUMN_SORTS: [&str; 2] = ["Table order", "Alphabetical"];
 pub const FILTER_DEFAULT_COLUMNS: [&str; 3] = ["First column", "Primary key", "Raw SQL"];
 pub const TABLE_SORTS: [&str; 3] = ["Primary key ascending", "Primary key descending", "None"];
+/// Sidebar layouts: the connected database's objects only, or every saved
+/// connection (grouped) with the connected one's objects nested under it.
+pub const SIDEBAR_LAYOUTS: [&str; 2] = ["Objects", "Connections tree"];
 
 /// Accent choices (dark, light variant).
 pub const ACCENTS: &[(&str, u32, u32)] = &[
@@ -179,6 +187,8 @@ impl Default for Prefs {
             confirm_destructive: true,
             confirm_save: false,
             accent: "Teal".to_string(),
+            sidebar_layout: SIDEBAR_LAYOUTS[0].into(),
+            sidebar_collapsed_groups: Vec::new(),
             filter_column_sort: FILTER_COLUMN_SORTS[0].into(),
             filter_default_column: FILTER_DEFAULT_COLUMNS[0].into(),
             filter_default_operator: "=".into(),
@@ -219,6 +229,9 @@ impl Prefs {
             .clamp(UI_SIZE_RANGE.0, UI_SIZE_RANGE.1);
         if !ACCENTS.iter().any(|(n, _, _)| *n == self.accent) {
             self.accent = d.accent.clone();
+        }
+        if !SIDEBAR_LAYOUTS.contains(&self.sidebar_layout.as_str()) {
+            self.sidebar_layout = d.sidebar_layout.clone();
         }
         self.editor_tab_size = self.editor_tab_size.clamp(1, 8);
         self.query_timeout_secs = self.query_timeout_secs.min(86_400);
@@ -456,6 +469,28 @@ pub fn table_text() -> f32 {
     with(|p| p.table_font_size)
 }
 
+/// The sidebar lists every saved connection (grouped), not just the
+/// connected database's objects.
+pub fn connections_tree() -> bool {
+    with(|p| p.sidebar_layout == SIDEBAR_LAYOUTS[1])
+}
+
+/// Is this connection group folded in the connections-tree sidebar?
+pub fn group_collapsed(name: &str) -> bool {
+    with(|p| p.sidebar_collapsed_groups.iter().any(|g| g == name))
+}
+
+/// Fold / unfold a connection group in the connections-tree sidebar.
+pub fn toggle_group_collapsed(cx: &mut App, name: &str) {
+    update(cx, |p| {
+        if let Some(i) = p.sidebar_collapsed_groups.iter().position(|g| g == name) {
+            p.sidebar_collapsed_groups.remove(i);
+        } else {
+            p.sidebar_collapsed_groups.push(name.to_string());
+        }
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Settings window
 // ---------------------------------------------------------------------------
@@ -681,6 +716,28 @@ impl SettingsWindow {
                         )
                         .description("Scales the whole interface."),
                     ),
+            )
+            // Untitled: stays under "UI Font" instead of adding a sidebar entry.
+            .group(
+                SettingGroup::new().item(
+                    SettingItem::new(
+                        "Sidebar Layout",
+                        SettingField::dropdown(
+                            SIDEBAR_LAYOUTS
+                                .iter()
+                                .map(|n| (SharedString::from(*n), SharedString::from(*n)))
+                                .collect(),
+                            |_| get().sidebar_layout.clone().into(),
+                            |v: SharedString, cx| update(cx, |p| p.sidebar_layout = v.to_string()),
+                        )
+                        .default_value(SharedString::from(d.sidebar_layout.clone())),
+                    )
+                    .description(
+                        "Objects lists the connected database only. Connections tree lists \
+                         every saved connection by group, with the connected one's objects \
+                         nested under it.",
+                    ),
+                ),
             );
         let data = SettingPage::new("Data Grid").icon(IconName::Table2).group(
             SettingGroup::new()
@@ -898,5 +955,24 @@ impl Render for SettingsWindow {
                     .min_h_0()
                     .child(Settings::new("tusk-settings").small().pages(self.pages())),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Prefs, SIDEBAR_LAYOUTS};
+
+    #[test]
+    fn sidebar_layout_defaults_to_objects_and_rejects_unknown() {
+        assert_eq!(Prefs::default().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(r#"{"sidebar_layout": "Sideways"}"#).unwrap();
+        assert_eq!(p.sanitized().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(
+            r#"{"sidebar_layout": "Connections tree", "sidebar_collapsed_groups": ["Acme"]}"#,
+        )
+        .unwrap();
+        let p = p.sanitized();
+        assert_eq!(p.sidebar_layout, SIDEBAR_LAYOUTS[1]);
+        assert_eq!(p.sidebar_collapsed_groups, ["Acme"]);
     }
 }
