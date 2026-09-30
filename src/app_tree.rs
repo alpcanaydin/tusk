@@ -319,9 +319,11 @@ impl TuskApp {
             }
         }
         // Connected without a saved profile (or it was renamed / deleted):
-        // still show where the objects belong.
+        // still show where the objects belong. A saved one inside a folded
+        // group stays hidden with it — that's what folding means.
         if let Some(o) = objects.take()
             && !self.active_name.is_empty()
+            && !saved.iter().any(|c| c.name == self.active_name)
         {
             list = list
                 .child(
