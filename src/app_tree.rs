@@ -19,6 +19,19 @@ impl TuskApp {
                 .sum::<usize>()
     }
 
+    /// Query tabs whose text isn't saved to a file (switching drops them).
+    fn unsaved_queries(&self, cx: &App) -> usize {
+        self.tabs
+            .iter()
+            .filter(|t| match t {
+                WorkspaceTab::Sql(t) => {
+                    t.file.is_none() && !t.editor.read(cx).text().to_string().trim().is_empty()
+                }
+                _ => false,
+            })
+            .count()
+    }
+
     /// Switch this window to a saved connection, asking first when that
     /// would throw away unsaved changes.
     pub(super) fn switch_connection_guarded(
@@ -34,18 +47,29 @@ impl TuskApp {
             return;
         }
         let n = self.pending_total(cx);
-        if n == 0 {
+        let q = self.unsaved_queries(cx);
+        if n == 0 && q == 0 {
             self.switch_connection(ix, window, cx);
             return;
+        }
+        let mut lost = Vec::new();
+        if n > 0 {
+            lost.push(format!(
+                "{n} unsaved change{}",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
+        if q > 0 {
+            lost.push(format!(
+                "{q} unsaved quer{}",
+                if q == 1 { "y" } else { "ies" }
+            ));
         }
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Warning,
             &format!("Switch to “{name}”?"),
-            Some(&format!(
-                "{n} unsaved change{} will be discarded.",
-                if n == 1 { "" } else { "s" }
-            )),
+            Some(&format!("{} will be discarded.", lost.join(" and "))),
             "Switch",
             cx,
         );

@@ -1489,9 +1489,13 @@ impl TuskApp {
                             rows: crate::sql::rows_to_vec(rows),
                             truncated,
                             message: Some(if truncated {
-                                format!("{n} rows (truncated at {})", crate::sql::QUERY_ROW_LIMIT)
+                                format!(
+                                    "{} (truncated at {})",
+                                    crate::sql::n_rows(n),
+                                    crate::sql::QUERY_ROW_LIMIT
+                                )
                             } else {
-                                format!("{n} rows")
+                                crate::sql::n_rows(n)
                             }),
                             error: None,
                             ms: started.elapsed().as_millis(),
@@ -1509,14 +1513,18 @@ impl TuskApp {
                                 }
                                 Err(_) => None,
                             };
-                        log.push(format!("{} — {n} rows", first_line(stmt)));
+                        log.push(format!("{} — {}", first_line(stmt), crate::sql::n_rows(n)));
                         sets.push(ResultSet { output, source });
                     }
                     db::StmtKind::Mutation | db::StmtKind::Other => {
                         match db::run_exec(&pool, stmt).await {
                             Ok(affected) => {
                                 hist(stmt, started, true);
-                                log.push(format!("{} — {affected} rows affected", first_line(stmt)))
+                                log.push(format!(
+                                    "{} — {} affected",
+                                    first_line(stmt),
+                                    crate::sql::n_rows(affected as usize)
+                                ))
                             }
                             Err(e) => {
                                 hist(stmt, started, false);
@@ -1888,7 +1896,8 @@ impl TuskApp {
                                 .text_color(foreground)
                                 .child({
                                     let n = tab.output.rows.len();
-                                    let mut s = format!("{n} rows · {} ms", tab.output.ms);
+                                    let mut s =
+                                        format!("{} · {} ms", crate::sql::n_rows(n), tab.output.ms);
                                     if tab.output.truncated {
                                         s.push_str(&format!(
                                             " · truncated at {}",
@@ -2255,6 +2264,8 @@ impl TuskApp {
         self.pending_drops.clear();
         self.pending_renames.clear();
         self.row_panel.detail = None;
+        // The console belongs to the connection it logged.
+        crate::console::clear();
     }
 
     pub fn run_disconnect(this: &mut TuskApp, _w: &mut Window, cx: &mut Context<TuskApp>) {

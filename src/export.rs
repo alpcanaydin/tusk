@@ -1163,6 +1163,9 @@ mod tests {
             pretty: false,
             ..Options::default()
         };
-        assert_eq!(render(&o, None, None, &cols, &rows), r#"[{"id":1,"note":null}]"#);
+        assert_eq!(
+            render(&o, None, None, &cols, &rows),
+            r#"[{"id":1,"note":null}]"#
+        );
     }
 }

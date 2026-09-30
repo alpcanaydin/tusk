@@ -384,6 +384,9 @@ impl TuskApp {
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.bottom_panel = Some(which);
+                    if which == BottomPanel::Console {
+                        this.console_scroll.scroll_to_bottom();
+                    }
                     cx.notify();
                 }))
         };
@@ -446,9 +449,23 @@ impl TuskApp {
                         .label("Clear")
                         .small()
                         .outline()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            console::clear_history(&this.history_connection());
-                            cx.notify();
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let conn = this.history_connection();
+                            let answer = crate::dialog_keys::confirm(
+                                window,
+                                PromptLevel::Warning,
+                                "Clear the query history?",
+                                Some(&format!("Every query run on “{conn}” is removed.")),
+                                "Clear",
+                                cx,
+                            );
+                            cx.spawn(async move |weak, cx: &mut AsyncApp| {
+                                if answer.await {
+                                    console::clear_history(&conn);
+                                    let _ = weak.update(cx, |_: &mut TuskApp, cx| cx.notify());
+                                }
+                            })
+                            .detach();
                         })),
                 )
                 .into_any_element(),

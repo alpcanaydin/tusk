@@ -23,6 +23,11 @@ use gpui_kit::*;
 use serde_json::Value;
 
 /// Max rows fetched for one SELECT (100k-row acceptance query fits).
+/// "1 row" / "3 rows".
+pub fn n_rows(n: usize) -> String {
+    format!("{n} row{}", if n == 1 { "" } else { "s" })
+}
+
 pub const QUERY_ROW_LIMIT: i64 = 100_000;
 
 #[derive(Clone)]
