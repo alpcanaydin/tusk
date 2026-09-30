@@ -249,25 +249,112 @@ pub(crate) fn app_dir() -> PathBuf {
 }
 
 pub fn load_connections() -> Vec<SavedConnection> {
-    let path = connections_path();
-    let text = match std::fs::read_to_string(&path) {
+    load_connections_from(&connections_path())
+}
+
+/// Set when `connections.json` couldn't be read and was moved aside; the
+/// app shows it once.
+static LOAD_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The "connections.json couldn't be read" message, once.
+pub fn take_load_notice() -> Option<String> {
+    LOAD_NOTICE.lock().ok()?.take()
+}
+
+fn load_connections_from(path: &std::path::Path) -> Vec<SavedConnection> {
+    let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(_) => return vec![dev_default()],
     };
     match serde_json::from_str::<Vec<SavedConnection>>(&text) {
         Ok(list) if !list.is_empty() => list,
-        _ => vec![dev_default()],
+        Ok(_) => vec![dev_default()],
+        Err(e) => {
+            // Unreadable (another build's format, a hand edit…): keep the
+            // file under another name, or the next save would wipe the
+            // user's connections with the default list.
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let backup = path.with_file_name(format!("{name}.bak-{secs}"));
+            let msg = match std::fs::rename(path, &backup) {
+                Ok(()) => format!(
+                    "Couldn't read {name} ({e}). It was kept as {}.",
+                    backup.display()
+                ),
+                Err(err) => format!("Couldn't read {name} ({e}) or set it aside ({err})."),
+            };
+            log::warn!("{msg}");
+            if let Ok(mut n) = LOAD_NOTICE.lock() {
+                *n = Some(msg);
+            }
+            vec![dev_default()]
+        }
     }
 }
 
 pub fn save_connections(list: &[SavedConnection]) -> anyhow::Result<()> {
-    let path = connections_path();
+    write_atomic(&connections_path(), &serde_json::to_string_pretty(list)?)
+}
+
+/// Write through a temp file + rename, so a crash mid-write never leaves a
+/// cut-off file behind.
+fn write_atomic(path: &std::path::Path, text: &str) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = serde_json::to_string_pretty(list)?;
-    std::fs::write(path, text)?;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+/// Put `conn` into `list`: in place of `replacing` (the profile being
+/// edited, maybe renamed) or of one with the same name, else at the end.
+/// Returns its index.
+fn upsert(
+    list: &mut Vec<SavedConnection>,
+    conn: SavedConnection,
+    replacing: Option<&str>,
+) -> usize {
+    let slot = replacing
+        .and_then(|old| list.iter().position(|c| c.name == old))
+        .or_else(|| list.iter().position(|c| c.name == conn.name));
+    match slot {
+        Some(ix) => {
+            list[ix] = conn;
+            ix
+        }
+        None => {
+            list.push(conn);
+            list.len() - 1
+        }
+    }
+}
+
+/// Save one profile into the list as it is on disk *now* — writing back a
+/// list read earlier would undo changes made since (imports, last-used
+/// stamps, other windows). Returns the new list and the profile's index.
+pub fn upsert_connection(
+    conn: SavedConnection,
+    replacing: Option<&str>,
+) -> anyhow::Result<(Vec<SavedConnection>, usize)> {
+    let mut list = load_connections();
+    let ix = upsert(&mut list, conn, replacing);
+    save_connections(&list)?;
+    Ok((list, ix))
+}
+
+/// Whether a saved profile other than `except` is called `name`.
+pub fn connection_name_taken(name: &str, except: Option<&str>) -> bool {
+    load_connections()
+        .iter()
+        .any(|c| c.name == name && Some(c.name.as_str()) != except)
 }
 
 /// Connection-list groups (folders), incl. empty ones created with
@@ -284,12 +371,7 @@ pub fn load_groups() -> Vec<String> {
 }
 
 pub fn save_groups(groups: &[String]) -> anyhow::Result<()> {
-    let path = groups_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(groups)?)?;
-    Ok(())
+    write_atomic(&groups_path(), &serde_json::to_string_pretty(groups)?)
 }
 
 /// The profile Tusk was last connected to (no password) — reopened on launch.
@@ -298,12 +380,8 @@ fn last_connection_path() -> PathBuf {
 }
 
 pub fn remember_last_connection(conn: &SavedConnection) {
-    let path = last_connection_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     if let Ok(text) = serde_json::to_string_pretty(conn) {
-        let _ = std::fs::write(path, text);
+        let _ = write_atomic(&last_connection_path(), &text);
     }
 }
 
@@ -1684,6 +1762,77 @@ mod statement_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fresh scratch folder under the system temp dir.
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tusk-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn named(name: &str) -> SavedConnection {
+        SavedConnection {
+            name: name.to_string(),
+            ..dev_default()
+        }
+    }
+
+    #[test]
+    fn write_atomic_replaces_and_leaves_no_temp_file() {
+        let dir = scratch("atomic");
+        let path = dir.join("connections.json");
+        write_atomic(&path, "first").unwrap();
+        write_atomic(&path, "second").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second");
+        assert!(!dir.join("connections.json.tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_connections_file_is_kept_aside() {
+        let dir = scratch("parse");
+        let path = dir.join("connections.json");
+        std::fs::write(&path, "[{\"engine\": \"from-the-future\"").unwrap();
+        let list = load_connections_from(&path);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, dev_default().name);
+        // The original moved to a backup, so a later save can't clobber it.
+        assert!(!path.exists());
+        let backups: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("connections.json.bak-")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert!(
+            std::fs::read_to_string(backups[0].path())
+                .unwrap()
+                .contains("from-the-future")
+        );
+        assert!(take_load_notice().is_some_and(|m| m.contains("connections.json")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn upsert_adds_replaces_and_renames() {
+        let mut list = vec![named("a"), named("b")];
+        // New name: appended.
+        assert_eq!(upsert(&mut list, named("c"), None), 2);
+        // Same name: replaced in place.
+        let mut b = named("b");
+        b.port = 1;
+        assert_eq!(upsert(&mut list, b, None), 1);
+        assert_eq!(list[1].port, 1);
+        // Edited profile renamed: replaces the old slot, no duplicate.
+        assert_eq!(upsert(&mut list, named("a2"), Some("a")), 0);
+        let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["a2", "b", "c"]);
+    }
 
     fn dev_opts() -> PgConnectOptions {
         connect_options(
