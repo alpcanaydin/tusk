@@ -6,11 +6,13 @@
 
 **The gentle giant for your databases.**
 
-A fast, native, keyboard-driven database client for macOS and Linux. It's written in Rust
+A fast, native, keyboard-driven database client for macOS, Windows and Linux. It's written in Rust
 on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framework behind the Zed editor.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Linux x86_64](https://img.shields.io/badge/Linux-x86__64-FCC624)
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange)
 
 <img src="docs/screenshots/ai-panel.png" alt="Tusk: SQL editor with results and the AI panel" width="100%">
@@ -23,7 +25,7 @@ on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framewo
 - **One app for 20 databases.** PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB and more.
 - **Keyboard first.** Everything is in the command palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>), and the common actions have shortcuts.
 - **AI that doesn't take the wheel.** Ask about your data in plain English. The agent reads your schema and writes a query into a new tab. It never runs SQL on its own.
-- **Your credentials stay yours.** Passwords are stored in the macOS Keychain or Linux Secret Service. There's no account and no telemetry.
+- **Your credentials stay yours.** Passwords are stored in the macOS Keychain, Windows Credential Manager or Linux Secret Service. There's no account and no telemetry.
 
 ## Features
 
@@ -95,13 +97,13 @@ Tusk ships with more than 30 light and dark themes: Tusk, Kanagawa, Catppuccin, 
 
 ### Also included
 
-- **Backup and restore** for PostgreSQL using bundled client tools on macOS or installed client tools on Linux.
+- **Backup and restore** for PostgreSQL. The client tools are bundled on macOS; on Windows and Linux, Tusk uses the PostgreSQL client tools you install.
 - **Export** tables and results as CSV, JSON or SQL, and **import** from CSV.
 - **Process list** with cancel and kill, for every engine.
 
 ## Keyboard shortcuts
 
-On Linux, use <kbd>Ctrl</kbd> wherever the table shows <kbd>⌘</kbd>.
+On Windows and Linux, use <kbd>Ctrl</kbd> wherever the table shows <kbd>⌘</kbd>.
 
 | Action | Shortcut |
 | --- | --- |
@@ -118,30 +120,45 @@ On Linux, use <kbd>Ctrl</kbd> wherever the table shows <kbd>⌘</kbd>.
 ## Getting started
 
 > [!IMPORTANT]
-> macOS requires **macOS 14 (Sonoma) or later** on Apple Silicon. Linux supports
-> x86_64 Wayland desktops; older releases may have only macOS downloads.
+> - **macOS:** macOS 14 (Sonoma) or later, Apple Silicon.
+> - **Windows:** Windows 10 or 11, x64 or ARM64.
+> - **Linux:** x86_64, on a Wayland desktop (Xwayland works as a fallback).
 
 ### Download
 
-Get the latest `Tusk-<version>-arm64.dmg` from the [Releases page](https://github.com/alpcanaydin/tusk/releases/latest). Open it and drag **Tusk** into **Applications**.
+Get the latest release from the [Releases page](https://github.com/alpcanaydin/tusk/releases/latest).
 
-Or install it with Homebrew:
+**macOS:** download `Tusk-<version>-arm64.dmg`, open it and drag **Tusk** into **Applications**. Or install it with Homebrew:
 
 ```sh
 brew install alpcanaydin/tusk/tusk
 ```
 
-Releases are signed with a Developer ID and notarized by Apple, so they open without Gatekeeper warnings. PostgreSQL's client tools and the SQL language servers are bundled, so you don't need to install anything else.
+macOS releases are signed with a Developer ID and notarized by Apple, so they open without Gatekeeper warnings. PostgreSQL's client tools and the SQL language servers are bundled, so you don't need to install anything else.
+
+**Windows:** download `Tusk-<version>-windows-x64.zip` (or `Tusk-<version>-windows-arm64.zip` on ARM), unzip it anywhere and run `Tusk.exe`. The build isn't code-signed yet, so SmartScreen may warn the first time: click **More info ▸ Run anyway**. For backup and restore, install the [PostgreSQL client tools](https://www.postgresql.org/download/windows/); Tusk finds them in `C:\Program Files\PostgreSQL\<version>\bin`, on `PATH`, or in `TUSK_PG_BIN`.
+
+**Linux:**
+
+| Distribution | Package | Install |
+| --- | --- | --- |
+| Ubuntu 24.04 | `Tusk-<version>-ubuntu-amd64.deb` | `sudo apt install ./Tusk-*-ubuntu-amd64.deb` |
+| Fedora | `Tusk-<version>-fedora-x86_64.rpm` | `sudo dnf install ./Tusk-*-fedora-x86_64.rpm` |
+| Arch Linux | `Tusk-<version>-arch-x86_64.pkg.tar.zst` | `sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst` |
+
+The Linux packages include the SQL language servers. For backup and restore, install your distribution's PostgreSQL client tools.
 
 ### Updates
 
-Tusk updates itself. It checks for a new version once a day and downloads it in the background. When the update is ready, a **Restart to Update** button appears in the top bar. If you don't click it, the update installs the next time you quit Tusk. You can also check right away with **Tusk ▸ Check for Updates…**. Updates are signed, and Tusk verifies each one before installing it.
+On macOS, Tusk updates itself. It checks for a new version once a day and downloads it in the background. When the update is ready, a **Restart to Update** button appears in the top bar. If you don't click it, the update installs the next time you quit Tusk. You can also check right away with **Tusk ▸ Check for Updates…**. Updates are signed, and Tusk verifies each one before installing it. If you installed with Homebrew, `brew upgrade tusk` works too.
 
-If you installed with Homebrew, `brew upgrade tusk` works too.
+On Windows and Linux there's no automatic update yet: download the new zip or package from the [Releases page](https://github.com/alpcanaydin/tusk/releases).
 
 ### Build from source
 
-Prerequisites: a recent stable [Rust](https://rustup.rs) toolchain (edition 2024) and the Xcode Command Line Tools.
+`rust-toolchain.toml` pins the Rust version; [rustup](https://rustup.rs) installs it on the first build.
+
+**macOS:** you need the Xcode Command Line Tools. Building `Tusk.app` with its icon needs Xcode 26 or later.
 
 ```sh
 git clone https://github.com/alpcanaydin/tusk.git && cd tusk
@@ -154,15 +171,23 @@ To build a standalone `Tusk.app` with the bundled language servers and PostgreSQ
 scripts/bundle.sh            # → target/release/bundle/Tusk.app
 ```
 
-### Linux build
+### Windows build
 
-On Ubuntu 24.04, install the `Tusk-<version>-ubuntu-amd64.deb` from the
-[Releases page](https://github.com/alpcanaydin/tusk/releases) with
-`sudo apt install ./Tusk-*-ubuntu-amd64.deb`. On Fedora, install
-`Tusk-<version>-fedora-x86_64.rpm` with
-`sudo dnf install ./Tusk-*-fedora-x86_64.rpm`. On Arch Linux, install
-`Tusk-<version>-arch-x86_64.pkg.tar.zst` with
-`sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst`.
+Install the Visual Studio Build Tools with the **Desktop development with C++**
+workload (the MSVC tools for your architecture, x64 or ARM64, and a Windows SDK),
+[LLVM](https://github.com/llvm/llvm-project/releases) (`ring` needs `clang`),
+CMake and Git, and Rust with [rustup](https://rustup.rs). Then:
+
+```sh
+git clone https://github.com/alpcanaydin/tusk.git && cd tusk
+cargo build --release          # → target\release\tusk.exe
+```
+
+The SQL language servers aren't bundled on Windows yet. Point `TUSK_PGLS` and
+`TUSK_SQLS` at `postgres-language-server.exe` and `sqls.exe` to use them;
+without them, completions come from the live catalog.
+
+### Linux build
 
 To build from source, clone the repository and install the pinned Rust
 toolchain with [rustup](https://rustup.rs). You also
@@ -204,8 +229,7 @@ PostgreSQL backup and restore use `pg_dump`, `pg_restore`, and `psql` from
 `PATH` (or `TUSK_PG_BIN`); install your distribution's PostgreSQL client tools
 for these features. SQL completions use `postgres-language-server` and `sqls`
 from `PATH`; `scripts/install-linux.sh` installs both. A direct `cargo run`
-build can use `TUSK_PGLS` or `TUSK_SQLS` to locate them. Linux builds do not
-use the macOS updater.
+build can use `TUSK_PGLS` or `TUSK_SQLS` to locate them.
 
 ### Releasing (maintainers)
 
@@ -214,9 +238,11 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`). The work
 1. Builds the app and signs it with the Developer ID.
 2. Notarizes and staples both the app and the DMG.
 3. Signs the DMG for Sparkle and writes the update feed (`appcast.xml`).
-4. Builds Ubuntu DEB, Fedora RPM, and Arch Linux packages with the desktop launcher and SQL language servers.
-5. Publishes a GitHub release with the DMG, Linux packages, and update feed.
+4. Publishes a GitHub release with the DMG and update feed, using the notes in `docs/release-notes/<version>.md`.
+5. Builds the Windows x64 and ARM64 zips and the Ubuntu DEB, Fedora RPM and Arch Linux packages, then attaches them to the release. A failing Windows or Linux build never holds back the macOS release.
 6. Updates the Homebrew cask.
+
+Running the workflow by hand (**Actions ▸ release ▸ Run workflow**) is a dry run: it builds only the Windows and Linux packages.
 
 One-time setup: run `scripts/setup-release.sh`. The wizard walks you through the certificate, the notarization key, the update-signing key and the Homebrew token, and checks each one. After that, a release is one command:
 
@@ -251,8 +277,8 @@ Some integration tests need the Docker database above. Tests for other engines u
 
 | What | Where |
 | --- | --- |
-| Connection profiles, groups, settings, history | macOS: `~/Library/Application Support/tusk/`; Linux: `$XDG_DATA_HOME/tusk/` (default `~/.local/share/tusk/`) |
-| Passwords and SSH passphrases | macOS Keychain or Linux Secret Service (`tusk-postgres`, `tusk-ssh`) |
+| Connection profiles, groups, settings, history | macOS: `~/Library/Application Support/tusk/`; Windows: `%APPDATA%\tusk\`; Linux: `$XDG_DATA_HOME/tusk/` (default `~/.local/share/tusk/`) |
+| Passwords and SSH passphrases | macOS Keychain, Windows Credential Manager or Linux Secret Service (`tusk-postgres`, `tusk-ssh`) |
 
 Set `TUSK_DATA_DIR` to use a different folder, which is handy for a clean test profile.
 

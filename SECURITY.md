@@ -8,12 +8,12 @@ Include what you found, how to reproduce it, and the Tusk version. We'll reply w
 
 ## Supported versions
 
-Only the latest release gets security fixes. Tusk updates itself, so most people already have it.
+Only the latest release gets security fixes. On macOS Tusk updates itself; on Windows and Linux, download the latest release.
 
 ## How Tusk handles your data
 
-- **Passwords** and SSH passphrases are stored only in the macOS Keychain, never in files.
-- **Connection profiles and query history** are stored in `~/Library/Application Support/tusk/`.
+- **Passwords** and SSH passphrases are stored only in your system's credential store, never in files: the macOS Keychain, Windows Credential Manager or the Linux Secret Service (GNOME Keyring, KWallet…).
+- **Connection profiles and query history** are stored in `~/Library/Application Support/tusk/` on macOS, `%APPDATA%\tusk\` on Windows and `~/.local/share/tusk/` on Linux.
 - **No telemetry.** Tusk doesn't send data anywhere on its own.
 - **The AI assistant** runs through the agent CLI you choose (Claude, Codex, Gemini CLI…), under that tool's own account. Tusk doesn't let the agent run SQL; it only writes queries into a tab for you to review.
-- **Updates** are signed with an EdDSA key, and Tusk verifies each one before installing it. Every release is also signed with a Developer ID and notarized by Apple.
+- **Updates** on macOS are signed with an EdDSA key, and Tusk verifies each one before installing it. macOS releases are also signed with a Developer ID and notarized by Apple. Windows builds aren't code-signed yet.

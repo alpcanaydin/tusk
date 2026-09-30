@@ -28,14 +28,22 @@ body:
     id: tusk
     attributes:
       label: Tusk version
-      description: Tusk ▸ About Tusk
-      placeholder: "0.1.0"
+      description: "Tusk ▸ About Tusk on macOS, or \"app: about tusk\" in the command palette"
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS, Windows, Linux]
     validations:
       required: true
   - type: input
-    id: macos
+    id: os
     attributes:
-      label: macOS version
-      placeholder: "15.6"
+      label: OS version
+      description: For Linux, the distribution and desktop too.
+      placeholder: "macOS 15.6 · Windows 11 24H2 · Ubuntu 24.04 (GNOME, Wayland)"
     validations:
       required: true
