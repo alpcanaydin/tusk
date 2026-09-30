@@ -247,6 +247,9 @@ pub struct TuskApp {
     objects: ObjectTree,
     objects_loading: bool,
     selected_object: Option<(TableKind, String)>,
+    /// The active tab's table when `selected_object` was last synced to it:
+    /// switching / closing tabs moves the sidebar highlight along.
+    synced_tab: Option<(TableKind, String)>,
     sidebar_panel: SidebarPanel,
     sidebar_open: bool,
     sidebar_focus: FocusHandle,
@@ -363,6 +366,7 @@ impl TuskApp {
             objects: ObjectTree::default(),
             objects_loading: false,
             selected_object: None,
+            synced_tab: None,
             sidebar_panel: SidebarPanel::Tables,
             sidebar_open: true,
             sidebar_focus: cx.focus_handle(),
@@ -756,7 +760,17 @@ impl TuskApp {
         // bare line icons, muted; the open panel's icon is tinted blue.
         let active_tint = cx.theme().accent;
         let mut row = div().flex().items_center().gap_1();
+        // Only the object kinds the engine has (no Functions for SQLite…).
+        let caps = self.pool.as_ref().map(|p| p.caps());
         for panel in SidebarPanel::ALL {
+            let shown = match (panel, caps) {
+                (SidebarPanel::Views, Some(c)) => c.views,
+                (SidebarPanel::Functions, Some(c)) => c.functions,
+                _ => true,
+            };
+            if !shown {
+                continue;
+            }
             let active = self.sidebar_open && self.sidebar_panel == panel;
             row = row.child(
                 div()
@@ -917,6 +931,10 @@ impl TuskApp {
                         // seen: render turns the error notice into one.
                         log::warn!("connect {}: {e}", conn.name);
                         this.form.notice = Some((false, format!("{}: {e}", conn.name)));
+                        // No / wrong saved password: open the form to type it.
+                        if Self::wants_password(&conn, &password, &e) {
+                            crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
+                        }
                     }
                 }
                 cx.notify();
@@ -932,6 +950,13 @@ impl TuskApp {
         let Some(pool) = self.pool.clone() else {
             return;
         };
+        // A panel this engine doesn't have (Functions on SQLite) → Tables.
+        let caps = pool.caps();
+        if (self.sidebar_panel == SidebarPanel::Views && !caps.views)
+            || (self.sidebar_panel == SidebarPanel::Functions && !caps.functions)
+        {
+            self.sidebar_panel = SidebarPanel::Tables;
+        }
         self.objects_loading = true;
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -2205,6 +2230,31 @@ impl TuskApp {
         }
     }
 
+    /// A failed connect that a password would fix: a server engine and no
+    /// saved password, or the server rejected it.
+    fn wants_password(conn: &SavedConnection, password: &str, err: &str) -> bool {
+        let lower = err.to_lowercase();
+        conn.engine.form() == crate::engine::Form::Server
+            && (password.is_empty()
+                || lower.contains("password")
+                || lower.contains("authentication"))
+    }
+
+    /// Forget the workspace of the current connection: tabs, split panes,
+    /// history, sidebar selection and pending sidebar edits.
+    fn reset_workspace(&mut self) {
+        self.tabs.clear();
+        self.split = None;
+        self.split_focus = 0;
+        self.nav_back.clear();
+        self.nav_fwd.clear();
+        self.active_tab = None;
+        self.selected_object = None;
+        self.pending_drops.clear();
+        self.pending_renames.clear();
+        self.row_panel.detail = None;
+    }
+
     pub fn run_disconnect(this: &mut TuskApp, _w: &mut Window, cx: &mut Context<TuskApp>) {
         this.pool = None;
         this.tunnel = None;
@@ -2215,10 +2265,7 @@ impl TuskApp {
         this.databases.clear();
         // Drop open tabs too, or the status bar keeps showing the last tab's
         // row count on the welcome screen.
-        this.tabs.clear();
-        this.nav_back.clear();
-        this.nav_fwd.clear();
-        this.active_tab = None;
+        this.reset_workspace();
         this.active_name.clear();
         this.server_label = None;
         this.screen = AppScreen::Connection;
@@ -2240,6 +2287,16 @@ impl TuskApp {
         cx: &mut Context<Self>,
     ) {
         let name = conn.name.clone();
+        // Another connection (or database): the old tabs, split, selection
+        // and pending edits belong to the old one.
+        let same = self
+            .active_conn
+            .as_ref()
+            .is_some_and(|(c, _)| c.name == conn.name && c.database == conn.database);
+        if !same {
+            self.reset_workspace();
+        }
+        self.conn_manager = false;
         let db::Connected {
             pool,
             tunnel,
@@ -2320,13 +2377,7 @@ impl TuskApp {
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match result {
                     Ok(c) => {
-                        this.tabs.clear();
-                        this.nav_back.clear();
-                        this.nav_fwd.clear();
-                        this.active_tab = None;
-                        this.pending_drops.clear();
-                        this.pending_renames.clear();
-                        this.selected_object = None;
+                        this.reset_workspace();
                         this.connected_with(c, &conn, &password, cx);
                     }
                     Err(e) => {
@@ -2997,6 +3048,7 @@ impl TuskApp {
         };
         let (kind_c, name_c) = (kind.clone(), name.clone());
         let (kind_m, name_m) = (kind.clone(), name.clone());
+        let (kind_r, name_r) = (kind.clone(), name.clone());
         div()
             .id(SharedString::from(row_id))
             .flex()
@@ -3020,6 +3072,15 @@ impl TuskApp {
                 this.sidebar_focus.focus(window, cx);
                 this.on_pick_object(kind_c.clone(), name_c.clone(), window, cx);
             }))
+            // Right-click selects the row first, so the menu's target (and
+            // Truncate / Delete) is the highlighted object.
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _, _, cx| {
+                    this.selected_object = Some((kind_r.clone(), name_r.clone()));
+                    cx.notify();
+                }),
+            )
             .context_menu(move |menu, window, cx| {
                 TuskApp::object_menu(kind_m.clone(), name_m.clone(), menu, window, cx)
             })
@@ -3290,8 +3351,41 @@ impl TuskApp {
         {
             return;
         }
-        Self::run_disconnect(self, window, cx);
-        self.on_pick_saved(ix, true, window, cx);
+        // Connect first: the current workspace stays (tabs and all) until
+        // the new connection is up. A missing / wrong password opens the
+        // connection's form to enter it instead of leaving you disconnected.
+        self.conn_manager = false;
+        let password = crate::conn::ConnectionForm::password_or_keychain(&conn.name, String::new());
+        self.status_line = format!("Connecting to {}…", conn.name);
+        cx.notify();
+        cx.spawn_in(window, async move |weak, cx| {
+            let result = db::connect(conn.clone(), password.clone(), None).await;
+            let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
+                this.status_line.clear();
+                match result {
+                    Ok(c) => {
+                        this.form.selected = Some(ix);
+                        this.form.load(&conn, window, cx);
+                        this.connected_with(c, &conn, &password, cx);
+                    }
+                    Err(e) => {
+                        log::warn!("switch to {}: {e}", conn.name);
+                        if Self::wants_password(&conn, &password, &e) {
+                            this.toast(
+                                false,
+                                format!("{}: enter the password to connect.", conn.name),
+                            );
+                            crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
+                        } else {
+                            this.toast(false, format!("{}: {e}", conn.name));
+                        }
+                        this.focus.focus(window, cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn show_panel(&mut self, panel: SidebarPanel, cx: &mut Context<Self>) {
@@ -3699,6 +3793,24 @@ impl TuskApp {
 
 impl Render for TuskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The sidebar highlight follows the active tab (none when no table
+        // tab is active); a click or right-click in between still moves it.
+        let tab_key = self.active_tab.and_then(|ix| match self.tabs.get(ix) {
+            Some(WorkspaceTab::Grid(g)) if g.draft.is_none() => {
+                Some((g.table.kind.clone(), g.table.name.clone()))
+            }
+            _ => None,
+        });
+        if tab_key != self.synced_tab {
+            self.synced_tab = tab_key.clone();
+            self.selected_object = tab_key;
+        }
+        // Nothing focused (a failed connect, a closed panel or tab took the
+        // focused element away): take it back, or no shortcut (⇧⌘O, ⌘N…)
+        // fires until the next click.
+        if window.focused(cx).is_none() {
+            self.focus.focus(window, cx);
+        }
         // Welcome-screen failures (connect, import…) go out as toasts.
         if self.screen == AppScreen::Connection
             && let Some((false, msg)) = self.form.notice.take()
