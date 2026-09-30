@@ -79,6 +79,12 @@ fn tool_dirs() -> Vec<PathBuf> {
             "/Applications/Postgres.app/Contents/Versions/{v}/bin"
         )));
     }
+    // Windows: the EDB installer's `C:\Program Files\PostgreSQL\<v>\bin`.
+    if let Some(pf) = std::env::var_os("ProgramFiles") {
+        for v in ["18", "17", "16", "15", "14", "13", "12"] {
+            dirs.push(PathBuf::from(&pf).join("PostgreSQL").join(v).join("bin"));
+        }
+    }
     for d in [
         "/opt/homebrew/opt/libpq/bin",
         "/opt/homebrew/bin",
@@ -113,7 +119,7 @@ pub fn parse_version(out: &str) -> Option<(String, u32)> {
 pub fn installed_tools() -> Vec<Tools> {
     let mut out: Vec<Tools> = Vec::new();
     for dir in tool_dirs() {
-        let dump = dir.join("pg_dump");
+        let dump = dir.join(format!("pg_dump{}", std::env::consts::EXE_SUFFIX));
         if !dump.is_file() {
             continue;
         }
@@ -161,7 +167,7 @@ fn run_tool(
     db: &str,
     args: &[String],
 ) -> Result<String, String> {
-    let path = dir.join(tool);
+    let path = dir.join(format!("{tool}{}", std::env::consts::EXE_SUFFIX));
     if !path.is_file() {
         return Err(format!("{tool} not found in {}", dir.display()));
     }
@@ -245,16 +251,19 @@ pub fn backup_file_name(
     name.replace('/', "-")
 }
 
+/// `gzip -f`: `path` → `path.gz`, the original removed.
 fn gzip_file(path: &Path) -> Result<PathBuf, String> {
-    let out = Command::new("/usr/bin/gzip")
-        .arg("-f")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("gzip: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
-    Ok(PathBuf::from(format!("{}.gz", path.display())))
+    let gz = PathBuf::from(format!("{}.gz", path.display()));
+    let run = || -> std::io::Result<()> {
+        let mut input = std::fs::File::open(path)?;
+        let out = std::fs::File::create(&gz)?;
+        let mut enc = flate2::write::GzEncoder::new(out, flate2::Compression::default());
+        std::io::copy(&mut input, &mut enc)?;
+        enc.finish()?;
+        std::fs::remove_file(path)
+    };
+    run().map_err(|e| format!("gzip: {e}"))?;
+    Ok(gz)
 }
 
 /// A `.gz` backup unpacked to a temp file, for restoring.
@@ -264,15 +273,12 @@ fn gunzip_to_temp(path: &Path) -> Result<PathBuf, String> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "restore".into());
     let out_path = std::env::temp_dir().join(format!("tusk-{}-{stem}", std::process::id()));
-    let out = Command::new("/usr/bin/gzip")
-        .arg("-dc")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("gzip: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
-    std::fs::write(&out_path, out.stdout).map_err(|e| e.to_string())?;
+    let run = || -> std::io::Result<()> {
+        let mut dec = flate2::read::MultiGzDecoder::new(std::fs::File::open(path)?);
+        let mut out = std::fs::File::create(&out_path)?;
+        std::io::copy(&mut dec, &mut out).map(|_| ())
+    };
+    run().map_err(|e| format!("gzip: {e}"))?;
     Ok(out_path)
 }
 
@@ -1123,8 +1129,23 @@ impl BackupWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{Tools, backup_file_name, parse_version, pick_tools, psql_args};
+    use super::{
+        Tools, backup_file_name, gunzip_to_temp, gzip_file, parse_version, pick_tools, psql_args,
+    };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn gzip_round_trip() {
+        let src = std::env::temp_dir().join(format!("tusk-gz-test-{}.sql", std::process::id()));
+        let body = "SELECT 1;\n".repeat(1000);
+        std::fs::write(&src, &body).unwrap();
+        let gz = gzip_file(&src).unwrap();
+        assert!(!src.exists(), "gzip -f removes the original");
+        let back = gunzip_to_temp(&gz).unwrap();
+        assert_eq!(std::fs::read_to_string(&back).unwrap(), body);
+        let _ = std::fs::remove_file(gz);
+        let _ = std::fs::remove_file(back);
+    }
 
     #[test]
     fn versions_names_and_args() {

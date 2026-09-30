@@ -531,6 +531,27 @@ impl AgentThread {
 
     /// `authenticate` with one of the agent's login methods.
     pub fn authenticate(&mut self, method: &AuthMethod, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        if let (Some((args, env)), Some(prog)) = (&method.terminal, &self.program) {
+            // Terminal login: run the agent's own login flow in a new console.
+            use std::os::windows::process::CommandExt as _;
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            let _ = std::process::Command::new(&prog.program)
+                .args(prog.args.iter().chain(args))
+                .envs(env.iter().map(|(k, v)| (k, v)))
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .spawn();
+            self.entries.push(Entry::Notice {
+                text: format!(
+                    "Finish signing in to {} in the console window, then press Retry.",
+                    self.agent_name
+                ),
+                error: false,
+            });
+            self.changed(cx);
+            return;
+        }
+        #[cfg(not(windows))]
         if let (Some((args, env)), Some(prog)) = (&method.terminal, &self.program) {
             // Terminal login: run the agent's own login flow in Terminal.
             let mut line = shell_quote(&prog.program.display().to_string());
@@ -1345,6 +1366,7 @@ impl Drop for AgentThread {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))] // Terminal login is POSIX-shell only
 fn shell_quote(s: &str) -> String {
     if !s.is_empty()
         && s.chars()
