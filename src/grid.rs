@@ -12,6 +12,7 @@
 //! every window for base tables), so they survive re-sorting and filtering;
 //! the WHERE clause uses the primary key when the table has one.
 
+use gpui_kit::component::Sizable as _;
 use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
 use std::time::Instant;
@@ -1061,6 +1062,21 @@ pub async fn load_initial(p: LoadParams) -> InitialData {
 
 /// (Re)load a grid: metadata, count and first window with the current
 /// filter + sort. Pending edits are kept (keyed by ctid).
+/// Refresh a cursor-backed browse without changing normal paging behavior.
+pub fn refresh(state: &Entity<TableState<GridDelegate>>, cx: &mut App) {
+    let pool = state.read(cx).delegate().pool.clone();
+    if pool.engine() != crate::engine::Engine::Elasticsearch {
+        reload(state, cx);
+        return;
+    }
+    let state = state.clone();
+    cx.spawn(async move |cx: &mut AsyncApp| {
+        let _ = pool.driver().reset_browse().await;
+        cx.update(|cx| reload(&state, cx));
+    })
+    .detach();
+}
+
 pub fn reload(state: &Entity<TableState<GridDelegate>>, cx: &mut App) {
     let params = state.update(cx, |state, cx| {
         let d = state.delegate_mut();
@@ -1217,6 +1233,7 @@ pub(crate) fn render_value(
     let mono = crate::settings::table_font();
     let base = div()
         .text_size(px(crate::settings::table_text()))
+        .line_height(px(crate::settings::table_line_height()))
         .font_family(mono)
         .truncate();
     let Some(v) = value else {
@@ -1748,6 +1765,9 @@ fn cell_menu(
 /// Build the grid element for a tab state.
 pub fn grid_element(state: &Entity<TableState<GridDelegate>>) -> DataTable<GridDelegate> {
     DataTable::new(state)
+        .with_size(gpui_kit::component::Size::Size(px(
+            crate::settings::table_row_height(),
+        )))
         // The pane frames the grid; no second rounded border inside it.
         .bordered(false)
         .stripe(crate::settings::get().grid_stripes)

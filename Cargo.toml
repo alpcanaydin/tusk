@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 gpui-kit = { version = "0.6", features = ["tree-sitter-sql"] }
 anyhow = "1"
+semver = "1"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -21,7 +22,7 @@ lsp-types = { version = "0.97", features = ["proposed"] }
 russh = "0.63"
 # Embedded engines / clients for the other databases.
 duckdb = { version = "1", features = ["bundled"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 hmac = "0.12"
 sha2 = "0.10"
 flate2 = "1"

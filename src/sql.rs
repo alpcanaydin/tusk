@@ -10,6 +10,7 @@
 //! cell (row orange), Delete marks the row (red), ⌘S writes UPDATE/DELETE by
 //! primary key in one transaction and re-runs the query.
 
+use gpui_kit::component::Sizable as _;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cell_edit::{self, CellEditHost, CellEditor};
@@ -115,6 +116,7 @@ pub struct SqlTab {
     /// Editor pane height (drag the edge above the run bar).
     pub editor_h: f32,
     pub running: bool,
+    pub run_task: Option<Task<()>>,
     /// Language-server document (completions + diagnostics); None when the
     /// server couldn't start.
     pub doc: Option<crate::lsp::SqlDocument>,
@@ -140,6 +142,7 @@ impl SqlTab {
             view_draft: None,
             editor_h: 220.,
             running: false,
+            run_task: None,
             doc: None,
             subs: Vec::new(),
             file: None,
@@ -708,6 +711,9 @@ impl TableDelegate for QueryDelegate {
 
 pub fn result_element(state: &Entity<TableState<QueryDelegate>>) -> DataTable<QueryDelegate> {
     DataTable::new(state)
+        .with_size(gpui_kit::component::Size::Size(px(
+            crate::settings::table_row_height(),
+        )))
         // The pane frames the grid; no second rounded border inside it.
         .bordered(false)
         .stripe(crate::settings::get().grid_stripes)

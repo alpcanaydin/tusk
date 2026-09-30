@@ -52,7 +52,7 @@ pub const RESTORE_OPTIONS: [&str; 7] = [
 /// Tusk.app first (`Contents/Resources/pgtools/bin`, relocatable, no
 /// Homebrew needed), then `$TUSK_PG_BIN`, PATH and the usual install places
 /// (GUI apps don't get the shell's PATH).
-fn tool_dirs() -> Vec<PathBuf> {
+pub(crate) fn tool_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe()
         && let Some(contents) = exe.parent().and_then(|p| p.parent())
@@ -116,6 +116,30 @@ pub fn parse_version(out: &str) -> Option<(String, u32)> {
     Some((format!("PostgreSQL {v}"), major))
 }
 
+/// Bound version probes so a broken executable cannot freeze setup.
+fn version_output(path: &Path) -> Option<std::process::Output> {
+    let mut child = Command::new(path)
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok().filter(|o| o.status.success()),
+            Ok(None) if std::time::Instant::now() < until => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
 /// Every distinct toolset found, newest first.
 pub fn installed_tools() -> Vec<Tools> {
     let mut out: Vec<Tools> = Vec::new();
@@ -124,7 +148,7 @@ pub fn installed_tools() -> Vec<Tools> {
         if !dump.is_file() {
             continue;
         }
-        let Ok(o) = Command::new(&dump).arg("--version").output() else {
+        let Some(o) = version_output(&dump) else {
             continue;
         };
         let Some((label, major)) = parse_version(&String::from_utf8_lossy(&o.stdout)) else {
@@ -332,6 +356,7 @@ pub struct BackupWindow {
     endpoint: Option<Endpoint>,
     tools: Vec<Tools>,
     tool_ix: Option<usize>,
+    server_major: Option<u32>,
     options: Vec<String>,
     gzip: bool,
     busy: bool,
@@ -431,7 +456,19 @@ impl BackupWindow {
         if let (Some((name, _)), Some(pw)) = (&preselect, session) {
             passwords.insert(name.clone(), pw);
         }
-        let tools = installed_tools();
+        cx.spawn(async move |weak, cx| {
+            let tools = cx
+                .background_executor()
+                .spawn(async { installed_tools() })
+                .await;
+            let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
+                this.tool_ix = pick_tools(&tools, this.server_major);
+                this.tools = tools;
+                cx.notify();
+            });
+        })
+        .detach();
+        let tools = Vec::new();
         let mut this = BackupWindow {
             focus: cx.focus_handle(),
             mode,
@@ -450,6 +487,7 @@ impl BackupWindow {
             connected: None,
             endpoint: None,
             tool_ix: pick_tools(&tools, None),
+            server_major: None,
             tools,
             options: vec![match mode {
                 Mode::Backup => "--format=custom".into(),
@@ -534,6 +572,7 @@ impl BackupWindow {
                             .filter(|d| dbs.contains(d))
                             .or_else(|| dbs.iter().find(|d| **d == conn.database).cloned());
                         this.databases = dbs;
+                        this.server_major = version;
                         this.tool_ix = pick_tools(&this.tools, version);
                     }
                     Err(e) => {
@@ -587,11 +626,31 @@ impl BackupWindow {
         let Some(tools) = self.tool_ix.and_then(|i| self.tools.get(i)).cloned() else {
             self.notice = Some((
                 false,
-                "PostgreSQL client tools are missing from this build.".into(),
+                "PostgreSQL client tools are not available. Install them or set TUSK_PG_BIN; see Settings → General → Tools.".into(),
             ));
             cx.notify();
             return;
         };
+        let required: &[&str] = match self.mode {
+            Mode::Backup => &["pg_dump"],
+            Mode::Restore => &["pg_restore", "psql"],
+        };
+        if let Some(tool) = required.iter().find(|tool| {
+            !tools
+                .dir
+                .join(format!("{tool}{}", std::env::consts::EXE_SUFFIX))
+                .is_file()
+        }) {
+            self.notice = Some((
+                false,
+                format!(
+                    "{tool} is missing from {}. Install PostgreSQL client tools or set TUSK_PG_BIN.",
+                    tools.dir.display()
+                ),
+            ));
+            cx.notify();
+            return;
+        }
         let conn = self.conns[ix].name.clone();
         let options = self.options.clone();
         match self.mode {

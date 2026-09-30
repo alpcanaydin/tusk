@@ -25,6 +25,11 @@ impl Global for Updater {}
 
 pub fn init(cx: &mut App) {
     cx.set_global(Updater::default());
+    #[cfg(not(target_os = "macos"))]
+    {
+        cx.global_mut::<Updater>().enabled = true;
+        crate::release_check::init(cx);
+    }
     // `TUSK_FAKE_UPDATE=0.2.0`: pretend an update is ready (UI checks).
     if let Ok(v) = std::env::var("TUSK_FAKE_UPDATE") {
         cx.set_global(Updater {
@@ -59,7 +64,9 @@ pub fn ready(cx: &App) -> Option<String> {
 }
 
 /// Sparkle's interactive check (shows "up to date" / the update window).
-pub fn check_for_updates() {
+pub fn check_for_updates(_cx: &mut App) {
+    #[cfg(not(target_os = "macos"))]
+    crate::release_check::check(_cx, true);
     #[cfg(target_os = "macos")]
     mac::check();
 }

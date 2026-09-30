@@ -11,6 +11,7 @@ use crate::db::{self, ConnTag, SavedConnection, SshConfig, SslMode, load_passwor
 
 /// Engine-specific form fields: (key in `SavedConnection::options`, label, placeholder).
 pub const OPTION_FIELDS: &[(&str, &str, &str)] = &[
+    ("auth_mode", "Authentication", "none, basic, or api_key"),
     ("account_id", "Account ID", "Cloudflare account id"),
     ("account", "Account", "xy12345.eu-central-1"),
     ("warehouse", "Warehouse", "COMPUTE_WH"),

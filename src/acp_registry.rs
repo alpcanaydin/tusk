@@ -53,6 +53,7 @@ pub enum Source {
     },
     /// Added by the user in settings: run as is.
     Custom(AgentCommand),
+    Http(crate::http_ai::Provider),
 }
 
 /// An agent from settings (`agent_servers`).
@@ -63,6 +64,7 @@ pub struct CustomAgent {
     pub command: String,
     pub args: Vec<String>,
     pub env: std::collections::BTreeMap<String, String>,
+    pub secret_env: Vec<String>,
 }
 
 /// Agents, their installs, icons and the MCP bridge socket live in Tusk's
@@ -284,7 +286,16 @@ pub fn custom_specs(custom: &std::collections::BTreeMap<String, CustomAgent>) ->
                 source: Source::Custom(AgentCommand {
                     program,
                     args: c.args.clone(),
-                    env: c.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    env: c
+                        .env
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .chain(
+                            c.secret_env.iter().map(|k| {
+                                (k.clone(), format!("__TUSK_KEYRING:tusk-ai-env:{id}:{k}"))
+                            }),
+                        )
+                        .collect(),
                 }),
                 icon: None,
             }
@@ -399,14 +410,23 @@ pub fn installed(spec: &AgentSpec) -> bool {
         Source::Binary { .. } => install_dir("bin", spec).join(".ok").exists(),
         // uv fetches the package on first run: "installed" once it started.
         Source::Uvx { .. } => install_dir("uvx", spec).join(".ok").exists(),
-        Source::Custom(_) => true,
+        Source::Custom(_) | Source::Http(_) => true,
     }
 }
 
 /// Blocking: install the agent when needed and return how to start it.
 pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
     match &spec.source {
-        Source::Custom(cmd) => Ok(cmd.clone()),
+        Source::Http(_) => bail!("HTTP providers do not start an ACP executable"),
+        Source::Custom(cmd) => {
+            let mut cmd = cmd.clone();
+            for (_, value) in &mut cmd.env {
+                if let Some(key) = value.strip_prefix("__TUSK_KEYRING:") {
+                    *value = crate::db::load_password(key).map_err(|e| anyhow!(e))?;
+                }
+            }
+            Ok(cmd)
+        }
         Source::Uvx { package, args, env } => {
             let uvx =
                 which("uvx").ok_or_else(|| anyhow!("{} needs uv (uvx) installed", spec.name))?;

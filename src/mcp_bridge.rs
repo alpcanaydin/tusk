@@ -39,7 +39,7 @@ pub fn tools() -> Value {
         {
             "name": "replace_active_query",
             "description": "Replace the text of the query tab the user has open (or open a new one) \
-                with this SQL. Not executed.",
+                with this SQL or Elasticsearch Query DSL. Not executed.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "sql": { "type": "string" } },
@@ -48,7 +48,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "get_active_query",
-            "description": "The SQL text of the query tab the user has open, and its selection.",
+            "description": "The SQL or Query DSL text of the query tab the user has open, and its selection.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
@@ -66,8 +66,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "describe_table",
-            "description": "The CREATE statement of a table or view: columns, types, defaults, keys, \
-                indexes, constraints.",
+            "description": "Table or index schema metadata. SQL engines return CREATE statements; Trino and Elasticsearch return columns and types.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -142,7 +141,11 @@ impl Host {
         let _rt = crate::db::runtime().enter();
         #[cfg(unix)]
         let (socket, listener) = {
-            let socket = dir.join(format!("mcp-{}.sock", std::process::id()));
+            let socket = dir.join(format!(
+                "mcp-{}-{}.sock",
+                std::process::id(),
+                &random_token()[..8]
+            ));
             let _ = std::fs::remove_file(&socket);
             let listener = tokio::net::UnixListener::bind(&socket)?;
             (socket, listener)
@@ -266,6 +269,19 @@ pub fn run(socket: &Path) {
     }
 }
 
+/// Invoke the same restricted bridge tools used by ACP agents.
+pub fn invoke(spec: &Value, name: &str, args: Value) -> (bool, String) {
+    let Some(socket) = spec["args"][1].as_str() else {
+        return (false, "Missing tools socket".into());
+    };
+    let token = spec["env"]
+        .as_array()
+        .and_then(|env| env.iter().find(|e| e["name"] == TOKEN_ENV))
+        .and_then(|e| e["value"].as_str())
+        .unwrap_or("");
+    call(&mut None, Path::new(socket), token, 1, name, args)
+}
+
 fn call(
     conn: &mut Option<(Stream, BufReader<Stream>)>,
     socket: &Path,
@@ -279,7 +295,11 @@ fn call(
         if conn.is_none() {
             match connect(socket) {
                 Ok(s) => match s.try_clone() {
-                    Ok(r) => *conn = Some((s, BufReader::new(r))),
+                    Ok(r) => {
+                        let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+                        let _ = s.set_write_timeout(Some(std::time::Duration::from_secs(30)));
+                        *conn = Some((s, BufReader::new(r)));
+                    }
                     Err(e) => return (false, e.to_string()),
                 },
                 Err(_) => return (false, "Tusk is not running.".into()),

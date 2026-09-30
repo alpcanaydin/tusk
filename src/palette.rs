@@ -682,6 +682,10 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         items.push(CommandItem::new().label(label).icon(Icon::new(icon)));
         runs.push(run);
     }
+    if crate::db::engine() == crate::engine::Engine::Elasticsearch {
+        items.push(CommandItem::new().label("Elasticsearch: open document editor"));
+        runs.push(std::rc::Rc::new(|app, _, cx| app.open_document_editor(cx)));
+    }
     // ---- app ----
     let mut action = |label: &str, icon: IconName, action: Box<dyn Action>| {
         items.push(

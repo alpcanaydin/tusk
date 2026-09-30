@@ -29,6 +29,8 @@ pub enum Engine {
     MongoDb,
     Cassandra,
     DynamoDb,
+    Trino,
+    Elasticsearch,
 }
 
 /// Which fields the connection form shows.
@@ -134,7 +136,9 @@ const SQL_BASIC: Caps = Caps {
 };
 
 impl Engine {
-    pub const ALL: [Engine; 20] = [
+    pub const ALL: [Engine; 22] = [
+        Engine::Trino,
+        Engine::Elasticsearch,
         Engine::Postgres,
         Engine::MySql,
         Engine::MariaDb,
@@ -156,6 +160,39 @@ impl Engine {
         Engine::LibSql,
         Engine::CloudflareD1,
     ];
+
+    pub const CATEGORIES: [&'static str; 5] = [
+        "Relational SQL",
+        "Analytics and distributed SQL",
+        "Documents and search",
+        "Key-value",
+        "Wide-column",
+    ];
+
+    pub fn category(self) -> &'static str {
+        match self {
+            Self::Postgres
+            | Self::Cockroach
+            | Self::MySql
+            | Self::MariaDb
+            | Self::Sqlite
+            | Self::LibSql
+            | Self::CloudflareD1
+            | Self::MsSql
+            | Self::Oracle => Self::CATEGORIES[0],
+            Self::Redshift
+            | Self::Greenplum
+            | Self::Vertica
+            | Self::DuckDb
+            | Self::ClickHouse
+            | Self::Snowflake
+            | Self::BigQuery
+            | Self::Trino => Self::CATEGORIES[1],
+            Self::MongoDb | Self::Elasticsearch => Self::CATEGORIES[2],
+            Self::Redis | Self::DynamoDb => Self::CATEGORIES[3],
+            Self::Cassandra => Self::CATEGORIES[4],
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -179,6 +216,8 @@ impl Engine {
             Engine::MongoDb => "MongoDB",
             Engine::Cassandra => "Cassandra",
             Engine::DynamoDb => "DynamoDB",
+            Engine::Trino => "Trino",
+            Engine::Elasticsearch => "Elasticsearch",
         }
     }
 
@@ -205,6 +244,8 @@ impl Engine {
             Engine::MongoDb => "Mg",
             Engine::Cassandra => "Ca",
             Engine::DynamoDb => "Dy",
+            Engine::Trino => "Tr",
+            Engine::Elasticsearch => "Es",
         }
     }
 
@@ -229,6 +270,8 @@ impl Engine {
             Engine::Redis => 0xDC382D,
             Engine::MongoDb => 0x47A248,
             Engine::Cassandra => 0x1287B1,
+            Engine::Trino => 0xDD00A1,
+            Engine::Elasticsearch => 0xFEC514,
         }
     }
 
@@ -245,6 +288,8 @@ impl Engine {
             Engine::Redis => 6379,
             Engine::MongoDb => 27017,
             Engine::Cassandra => 9042,
+            Engine::Trino => 8080,
+            Engine::Elasticsearch => 9200,
             _ => 0,
         }
     }
@@ -267,6 +312,8 @@ impl Engine {
     /// Placeholder for the database field (what it means per engine).
     pub fn database_hint(self) -> &'static str {
         match self {
+            Engine::Trino => "Catalog (optional)",
+            Engine::Elasticsearch => "Default index (optional)",
             Engine::Oracle => "Service name (FREEPDB1)",
             Engine::Cassandra => "Keyspace (optional)",
             Engine::Redis => "Database index (0)",
@@ -307,7 +354,7 @@ impl Engine {
             Engine::Postgres | Engine::Redshift | Engine::Cockroach | Engine::Greenplum => {
                 Dialect::Postgres
             }
-            Engine::Vertica => Dialect::Vertica,
+            Engine::Vertica | Engine::Trino => Dialect::Vertica,
             Engine::MySql | Engine::MariaDb => Dialect::MySql,
             Engine::Sqlite | Engine::LibSql | Engine::CloudflareD1 => Dialect::Sqlite,
             Engine::DuckDb => Dialect::DuckDb,
@@ -317,7 +364,9 @@ impl Engine {
             Engine::Snowflake => Dialect::Snowflake,
             Engine::BigQuery => Dialect::BigQuery,
             Engine::Cassandra => Dialect::Cql,
-            Engine::Redis | Engine::MongoDb | Engine::DynamoDb => Dialect::NoSql,
+            Engine::Redis | Engine::MongoDb | Engine::DynamoDb | Engine::Elasticsearch => {
+                Dialect::NoSql
+            }
         }
     }
 
@@ -390,6 +439,15 @@ impl Engine {
                 indexes: false,
                 ..SQL_BASIC
             },
+            Engine::Trino | Engine::Elasticsearch => Caps {
+                edit_rows: false,
+                views: self == Engine::Trino,
+                schemas: self == Engine::Trino,
+                indexes: false,
+                transactions: false,
+                sql: self == Engine::Trino,
+                ..SQL_BASIC
+            },
             Engine::Cassandra => Caps {
                 views: true,
                 indexes: true,
@@ -422,7 +480,14 @@ impl Engine {
         let processes = crate::drivers::sessions::list_sql(self).is_some()
             || matches!(self, Engine::Redis | Engine::MongoDb);
         // Structure / index edits and New Table as each engine's DDL (crate::ddl).
-        let edit_structure = !matches!(self, Engine::Redis | Engine::MongoDb | Engine::DynamoDb);
+        let edit_structure = !matches!(
+            self,
+            Engine::Redis
+                | Engine::MongoDb
+                | Engine::DynamoDb
+                | Engine::Trino
+                | Engine::Elasticsearch
+        );
         Caps {
             processes,
             edit_structure,
@@ -467,6 +532,8 @@ impl Engine {
             Engine::MongoDb => "mongodb",
             Engine::Cassandra => "cassandra",
             Engine::DynamoDb => "dynamodb",
+            Engine::Trino => "trino",
+            Engine::Elasticsearch => "elasticsearch",
         }
     }
 }
@@ -645,6 +712,8 @@ pub fn parse_url(url: &str) -> Option<ParsedUrl> {
         "redis" | "rediss" => Engine::Redis,
         "mongodb" | "mongodb+srv" => Engine::MongoDb,
         "cassandra" => Engine::Cassandra,
+        "trino" => Engine::Trino,
+        "elasticsearch" | "elastic" => Engine::Elasticsearch,
         _ => return None,
     };
     let mut out = ParsedUrl {
@@ -752,6 +821,6 @@ mod tests {
             assert!(!e.label().is_empty());
             assert_eq!(e.abbr().len(), 2);
         }
-        assert_eq!(Engine::ALL.len(), 20);
+        assert_eq!(Engine::ALL.len(), 22);
     }
 }

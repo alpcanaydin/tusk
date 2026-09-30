@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, anyhow};
@@ -173,6 +173,7 @@ pub type DiagnosticsEvent = (String, Vec<lsp_types::Diagnostic>);
 type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Value, String>>>>>;
 
 pub struct LspClient {
+    phase: Arc<AtomicU8>,
     out: mpsc::UnboundedSender<Value>,
     pending: Pending,
     next_id: AtomicI64,
@@ -184,7 +185,7 @@ pub struct LspClient {
 
 /// A server binary from PATH or the usual install locations — a
 /// Finder-launched app doesn't inherit the shell PATH (pnpm/npm/brew).
-fn find_binary(binary: &str) -> Option<PathBuf> {
+pub(crate) fn find_binary(binary: &str) -> Option<PathBuf> {
     let env = format!("TUSK_{}", if binary == "sqls" { "SQLS" } else { "PGLS" });
     if let Ok(p) = std::env::var(env) {
         return Some(PathBuf::from(p));
@@ -229,7 +230,17 @@ fn frame(msg: &Value) -> Vec<u8> {
     out
 }
 
+struct ServerExit(Arc<AtomicU8>);
+impl Drop for ServerExit {
+    fn drop(&mut self) {
+        self.0.store(2, Ordering::Release);
+    }
+}
 impl LspClient {
+    pub fn phase(&self) -> u8 {
+        self.phase.load(Ordering::Acquire)
+    }
+
     /// Spawn and initialise the server. Returns immediately; requests queue
     /// until the `initialize` handshake completes.
     pub fn start(
@@ -264,6 +275,7 @@ impl LspClient {
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
         let (diag_tx, diag_rx) = mpsc::unbounded_channel::<DiagnosticsEvent>();
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        let phase = Arc::new(AtomicU8::new(0));
 
         // Reader: responses → pending, server requests → answered,
         // publishDiagnostics → UI channel.
@@ -271,7 +283,9 @@ impl LspClient {
             let pending = pending.clone();
             let out_tx = out_tx.clone();
             let configuration = spec.configuration.clone();
+            let phase = phase.clone();
             crate::db::runtime().spawn(async move {
+                let _exit = ServerExit(phase);
                 let mut reader = BufReader::new(stdout);
                 loop {
                     let mut len = None;
@@ -343,6 +357,7 @@ impl LspClient {
         {
             let pending = pending.clone();
             let root_uri = format!("file://{}", root.display());
+            let phase = phase.clone();
             crate::db::runtime().spawn(async move {
                 let (tx, rx) = oneshot::channel();
                 pending.lock().unwrap().insert(0, tx);
@@ -361,7 +376,13 @@ impl LspClient {
                         "initializationOptions": spec.init_options
                     }
                 });
-                if stdin.write_all(&frame(&init)).await.is_err() || rx.await.is_err() {
+                let _exit = ServerExit(phase.clone());
+                if stdin.write_all(&frame(&init)).await.is_err()
+                    || !matches!(
+                        tokio::time::timeout(std::time::Duration::from_secs(10), rx).await,
+                        Ok(Ok(Ok(_)))
+                    )
+                {
                     return;
                 }
                 let mut first = vec![json!({"jsonrpc":"2.0","method":"initialized","params":{}})];
@@ -377,6 +398,7 @@ impl LspClient {
                     }
                 }
                 let _ = stdin.flush().await;
+                phase.store(1, Ordering::Release);
                 while let Some(msg) = out_rx.recv().await {
                     if stdin.write_all(&frame(&msg)).await.is_err() {
                         return;
@@ -388,6 +410,7 @@ impl LspClient {
 
         Ok((
             Arc::new(Self {
+                phase,
                 out: out_tx,
                 pending,
                 next_id: AtomicI64::new(1),

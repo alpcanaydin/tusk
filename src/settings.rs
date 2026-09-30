@@ -13,7 +13,7 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::setting::{
     NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
 };
-use gpui_kit::component::{ActiveTheme as _, IndexPath, Root, Sizable as _, TitleBar};
+use gpui_kit::component::{ActiveTheme as _, IndexPath, Root, Sizable as _, TitleBar, v_flex};
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +95,10 @@ pub struct Prefs {
     // ---- general ----
     /// Reconnect to the last connection when the app starts.
     pub reopen_last: bool,
+    /// Check for stable releases daily on Windows and Linux.
+    pub automatic_update_checks: bool,
+    /// Separate database engines by type in the new-connection selector.
+    pub group_database_types: bool,
     /// `statement_timeout` for new connections, seconds (0 = none).
     pub query_timeout_secs: u32,
     /// Linux renderer device ID (four hexadecimal digits); empty = automatic.
@@ -136,6 +140,7 @@ pub struct Prefs {
     // ---- AI panel ----
     /// The agent new chats start with (registry id or `custom:<name>`).
     pub agent: String,
+    pub ai_http: std::collections::BTreeMap<String, crate::http_ai::Provider>,
     /// Agents added by hand: name → command, args, env.
     pub agent_servers: std::collections::BTreeMap<String, crate::acp_registry::CustomAgent>,
     /// Per agent, the session options picked last (model, mode, …), applied
@@ -176,6 +181,8 @@ impl Default for Prefs {
             ui_font_size: 14.,
             table_font_family: crate::theme::MONO_FONT.to_string(),
             table_font_size: 13.,
+            automatic_update_checks: true,
+            group_database_types: false,
             reopen_last: true,
             query_timeout_secs: 0,
             gpu_device: String::new(),
@@ -195,7 +202,8 @@ impl Default for Prefs {
             filter_default_operator: "=".into(),
             filter_default_enabled: true,
             default_table_sort: TABLE_SORTS[0].into(),
-            agent: "claude-acp".into(),
+            agent: String::new(),
+            ai_http: crate::http_ai::defaults(),
             agent_servers: Default::default(),
             agent_config: Default::default(),
         }
@@ -480,6 +488,14 @@ pub fn table_font() -> SharedString {
     FONTS.read().map(|f| f.1.clone()).unwrap_or_default()
 }
 
+/// A shared text line box keeps grid display and in-cell editors aligned.
+pub fn table_line_height() -> f32 {
+    (table_text() * 1.5).ceil()
+}
+pub fn table_row_height() -> f32 {
+    (table_line_height() + 8.).max(32.)
+}
+
 pub fn table_text() -> f32 {
     with(|p| p.table_font_size)
 }
@@ -557,6 +573,7 @@ impl SettingsWindow {
     }
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        crate::tool_status::refresh(cx);
         let fonts = font_options(cx);
         let p = get();
         let mut picker = |current: &str, set: fn(&mut Prefs, String)| {
@@ -627,6 +644,30 @@ impl SettingsWindow {
                     });
                 },
             )
+    }
+
+    fn font_preview(ui: bool) -> SettingItem {
+        SettingItem::new(
+            "Live Preview",
+            SettingField::render(move |_, _, _| {
+                let p = get();
+                let (family, size) = if ui {
+                    (p.ui_font_family.clone(), p.ui_font_size)
+                } else {
+                    (p.table_font_family.clone(), p.table_font_size)
+                };
+                v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .font_family(family)
+                    .text_size(px(size))
+                    .line_height(px((size * 1.6).ceil()))
+                    .child(div().child("SELECT café, price"))
+                    .child(div().child("FROM orders WHERE id = 123;"))
+                    .child(div().child("0O 1Il {} [] !? +-*/ 123.45"))
+                    .child(div().child("Français — العربية 日本語"))
+            }),
+        )
     }
 
     fn pages(&self) -> Vec<SettingPage> {
@@ -731,7 +772,8 @@ impl SettingsWindow {
                             .default_value(d.ui_font_size as f64),
                         )
                         .description("Scales the whole interface."),
-                    ),
+                    )
+                    .item(Self::font_preview(true)),
             )
             .group(
                 SettingGroup::new().title("Layout").item(
@@ -772,7 +814,8 @@ impl SettingsWindow {
                         .default_value(d.table_font_size as f64),
                     )
                     .description("Column widths scale with it."),
-                ),
+                )
+                .item(Self::font_preview(false)),
         );
         let switch = |title: &'static str,
                       desc: &'static str,
@@ -791,6 +834,13 @@ impl SettingsWindow {
         };
         let general_group = SettingGroup::new()
             .title("Startup & Connections")
+            .item(switch(
+                "Automatic Update Checks",
+                "Check GitHub daily on Windows and Linux. Updates are installed manually.",
+                |p| p.automatic_update_checks,
+                |p, v| p.automatic_update_checks = v,
+                d.automatic_update_checks,
+            ))
             .item(switch(
                 "Reopen Last Connection",
                 "Connect to the last used database when the app starts.",
@@ -831,7 +881,23 @@ impl SettingsWindow {
         );
         let general = SettingPage::new("General")
             .icon(IconName::Settings2)
-            .group(general_group);
+            .group(general_group)
+            .group(SettingGroup::new().title("Tools").item(SettingItem::new(
+                "Installed Tools",
+                SettingField::render(|_, _, cx| {
+                    use gpui_kit::component::button::Button;
+                    let state = cx.default_global::<crate::tool_status::Tools>().clone();
+                    v_flex().gap_2().w_full()
+                        .children(state.rows.into_iter().map(|(name, status)| {
+                            v_flex().w(px(220.)).min_w_0().child(name.clone()).child(div()
+                                .id(SharedString::from(format!("tool-status-{name}")))
+                                .w_full().overflow_x_scroll().whitespace_nowrap().text_sm().child(status))
+                        }))
+                        .child(Button::new("refresh-tools")
+                            .label(if state.scanning { "Scanning…" } else { "Refresh" })
+                            .on_click(|_, _, cx| crate::tool_status::refresh(cx)))
+                }),
+            ).description("For SQL assistance install postgres-language-server or sqls (TUSK_PGLS / TUSK_SQLS). For backups install PostgreSQL client tools (TUSK_PG_BIN).")));
         let editor = SettingPage::new("SQL Editor")
             .icon(IconName::SquareTerminal)
             .group(
@@ -897,6 +963,28 @@ impl SettingsWindow {
                     .description("How NULL values are shown in grids."),
                 ),
         );
+        let ai = SettingPage::new("AI Providers").icon(IconName::Sparkles).group(
+            SettingGroup::new().title("Agents and Model Servers").item(SettingItem::new("Configure Providers", SettingField::render(|_, _, _| {
+                use gpui_kit::component::button::Button;
+                let prefs = get();
+                v_flex().gap_2().w(px(220.)).min_w_0().whitespace_normal()
+                    .child("Claude, Codex, Gemini, and ACP registry agents are selected in the assistant. Install OpenCode to use opencode acp.")
+                    .children(prefs.ai_http.iter().map(|(id, p)| {
+                        let id=id.clone(); Button::new(SharedString::from(format!("configure-{id}"))).label(format!("Configure {}",p.name)).on_click(move|_,_,cx|crate::ai_settings::ProviderEditor::open(id.clone(),false,cx))
+                    }))
+                    .children(prefs.agent_servers.iter().map(|(id, p)| {
+                        let id=id.clone(); Button::new(SharedString::from(format!("configure-acp-{id}"))).label(format!("Configure {}",p.name)).on_click(move|_,_,cx|crate::ai_settings::ProviderEditor::open(id.clone(),true,cx))
+                    }))
+                    .child(Button::new("add-http-provider").label("Add Custom Model Endpoint").on_click(|_,_,cx| {
+                        let id=format!("custom-{}", chrono::Utc::now().timestamp_millis());
+                        crate::ai_settings::ProviderEditor::open(id,false,cx);
+                    }))
+                    .child(Button::new("add-acp-provider").label("Add Custom ACP Agent").on_click(|_,_,cx| {
+                        let id=format!("custom-{}", chrono::Utc::now().timestamp_millis());
+                        crate::ai_settings::ProviderEditor::open(id,true,cx);
+                    }))
+            })))
+        );
         let safety = SettingPage::new("Safe Mode")
             .icon(IconName::ShieldCheck)
             .group(
@@ -917,7 +1005,7 @@ impl SettingsWindow {
                     d.confirm_save,
                 )),
         );
-        vec![general, appearance, interface, editor, data, safety]
+        vec![general, appearance, interface, editor, data, ai, safety]
     }
 }
 

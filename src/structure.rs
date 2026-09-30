@@ -884,6 +884,9 @@ pub fn new_state(
 
 pub fn element(state: &Entity<TableState<StructureDelegate>>) -> DataTable<StructureDelegate> {
     DataTable::new(state)
+        .with_size(gpui_kit::component::Size::Size(px(
+            crate::settings::table_row_height(),
+        )))
         // The pane frames the grid; no second rounded border inside it.
         .bordered(false)
         .stripe(crate::settings::get().grid_stripes)

@@ -35,6 +35,7 @@ pub struct AiPanel {
     pub width: f32,
     pub drag: Option<(f32, f32)>,
     pub thread: Option<Entity<AgentThread>>,
+    previous_threads: Vec<Entity<AgentThread>>,
     scroller: Option<Entity<MessageScrollerState>>,
     input: Option<Entity<TextareaState>>,
     pub agents: std::rc::Rc<Vec<AgentSpec>>,
@@ -340,13 +341,7 @@ impl TuskApp {
         }
         if self.ai.thread.is_none() {
             let id = crate::settings::get().agent.clone();
-            let spec = self
-                .ai
-                .agents
-                .iter()
-                .find(|a| a.id == id)
-                .or(self.ai.agents.first())
-                .cloned();
+            let spec = self.ai.agents.iter().find(|a| a.id == id).cloned();
             if let Some(spec) = spec {
                 self.start_agent(spec, cx);
             }
@@ -355,6 +350,30 @@ impl TuskApp {
 
     fn agent_list(&self, registry: Vec<AgentSpec>) -> Vec<AgentSpec> {
         let mut l = acp_registry::custom_specs(&crate::settings::get().agent_servers);
+        for (id, provider) in &crate::settings::get().ai_http {
+            l.push(AgentSpec {
+                id: format!("http:{id}"),
+                name: provider.name.clone(),
+                description: provider.base_url.clone(),
+                version: String::new(),
+                source: acp_registry::Source::Http(provider.clone()),
+                icon: None,
+            });
+        }
+        if !registry.iter().any(|a| a.id == "opencode") {
+            l.push(AgentSpec {
+                id: "opencode".into(),
+                name: "OpenCode".into(),
+                description: "Install OpenCode, then Tusk runs opencode acp.".into(),
+                version: String::new(),
+                source: acp_registry::Source::Custom(crate::acp::AgentCommand {
+                    program: acp_registry::which("opencode").unwrap_or_else(|| "opencode".into()),
+                    args: vec!["acp".into()],
+                    env: Vec::new(),
+                }),
+                icon: None,
+            });
+        }
         l.extend(registry);
         l
     }
@@ -421,15 +440,28 @@ impl TuskApp {
 
     fn switch_agent(&mut self, spec: AgentSpec, cx: &mut Context<Self>) {
         let id = spec.id.clone();
-        crate::settings::update(cx, |p| p.agent = id);
-        self.ai.thread = None;
+        crate::settings::update(cx, |p| {
+            p.agent = id.clone();
+            if let acp_registry::Source::Http(provider) = &spec.source
+                && let Some(id) = id.strip_prefix("http:")
+            {
+                p.ai_http.insert(id.into(), provider.clone());
+            }
+        });
+        if let Some(thread) = self.ai.thread.take() {
+            thread.update(cx, |t, cx| t.cancel(cx));
+            self.ai.previous_threads.push(thread);
+        }
         self.start_agent(spec, cx);
         cx.notify();
     }
 
     fn new_ai_chat(&mut self, cx: &mut Context<Self>) {
-        if let Some(t) = &self.ai.thread {
-            t.update(cx, |t, cx| t.reset_chat(cx));
+        if let Some(t) = self.ai.thread.take() {
+            let spec = t.read(cx).spec.clone();
+            t.update(cx, |t, cx| t.cancel(cx));
+            self.ai.previous_threads.push(t);
+            self.start_agent(spec, cx);
         }
         cx.notify();
     }
@@ -437,14 +469,23 @@ impl TuskApp {
     /// The database context sent with every prompt.
     fn ai_context(&self, cx: &App) -> Vec<Value> {
         let mut text = String::from(
-            "You are the assistant inside Tusk, a PostgreSQL client. The user works with the \
+            "You are the assistant inside Tusk, a database client. The user works with the \
              database below. Use the `tusk` MCP tools to look at it (get_context, list_tables, \
-             describe_table, get_active_query). When the user wants SQL, write it with \
+             describe_table, get_active_query). When the user wants a query, write it with \
              `open_sql_tab` (or `replace_active_query` to change the query they have open) — \
-             never run SQL yourself, the user reviews and runs it. Keep replies short.\n\n",
+             never run database queries or mutations yourself, the user reviews and runs it. Keep replies short.\n\n",
         );
         match &self.active_conn {
             Some((c, _)) => {
+                text.push_str(&format!(
+                    "Engine: {}. Query language: {}.\n",
+                    c.engine.label(),
+                    if c.engine == crate::engine::Engine::Elasticsearch {
+                        "Elasticsearch JSON Query DSL"
+                    } else {
+                        "the engine's native query language"
+                    }
+                ));
                 text.push_str(&format!(
                     "Connection: {} — database `{}` as `{}` on {}:{}\nCurrent schema: `{}`\n",
                     c.name, c.database, c.user, c.host, c.port, self.current_schema
@@ -784,14 +825,32 @@ impl TuskApp {
                     crate::objects::ObjKind::Table
                 };
                 crate::db::runtime().spawn(async move {
-                    let res = crate::objects::script(
-                        &pool,
-                        kind,
-                        &schema,
-                        &table,
-                        crate::objects::Script::Create,
-                    )
-                    .await;
+                    let res = if matches!(
+                        pool.engine(),
+                        crate::engine::Engine::Trino | crate::engine::Engine::Elasticsearch
+                    ) {
+                        crate::db::fetch_columns(&pool, &schema, &table)
+                            .await
+                            .map(|columns| {
+                                serde_json::to_string_pretty(&serde_json::json!({
+                                    "schema": schema, "table": table,
+                                    "columns": columns.into_iter().map(|column| serde_json::json!({
+                                        "name": column.name, "type": column.sql_type,
+                                        "nullable": column.nullable, "primary_key": column.is_pk
+                                    })).collect::<Vec<_>>()
+                                }))
+                                .unwrap_or_default()
+                            })
+                    } else {
+                        crate::objects::script(
+                            &pool,
+                            kind,
+                            &schema,
+                            &table,
+                            crate::objects::Script::Create,
+                        )
+                        .await
+                    };
                     let _ = reply.send(res);
                 });
             }
@@ -853,6 +912,18 @@ impl TuskApp {
     ) -> AnyElement {
         let t = cx.theme().clone();
         let (fg, muted, border, bg) = (t.foreground, t.muted_foreground, t.border, t.background);
+        let available_agents = self.agent_list(
+            self.ai
+                .agents
+                .iter()
+                .filter(|a| {
+                    !matches!(a.source, acp_registry::Source::Http(_))
+                        && !a.id.starts_with("custom:")
+                        && a.id != "opencode"
+                })
+                .cloned()
+                .collect(),
+        );
         let Some(thread_e) = self.ai.thread.clone() else {
             return div()
                 .w(px(self.ai_width()))
@@ -861,26 +932,46 @@ impl TuskApp {
                 .border_color(border)
                 .bg(bg)
                 .p_4()
-                .text_size(px(crate::settings::ui_text()))
-                .text_color(muted)
-                .child("No agents available.")
+                .child("Choose an AI provider")
+                .child(
+                    Button::new("ai-provider-settings")
+                        .label("AI Providers settings")
+                        .on_click(|_, _, cx| crate::settings::SettingsWindow::open(cx)),
+                )
+                .children(available_agents.iter().cloned().map(|spec| {
+                    let name = spec.name.clone();
+                    Button::new(SharedString::from(spec.id.clone()))
+                        .label(name)
+                        .on_click(move |_, _, cx| {
+                            let spec = spec.clone();
+                            with_app(cx, |app, cx| app.switch_agent(spec, cx));
+                        })
+                }))
                 .into_any_element();
         };
         let thread = thread_e.read(cx);
         let status = thread.status.clone();
-        let agent_name = thread.agent_name.clone();
+        let agent_name = match &thread.spec.source {
+            acp_registry::Source::Http(p) => {
+                format!("{} · {} · {}", thread.agent_name, p.model, p.base_url)
+            }
+            _ => thread.agent_name.clone(),
+        };
         let title = thread.title.clone();
         let empty = thread.entries.is_empty();
 
         // ---- header: agent icon + chat title · new chat (agent menu) · history · close ----
-        let agents = self.ai.agents.clone();
+        let agents = available_agents;
         let current_spec = thread.spec.clone();
+        let http_models = thread.http_models.clone();
+        let previous = self.ai.previous_threads.clone();
         let new_menu = Button::new("ai-new")
             .ghost()
             .xsmall()
-            .icon(IconName::Plus)
-            .tooltip("New Chat")
-            .dropdown_menu(move |mut menu: PopupMenu, _, _| {
+            .label("Provider / Model")
+            .icon(IconName::ChevronDown)
+            .tooltip("Select a provider or model, or open an earlier conversation")
+            .dropdown_menu(move |mut menu: PopupMenu, _, cx| {
                 menu = menu.max_h(px(460.)).scrollable(true).min_w(px(240.));
                 let cur = current_spec.clone();
                 menu = menu.item(
@@ -888,6 +979,42 @@ impl TuskApp {
                         .icon(agent_icon(&cur))
                         .on_click(|_, _, cx| with_app(cx, |app, cx| app.new_ai_chat(cx))),
                 );
+                if let acp_registry::Source::Http(provider) = &cur.source {
+                    for model in &http_models {
+                        let mut spec = cur.clone();
+                        let mut provider = provider.clone();
+                        provider.model = model.clone();
+                        spec.source = acp_registry::Source::Http(provider);
+                        menu = menu.item(PopupMenuItem::new(format!("Model: {model}")).on_click(
+                            move |_, _, cx| {
+                                let spec = spec.clone();
+                                with_app(cx, |app, cx| app.switch_agent(spec, cx));
+                            },
+                        ));
+                    }
+                }
+                for old in &previous {
+                    let old = old.clone();
+                    let title = old.read(cx).agent_name.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(format!("Previous chat: {title}")).on_click(
+                            move |_, _, cx| {
+                                let old = old.clone();
+                                with_app(cx, |app, cx| {
+                                    app.ai
+                                        .previous_threads
+                                        .retain(|t| t.entity_id() != old.entity_id());
+                                    if let Some(current) = app.ai.thread.replace(old) {
+                                        app.ai.previous_threads.push(current);
+                                    }
+                                    app.ai.scroller =
+                                        Some(cx.new(|cx| MessageScrollerState::new(0, cx)));
+                                    app.sync_ai_scroller(cx);
+                                });
+                            },
+                        ),
+                    );
+                }
                 let (custom, reg): (Vec<_>, Vec<_>) = agents
                     .iter()
                     .cloned()
@@ -976,6 +1103,19 @@ impl TuskApp {
                     }),
             )
             .children(header_usage)
+            .when(thread.can_retry_http(), |header| {
+                header.child(
+                    Button::new("retry-http-reply")
+                        .label("Retry")
+                        .ghost()
+                        .xsmall()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(thread) = &this.ai.thread {
+                                thread.update(cx, |thread, cx| thread.retry_http(cx));
+                            }
+                        })),
+                )
+            })
             .child(new_menu)
             .child(
                 Button::new("ai-history")
@@ -1754,7 +1894,12 @@ fn render_entry(
                         let sql = code.code().to_string();
                         let is_sql = code.lang().is_none_or(|l| {
                             let l = l.to_lowercase();
-                            l == "sql" || l == "postgresql" || l == "pgsql" || l == "psql"
+                            l == "sql"
+                                || l == "postgresql"
+                                || l == "pgsql"
+                                || l == "psql"
+                                || (l == "json"
+                                    && db::engine() == crate::engine::Engine::Elasticsearch)
                         });
                         div().when(is_sql, move |d| {
                             d.child(

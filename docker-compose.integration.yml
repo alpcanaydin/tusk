@@ -1,0 +1,45 @@
+# Merge with docker-compose.yml for mandatory Trino/Elasticsearch integration tests.
+services:
+  trino:
+    image: docker.io/trinodb/trino:483
+    ports:
+      - "58080:8080"
+    volumes:
+      - ./test-fixtures/trino:/etc/trino/catalog:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  elasticsearch:
+    image: docker.io/library/elasticsearch:8.19.0
+    ports:
+      - "59200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  elasticsearch-auth:
+    image: docker.io/library/elasticsearch:8.19.0
+    ports:
+      - "59201:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'true'
+      xpack.security.http.ssl.enabled: 'false'
+      xpack.security.transport.ssl.enabled: 'false'
+      ELASTIC_PASSWORD: tusk
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u elastic:tusk http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

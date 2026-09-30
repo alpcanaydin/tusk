@@ -778,6 +778,9 @@ pub fn new_state(
 
 pub fn element(state: &Entity<TableState<IndexDelegate>>) -> DataTable<IndexDelegate> {
     DataTable::new(state)
+        .with_size(gpui_kit::component::Size::Size(px(
+            crate::settings::table_row_height(),
+        )))
         .bordered(false)
         .stripe(crate::settings::get().grid_stripes)
 }

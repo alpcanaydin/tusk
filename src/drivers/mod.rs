@@ -22,17 +22,21 @@ pub mod d1;
 pub mod duckdb;
 pub mod dynamo;
 pub mod edit_source;
+pub mod elasticsearch;
 pub mod http;
 pub mod libsql;
 pub mod mongo;
 pub mod mssql;
 pub mod mysql;
+#[cfg(test)]
+mod new_driver_live;
 pub mod oracle;
 pub mod pg;
 pub mod redis;
 pub mod sessions;
 pub mod snowflake;
 pub mod sqlite;
+pub mod trino;
 pub mod vertica;
 
 pub type Fut<T> = BoxFuture<'static, DbResult<T>>;
@@ -62,6 +66,21 @@ pub trait Driver: Send + Sync + 'static {
         self.engine().dialect()
     }
 
+    fn reset_browse(&self) -> Fut<()> {
+        Box::pin(async { Ok(()) })
+    }
+    fn document_get(&self, _index: String, _id: String) -> Fut<Value> {
+        Box::pin(async { Err("Document editing is not available for this engine.".into()) })
+    }
+    fn document_write(
+        &self,
+        _index: String,
+        _id: String,
+        _source: Option<Value>,
+        _guard: Option<(u64, u64)>,
+    ) -> Fut<Value> {
+        Box::pin(async { Err("Document editing is not available for this engine.".into()) })
+    }
     fn version(&self) -> Fut<String>;
     fn databases(&self) -> Fut<Vec<String>>;
     fn schemas(&self) -> Fut<Vec<String>>;
@@ -481,6 +500,8 @@ pub async fn connect(
     secret: String,
 ) -> DbResult<Db> {
     match conn.engine {
+        Engine::Trino => trino::connect(conn, host, port, secret).await,
+        Engine::Elasticsearch => elasticsearch::connect(conn, host, port, secret).await,
         Engine::Vertica => vertica::connect(conn, host, port, secret).await,
         e if e.pg_wire() => pg::connect(conn, host, port, secret).await,
         Engine::MySql | Engine::MariaDb => mysql::connect(conn, host, port, secret).await,
