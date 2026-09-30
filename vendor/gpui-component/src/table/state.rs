@@ -1559,10 +1559,12 @@ where
             return None;
         };
 
+        // Tusk patch: only the sorted column shows an indicator (as on macOS);
+        // clicking any header sorts it.
         let (icon, is_on) = match sort {
             ColumnSort::Ascending => (IconName::SortAscending, true),
             ColumnSort::Descending => (IconName::SortDescending, true),
-            ColumnSort::Default => (IconName::ChevronsUpDown, false),
+            ColumnSort::Default => return None,
         };
 
         Some(
