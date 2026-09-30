@@ -304,7 +304,7 @@ impl TuskApp {
                     .h(px(440.))
                     .flex()
                     .flex_col()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)

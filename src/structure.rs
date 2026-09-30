@@ -749,7 +749,6 @@ impl TableDelegate for StructureDelegate {
         let placeholder = match col_ix {
             _ if row.orig.is_none() && !row.pk => "DEFAULT",
             F_DEFAULT => "NULL",
-            F_FK | F_COMMENT => "EMPTY",
             _ => "",
         };
         let is_pk = col_ix == F_NAME && row.pk;
@@ -774,7 +773,7 @@ impl TableDelegate for StructureDelegate {
                     .map(|this| {
                         if empty {
                             this.italic()
-                                .text_color(t.colors.muted_foreground.opacity(0.5))
+                                .text_color(t.colors.muted_foreground)
                                 .child(placeholder)
                         } else {
                             this.text_color(t.colors.foreground).child(text)
@@ -787,7 +786,7 @@ impl TableDelegate for StructureDelegate {
                         .id(("type-combo", row_ix))
                         .cursor_pointer()
                         .flex_none()
-                        .text_color(t.colors.muted_foreground.opacity(0.7))
+                        .text_color(t.colors.muted_foreground)
                         .child(Icon::new(IconName::ChevronsUpDown).size(px(12.)))
                         .on_mouse_down(
                             MouseButton::Left,

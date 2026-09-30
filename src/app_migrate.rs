@@ -175,9 +175,9 @@ impl TuskApp {
                 .h(px(18.))
                 .flex()
                 .items_center()
-                .rounded(px(4.))
+                .rounded(crate::theme::RADIUS_SM)
                 .bg(c.opacity(0.16))
-                .text_xs()
+                .text_caption()
                 .text_color(c)
                 .child(text)
         };
@@ -235,7 +235,7 @@ impl TuskApp {
             .gap_3()
             .px_3()
             .h(px(52.))
-            .rounded(px(8.))
+            .rounded(crate::theme::RADIUS_LG)
             .border_1()
             .border_color(if is_current {
                 accent.opacity(0.6)
@@ -255,7 +255,7 @@ impl TuskApp {
                 div()
                     .size(px(30.))
                     .flex_none()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .bg(tint.opacity(0.22))
                     .flex()
                     .items_center()
@@ -289,7 +289,7 @@ impl TuskApp {
                     .child(
                         div()
                             .truncate()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::table_font())
                             .text_color(muted.opacity(0.7))
                             .child(detail),
@@ -345,7 +345,7 @@ impl TuskApp {
                         Source::TablePlus => div()
                             .size(px(40.))
                             .flex_none()
-                            .rounded(px(9.))
+                            .rounded(crate::theme::RADIUS_LG)
                             .bg(rgb(0x3A3A44))
                             .flex()
                             .items_center()
@@ -355,7 +355,7 @@ impl TuskApp {
                         Source::Compose(_) => div()
                             .size(px(40.))
                             .flex_none()
-                            .rounded(px(9.))
+                            .rounded(crate::theme::RADIUS_LG)
                             .bg(rgb(0x1D63ED))
                             .flex()
                             .items_center()
@@ -486,7 +486,7 @@ impl TuskApp {
                 .children(
                     failed
                         .iter()
-                        .map(|f| div().text_xs().text_color(t.red).child(f.clone())),
+                        .map(|f| div().text_caption().text_color(t.red).child(f.clone())),
                 )
                 .into_any_element(),
             _ => div()
@@ -506,7 +506,7 @@ impl TuskApp {
                         d.child(
                             div()
                                 .pt_1()
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted)
                                 .child(format!("Skipped: {}", sheet.plan.skipped.join(", "))),
                         )
@@ -576,7 +576,7 @@ impl TuskApp {
                     .flex()
                     .flex_col()
                     .gap_3()
-                    .rounded(px(14.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)

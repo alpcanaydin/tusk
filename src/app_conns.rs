@@ -194,7 +194,7 @@ impl TuskApp {
             .pl(px(5.))
             .pr(px(6.))
             .when(indent, |this| this.pl(px(22.)))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 Icon::new(IconName::Database)
@@ -211,7 +211,7 @@ impl TuskApp {
             .children(conn.tag.map(|tag| {
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(rgb(tag.color()))
                     .child(tag.label())
             }))
@@ -220,7 +220,7 @@ impl TuskApp {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::ui_font())
                     .text_color(muted.opacity(0.55))
                     .child(detail),
@@ -366,7 +366,7 @@ impl TuskApp {
             .gap_2()
             .h(px(26.))
             .px_2()
-            .rounded(px(5.))
+            .rounded(crate::theme::RADIUS_SM)
             .when(active, |this| this.bg(accent.opacity(0.14)))
             .when(!active, |this| {
                 this.hover(|this| this.bg(muted.opacity(0.08)))
@@ -380,7 +380,7 @@ impl TuskApp {
             .child(
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted.opacity(0.6))
                     .child(count.to_string()),
             )
@@ -498,7 +498,7 @@ impl TuskApp {
                     .px_2()
                     .pt_3()
                     .pb_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted.opacity(0.7))
                     .child("GROUPS"),
             );
@@ -571,7 +571,7 @@ impl TuskApp {
             .px_4()
             .border_t_1()
             .border_color(border)
-            .text_xs()
+            .text_caption()
             .text_color(muted.opacity(0.7))
             .child("click to connect · right-click for more")
             .child("esc");
@@ -596,7 +596,7 @@ impl TuskApp {
                     .w(px(680.))
                     .flex()
                     .flex_col()
-                    .rounded(px(10.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)

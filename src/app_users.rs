@@ -352,7 +352,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_size(px(crate::settings::ui_text()))
                     .text_color(fg)
                     .when(on, |d| d.bg(muted.opacity(0.18)))
@@ -360,7 +360,7 @@ impl TuskApp {
                     .child(Icon::new(IconName::User).size(px(13.)).text_color(muted))
                     .child(div().flex_1().truncate().child(r.name.clone()))
                     .when(r.superuser, |d| {
-                        d.child(div().text_xs().text_color(muted).child("super"))
+                        d.child(div().text_caption().text_color(muted).child("super"))
                     })
                     .on_click(
                         cx.listener(move |this, _, window, cx| this.select_role(i, window, cx)),
@@ -452,7 +452,7 @@ impl TuskApp {
                     .h(px(460.))
                     .flex()
                     .flex_col()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)

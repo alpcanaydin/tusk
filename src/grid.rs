@@ -1157,7 +1157,7 @@ pub(crate) fn render_value(
     let Some(v) = value else {
         return base
             .italic()
-            .text_color(t.colors.muted_foreground.opacity(0.5))
+            .text_color(t.colors.muted_foreground)
             .when(right_align, |this| this.w_full().text_right())
             .child("…")
             .into_any_element();
@@ -1371,7 +1371,7 @@ impl TableDelegate for GridDelegate {
                             .italic()
                             .text_size(px(crate::settings::table_text()))
                             .font_family(crate::settings::table_font())
-                            .text_color(muted.opacity(0.5))
+                            .text_color(muted)
                             .when(col.right_align, |d| d.w_full().text_right())
                             .child("DEFAULT"),
                     )

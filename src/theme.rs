@@ -22,8 +22,10 @@ pub mod palette {
     pub const TOOLBAR: u32 = 0x00000A;
     pub const ELEVATED: u32 = 0x111111;
     pub const BORDER: u32 = 0x222222;
-    pub const FOREGROUND: u32 = 0xBFBFBF; // terminal.foreground
-    pub const HINT: u32 = 0xC8C8C8; // hint / secondary text
+    // Primary text brighter than secondary, so the hierarchy reads (the
+    // terminal foreground #BFBFBF sat below the old #C8C8C8 hint).
+    pub const FOREGROUND: u32 = 0xE0E0E0;
+    pub const HINT: u32 = 0x8E8E93; // secondary text (macOS secondaryLabel)
     // UI accent: the table-icon blue (user choice 2026-09-23, was the old
     // orange #FF9040). Syntax `type` stays orange — it comes from the theme.
     pub const ACCENT: u32 = 0x4A90F0; // scrollbar thumb, caret, primary
@@ -267,3 +269,19 @@ fn apply_tusk_dark(theme: &mut Theme) {
     // tinted (selected / pending) rows.
     theme.colors.table_row_border = Hsla::from(rgb(0xFFFFFF)).opacity(0.11);
 }
+
+/// Secondary text (captions, hints, metadata): 0.8125 rem — 11.4 px at the
+/// default 14 px UI size. The kit's `text_xs` (0.75 rem, 10.5 px) reads too
+/// small in the thin UI font.
+pub trait TextCaption: Styled + Sized {
+    fn text_caption(self) -> Self {
+        self.text_size(rems(0.8125))
+    }
+}
+
+impl<T: Styled> TextCaption for T {}
+
+/// Corner radii: controls and chips, cards and rows, sheets and panels.
+pub const RADIUS_SM: Pixels = px(4.);
+pub const RADIUS_MD: Pixels = px(6.);
+pub const RADIUS_LG: Pixels = px(10.);

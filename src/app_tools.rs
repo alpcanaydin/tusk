@@ -135,7 +135,7 @@ impl TuskApp {
                     .h(px(520.))
                     .flex()
                     .flex_col()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)
@@ -374,7 +374,7 @@ impl TuskApp {
                     .max_h(px(520.))
                     .flex()
                     .flex_col()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)
@@ -392,7 +392,7 @@ impl TuskApp {
                         div()
                             .px_3()
                             .py_2()
-                            .text_xs()
+                            .text_caption()
                             .text_color(muted)
                             .child(status),
                     )
@@ -414,7 +414,7 @@ impl TuskApp {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .rounded(px(4.))
+                                    .rounded(crate::theme::RADIUS_SM)
                                     .hover(|d| d.bg(muted.opacity(0.1)))
                                     .child(DbIcon::Table.icon_px(14.))
                                     .child(
@@ -424,7 +424,7 @@ impl TuskApp {
                                             .text_color(fg)
                                             .child(table.clone()),
                                     )
-                                    .child(div().text_xs().text_color(muted).child(format!(
+                                    .child(div().text_caption().text_color(muted).child(format!(
                                         "{n} row{}",
                                         if *n == 1 { "" } else { "s" }
                                     )))

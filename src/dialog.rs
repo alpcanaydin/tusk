@@ -2,6 +2,7 @@
 //! opened by cmd-n / "New Connection". Owns its own form state; on a
 //! successful connect it hands the pool to the main view and closes itself.
 
+use crate::theme::TextCaption as _;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
@@ -529,7 +530,7 @@ impl ConnDialog {
                 .child(
                     div()
                         .id("dlg-notice")
-                        .rounded(px(8.))
+                        .rounded(crate::theme::RADIUS_LG)
                         .border_1()
                         .border_color(bd.opacity(0.5))
                         .shadow_md()
@@ -589,7 +590,7 @@ impl ConnDialog {
                 .flex_col()
                 .px_3()
                 .py_1p5()
-                .rounded(px(10.))
+                .rounded(crate::theme::RADIUS_LG)
                 .bg(card_bg)
                 .border_1()
                 .border_color(border)
@@ -605,7 +606,7 @@ impl ConnDialog {
                     .id(("dlg-color", i))
                     .h(px(22.))
                     .w(px(if selected { 44. } else { 22. }))
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .bg(rgb(*c))
                     .when(selected, |this| {
                         this.border_2().border_color(foreground.opacity(0.6))
@@ -739,7 +740,7 @@ impl ConnDialog {
                     div()
                         .pl(px(LABEL_W + 8.))
                         .pb_1()
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child("A file that doesn't exist yet is created.")
                         .into_any_element(),
@@ -872,7 +873,7 @@ impl ConnDialog {
                 div()
                     .pl(px(LABEL_W + 8.))
                     .pb_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("Leave the key empty to use ~/.ssh/id_ed25519 or id_rsa.")
                     .into_any_element(),
@@ -1021,7 +1022,7 @@ impl ConnDialog {
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .rounded(px(8.))
+                .rounded(crate::theme::RADIUS_LG)
                 .border_1()
                 .border_color(if on {
                     t.accent
@@ -1033,7 +1034,7 @@ impl ConnDialog {
                 .child(crate::icons::engine_badge(e, 40.))
                 .child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .text_color(fg)
                         .text_center()
                         .child(e.label()),
@@ -1056,7 +1057,7 @@ impl ConnDialog {
                     .flex_wrap()
                     .gap_1()
                     .p_2()
-                    .rounded(px(10.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .children(tiles),

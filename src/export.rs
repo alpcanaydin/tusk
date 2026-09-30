@@ -3,6 +3,7 @@
 //! Sources: tables of a schema (optionally the grid's filter) or a query
 //! result already in memory. Several tables → one file each in a folder.
 
+use crate::theme::TextCaption as _;
 use std::path::PathBuf;
 
 use gpui_kit::assets::IconName;
@@ -701,7 +702,7 @@ impl ExportWindow {
                         .max_h(px(150.))
                         .overflow_y_scroll()
                         .p_2()
-                        .rounded(px(6.))
+                        .rounded(crate::theme::RADIUS_MD)
                         .border_1()
                         .border_color(border)
                         .bg(card)
@@ -721,8 +722,8 @@ impl ExportWindow {
                         .h(px(20.))
                         .flex()
                         .items_center()
-                        .rounded(px(3.))
-                        .text_xs()
+                        .rounded(crate::theme::RADIUS_SM)
+                        .text_caption()
                         .font_family(crate::settings::table_font())
                         .when(on, |d| d.bg(accent.opacity(0.22)).text_color(fg))
                         .when(!on, |d| d.border_1().border_color(border).text_color(muted))
@@ -759,7 +760,7 @@ impl ExportWindow {
                         .items_center()
                         .justify_between()
                         .child(label("Select fields to export"))
-                        .child(div().text_xs().text_color(muted).child(hint)),
+                        .child(div().text_caption().text_color(muted).child(hint)),
                 )
                 .child(
                     div()
@@ -767,7 +768,7 @@ impl ExportWindow {
                         .max_h(px(96.))
                         .overflow_y_scroll()
                         .p_2()
-                        .rounded(px(6.))
+                        .rounded(crate::theme::RADIUS_MD)
                         .border_1()
                         .border_color(border)
                         .bg(card)
@@ -782,11 +783,11 @@ impl ExportWindow {
                 .max_h(px(64.))
                 .overflow_y_scroll()
                 .p_2()
-                .rounded(px(6.))
+                .rounded(crate::theme::RADIUS_MD)
                 .border_1()
                 .border_color(border)
                 .bg(card)
-                .text_xs()
+                .text_caption()
                 .font_family(crate::settings::table_font())
                 .text_color(muted)
                 .child(self.export_query()),
@@ -797,7 +798,7 @@ impl ExportWindow {
             .flex()
             .gap_0p5()
             .p_0p5()
-            .rounded(px(6.))
+            .rounded(crate::theme::RADIUS_MD)
             .bg(fg.opacity(0.06));
         for f in Format::ALL {
             let active = self.opts.format == f;
@@ -808,8 +809,8 @@ impl ExportWindow {
                     .h(px(22.))
                     .flex()
                     .items_center()
-                    .rounded(px(5.))
-                    .text_xs()
+                    .rounded(crate::theme::RADIUS_SM)
+                    .text_caption()
                     .text_color(if active { fg } else { muted })
                     .when(active, |d| d.bg(fg.opacity(0.12)))
                     .when(!active, |d| d.hover(|d| d.text_color(fg)))
@@ -992,7 +993,7 @@ impl ExportWindow {
             .items_center()
             .gap_3()
             .p_3()
-            .rounded(px(8.))
+            .rounded(crate::theme::RADIUS_LG)
             .border_1()
             .border_color(border)
             .bg(card)
@@ -1058,7 +1059,7 @@ impl ExportWindow {
                                 .flex()
                                 .items_center()
                                 .gap_1()
-                                .text_xs()
+                                .text_caption()
                                 .text_color(if ok { ok_c } else { err_c })
                                 .child(
                                     Icon::new(if ok {

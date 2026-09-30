@@ -615,7 +615,7 @@ impl TuskApp {
             .gap_1p5()
             .px_2()
             .h(px(crate::settings::row_h()))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 Icon::new(if collapsed {
@@ -630,8 +630,8 @@ impl TuskApp {
             .child(title)
             .child(
                 div()
-                    .text_xs()
-                    .text_color(muted.opacity(0.6))
+                    .text_caption()
+                    .text_color(muted)
                     .child(count.to_string()),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -738,7 +738,7 @@ impl TuskApp {
                 Vec::new(),
             ),
         };
-        let label = |s: &'static str| div().flex_none().text_xs().text_color(muted).child(s);
+        let label = |s: &'static str| div().flex_none().text_caption().text_color(muted).child(s);
         let chips = div()
             .flex()
             .items_center()
@@ -746,9 +746,9 @@ impl TuskApp {
             .children(pk.iter().map(|c| {
                 div()
                     .px_1p5()
-                    .rounded(px(3.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .bg(chip_bg)
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::table_font())
                     .text_color(fg)
                     .child(c.clone())
@@ -756,9 +756,9 @@ impl TuskApp {
             .when(pk.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .italic()
-                        .text_color(muted.opacity(0.6))
+                        .text_color(muted)
                         .child("none"),
                 )
             });
@@ -810,10 +810,12 @@ impl TuskApp {
             .child(label("Primary"))
             .child(primary)
             .when(designing, |d| {
-                d.child(div().flex_1())
-                    .child(div().text_xs().text_color(muted.opacity(0.7)).child(
-                        crate::kbd::rich_colored("[cmd-s] creates the table", muted.opacity(0.7)),
-                    ))
+                d.child(div().flex_1()).child(
+                    div()
+                        .text_caption()
+                        .text_color(muted)
+                        .child(crate::kbd::rich_colored("[cmd-s] creates the table", muted)),
+                )
             })
             .into_any_element()
     }
@@ -844,12 +846,9 @@ impl TuskApp {
             )
             .child(
                 div()
-                    .text_xs()
-                    .text_color(t.muted_foreground.opacity(0.7))
-                    .child(crate::kbd::rich_colored(
-                        hint,
-                        t.muted_foreground.opacity(0.7),
-                    )),
+                    .text_caption()
+                    .text_color(t.muted_foreground)
+                    .child(crate::kbd::rich_colored(hint, t.muted_foreground)),
             )
             .into_any_element()
     }
