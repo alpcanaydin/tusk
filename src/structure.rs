@@ -10,6 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableState};
 use gpui_kit::component::theme::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -764,7 +765,10 @@ impl TableDelegate for StructureDelegate {
         let is_pk = col_ix == F_NAME && row.pk;
         // data_type reads as a combo box (↕ opens the type list).
         let type_combo = col_ix == F_TYPE && self.editable && !row.deleted;
+        let (editable, deleted, col_name) = (self.editable, row.deleted, row.name.clone());
+        let entity = cx.entity();
         div()
+            .id(("scell", row_ix * 8 + col_ix))
             .size_full()
             .flex()
             .items_center()
@@ -806,6 +810,50 @@ impl TableDelegate for StructureDelegate {
                             }),
                         ),
                 )
+            })
+            // Right-click: the column row's actions (a new column is always
+            // added last: ADD COLUMN can't place it elsewhere).
+            .context_menu(move |menu: PopupMenu, _, _| {
+                let name = col_name.clone();
+                let (add, del) = (entity.clone(), entity.clone());
+                let menu = menu.item(PopupMenuItem::new("Copy Column Name").on_click(
+                    move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(name.clone())),
+                ));
+                if !editable {
+                    return menu;
+                }
+                menu.item(
+                    PopupMenuItem::new("Add Column").on_click(move |_, window, cx| {
+                        add.update(cx, |st, cx| {
+                            let row = st.delegate_mut().add_column();
+                            st.scroll_to_row(row, cx);
+                            st.set_selected_cell(row, F_NAME, cx);
+                            st.focus_handle(cx).focus(window, cx);
+                            cx.notify();
+                        });
+                        if let Some(app) = cx.try_global::<crate::app::TuskHandle>() {
+                            app.0.clone().update(cx, |_, cx| cx.notify());
+                        }
+                    }),
+                )
+                .separator()
+                .map(|m| {
+                    let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                        del.update(cx, |st, cx| {
+                            st.delegate_mut().toggle_delete(row_ix);
+                            cx.notify();
+                        });
+                        // The status bar's pending count lives in the app.
+                        if let Some(app) = cx.try_global::<crate::app::TuskHandle>() {
+                            app.0.clone().update(cx, |_, cx| cx.notify());
+                        }
+                    };
+                    if deleted {
+                        m.item(PopupMenuItem::new("Keep Column").on_click(on_click))
+                    } else {
+                        m.item(crate::theme::danger_item("Delete Column", on_click))
+                    }
+                })
             })
             .into_any_element()
     }
