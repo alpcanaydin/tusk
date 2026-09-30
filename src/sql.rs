@@ -569,6 +569,8 @@ impl TableDelegate for QueryDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let col = &self.columns[col_ix];
         let mut c = Column::new(col.name.clone(), col.name.clone());
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         // Cells pad themselves (px_2): tints / editors / frames fill edge to edge.
         c = c.p_0();
         if col.right {

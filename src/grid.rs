@@ -1334,6 +1334,56 @@ impl TableDelegate for GridDelegate {
         c
     }
 
+    /// A column header dragged to another spot: reorder the columns and
+    /// every column-indexed value with it (loaded rows, pending edits and
+    /// deletes), so cells keep following their header. Display only: the
+    /// table in the database is untouched. The undo history (indexed by
+    /// the old positions) starts over.
+    fn move_column(
+        &mut self,
+        col_ix: usize,
+        to_ix: usize,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) {
+        let n = self.columns.len();
+        if col_ix >= n || to_ix >= n || col_ix == to_ix {
+            return;
+        }
+        fn shift<T>(v: &mut Vec<T>, from: usize, to: usize) {
+            if from < v.len() && to < v.len() {
+                let x = v.remove(from);
+                v.insert(to, x);
+            }
+        }
+        // new_ix[old] = where the column at `old` ends up.
+        let mut order: Vec<usize> = (0..n).collect();
+        shift(&mut order, col_ix, to_ix);
+        let mut new_ix = vec![0; n];
+        for (pos, old) in order.iter().enumerate() {
+            new_ix[*old] = pos;
+        }
+        shift(&mut self.columns, col_ix, to_ix);
+        if self.metas.len() == n {
+            shift(&mut self.metas, col_ix, to_ix);
+        }
+        for row in self.rows.values_mut() {
+            shift(row, col_ix, to_ix);
+        }
+        for e in self.edits.values_mut() {
+            shift(&mut e.original, col_ix, to_ix);
+            e.changes = std::mem::take(&mut e.changes)
+                .into_iter()
+                .map(|(c, v)| (new_ix.get(c).copied().unwrap_or(c), v))
+                .collect();
+        }
+        for row in self.deleted.values_mut() {
+            shift(row, col_ix, to_ix);
+        }
+        self.editing = None;
+        self.history.clear();
+    }
+
     fn render_last_empty_col(
         &mut self,
         _window: &mut Window,

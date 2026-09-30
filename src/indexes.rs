@@ -580,6 +580,8 @@ impl TableDelegate for IndexDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let (name, width) = FIELDS[col_ix];
         let mut c = Column::new(name, name).p_0();
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         c.width = px(width);
         c.resizable = true;
         c

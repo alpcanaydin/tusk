@@ -601,6 +601,8 @@ impl TableDelegate for StructureDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let (name, width) = FIELDS[col_ix];
         let mut c = Column::new(name, name);
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         // Cells pad themselves (px_2): tints / editors / frames fill edge to edge.
         c = c.p_0();
         c.width = px(width);
