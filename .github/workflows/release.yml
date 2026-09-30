@@ -161,12 +161,6 @@ jobs:
       # No build cache here: a release builds from a clean tree.
       - name: Toolchain and bundled tools
         run: |
-          # The app icon (Icon Composer .icon) needs Xcode 26+; pick the newest.
-          xcode=""
-          for x in /Applications/Xcode_2[6-9]*.app; do [ -d "$x" ] && xcode="$x"; done
-          [ -n "$xcode" ] || { echo "::error::no Xcode 26+ on this runner"; exit 1; }
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
           rustup show active-toolchain || rustup toolchain install
           brew install --quiet libpq go
 
