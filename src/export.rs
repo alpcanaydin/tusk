@@ -182,12 +182,9 @@ pub fn render(
                             .iter()
                             .enumerate()
                             .map(|(i, c)| {
+                                // JSON keeps NULL as null ("Convert NULL to
+                                // EMPTY" is a CSV option).
                                 let v = row.get(i).cloned().unwrap_or(Value::Null);
-                                let v = if v.is_null() && opts.null_empty {
-                                    Value::String(String::new())
-                                } else {
-                                    v
-                                };
                                 (c.clone(), v)
                             })
                             .collect(),
@@ -950,12 +947,6 @@ impl ExportWindow {
                 .flex()
                 .flex_col()
                 .gap_2()
-                .child(check(
-                    "exp-null-j",
-                    "Convert NULL to EMPTY",
-                    o.null_empty,
-                    |o, v| o.null_empty = v,
-                ))
                 .child(check("exp-pretty", "Pretty print", o.pretty, |o, v| {
                     o.pretty = v
                 }))
@@ -1159,5 +1150,19 @@ mod tests {
             "INSERT INTO \"public\".\"t\" (\"id\", \"note\", \"price\") VALUES\n    (1, "
         ));
         assert_eq!(sql.matches("INSERT").count(), 1);
+    }
+
+    /// NULL stays null in JSON even with the CSV "Convert NULL to EMPTY" on.
+    #[test]
+    fn json_keeps_null() {
+        let cols = vec!["id".to_string(), "note".to_string()];
+        let rows = vec![vec![json!(1), json!(null)]];
+        let o = Options {
+            format: Format::Json,
+            null_empty: true,
+            pretty: false,
+            ..Options::default()
+        };
+        assert_eq!(render(&o, None, None, &cols, &rows), r#"[{"id":1,"note":null}]"#);
     }
 }

@@ -518,12 +518,14 @@ pub async fn fetch_all_rows(
 ) -> DbResult<(Vec<String>, Vec<Vec<Value>>)> {
     let cols = db::fetch_columns(pool, schema, name).await?;
     let names: Vec<String> = cols.iter().map(|c| c.name.clone()).collect();
+    // Primary-key order, like the grid, so exports don't come out in heap order.
+    let order = crate::grid::pk_order(pool.dialect(), &cols);
     let rows = db::fetch_window(
         pool,
         schema,
         name,
         where_sql.as_ref(),
-        None,
+        order.as_deref(),
         false,
         i64::MAX,
         0,

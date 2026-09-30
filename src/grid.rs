@@ -958,7 +958,7 @@ fn default_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<
     }
 }
 
-fn pk_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<String> {
+pub(crate) fn pk_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<String> {
     let pk: Vec<String> = metas
         .iter()
         .filter(|m| m.is_pk)
