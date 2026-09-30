@@ -43,6 +43,7 @@ mod themes;
 mod toast;
 mod undo;
 mod updater;
+mod whats_new;
 mod widths;
 
 /// Handle of the main (connection / workspace) window, for dock reopen.
@@ -147,6 +148,7 @@ fn open_main_window(cx: &mut App, auto_connect: bool) {
             if auto_connect {
                 // ⌘Q and relaunch lands straight back in the last connection.
                 view.update(cx, |app, cx| app.auto_connect(cx));
+                whats_new::announce(window, cx);
             }
             cx.new(|cx| Root::new(view, window, cx))
         },
