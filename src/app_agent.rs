@@ -480,7 +480,7 @@ impl TuskApp {
         }
         vec![json!({
             "type": "resource",
-            "resource": { "uri": "tusk://context", "mimeType": "text/markdown", "text": text }
+            "resource": { "uri": crate::agent::CONTEXT_URI, "mimeType": "text/markdown", "text": text }
         })]
     }
 
@@ -1739,7 +1739,8 @@ fn render_entry(
                     .py_2()
                     .text_size(ui)
                     .text_color(fg)
-                    .child(text.clone()),
+                    // A resumed chat replays the prompt with Tusk's context.
+                    .child(crate::agent::strip_injected_context(text)),
             )
             .into_any_element(),
         Entry::Agent { md, .. } => row
