@@ -220,7 +220,10 @@ pub(crate) fn strip_injected_context(text: &str) -> String {
         }
     }
     out.push_str(rest);
+    // Replayed chunks can arrive glued together ("…the numbertusk://context"),
+    // so the bare URI is also dropped where it ends a line.
     out.lines()
+        .map(|l| l.trim_end().strip_suffix(CONTEXT_URI).unwrap_or(l))
         .filter(|l| {
             let t = l.trim();
             t != CONTEXT_URI
@@ -1458,6 +1461,10 @@ mod tests {
 
     #[test]
     fn replayed_prompt_hides_injected_context() {
+        assert_eq!(
+            strip_injected_context("Reply with just the numbertusk://context"),
+            "Reply with just the number"
+        );
         let replay = "why is it slow?\ntusk://context\n<context ref=\"tusk://context\">\nYou are the assistant inside Tusk…\nConnection: x\n</context>";
         assert_eq!(strip_injected_context(replay), "why is it slow?");
         assert_eq!(
