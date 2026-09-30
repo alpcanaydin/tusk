@@ -145,15 +145,12 @@ impl InputBaseState<EditorMode> {
             return;
         }
 
-        let start_offset = self
-            .extras
-            .context_menu_content
-            .completion
-            .trigger_start_offset
-            .unwrap_or(start);
-        if new_offset < start_offset {
-            return;
-        }
+        // Tusk patch: the query (and the range an accepted item replaces) is
+        // the identifier ending at the cursor, worked out on every keystroke.
+        // Upstream kept the first trigger's offset for good (nothing reset it
+        // when the menu closed), so a later completion on the line replaced
+        // everything from that old spot — Enter wiped the start of the line.
+        let start_offset = completion_word_start(&self.text, new_offset);
 
         let query = self
             .text_for_range(
@@ -370,3 +367,19 @@ impl InputBaseState<EditorMode> {
         true
     }
 }
+
+/// Tusk patch: start of the identifier (letters, digits, `_`) that ends at
+/// `offset` — the word a completion replaces. `offset` itself when the
+/// character before it isn't part of one (right after `.` or a space).
+pub fn completion_word_start(text: &Rope, offset: usize) -> usize {
+    let mut start = offset;
+    for c in text.chars_at(offset).reversed() {
+        if c.is_alphanumeric() || c == '_' {
+            start -= c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    start
+}
+

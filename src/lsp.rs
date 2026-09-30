@@ -617,6 +617,30 @@ impl CompletionProvider for SqlDocument {
 mod tests {
     use super::{decorate, frame, is_trigger_char, word_prefix};
 
+    /// An accepted completion replaces only the word being typed (the kit
+    /// used to reuse the first completion's start, so Enter replaced the
+    /// line from there), and that word is the prefix the menu matched.
+    #[test]
+    fn completion_replaces_only_the_typed_word() {
+        use gpui_kit::base::input::completion_word_start;
+        for (text, word) in [
+            ("select * from pro|", "pro"),
+            ("select na| from products", "na"),
+            ("sel|", "sel"),
+            ("select * from public.|", ""),
+            ("select * from public.us|", "us"),
+            ("select |", ""),
+            ("where çağrı_id|", "çağrı_id"),
+        ] {
+            let offset = text.find('|').unwrap();
+            let text = text.replace('|', "");
+            let rope = gpui_kit::base::input::Rope::from_str(&text);
+            let start = completion_word_start(&rope, offset);
+            assert_eq!(&text[start..offset], word, "{text:?}");
+            assert_eq!(word_prefix(&text, offset), word, "{text:?}");
+        }
+    }
+
     /// sqls against the local containers: table names complete from each
     /// live catalog (dev builds bundle it with scripts/bundle-sqls.sh
     /// target/debug/pgls).

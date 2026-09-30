@@ -150,6 +150,12 @@ impl InputBaseState<EditorMode> {
     }
 
     pub fn dismiss_completion_overlay(&mut self, cx: &mut Context<Self>) {
+        // Tusk patch: forget where this completion started, so the next one
+        // doesn't reuse it.
+        self.extras
+            .context_menu_content
+            .completion
+            .trigger_start_offset = None;
         if self.extras.context_menu_content.completion.open {
             self.extras.context_menu_content.completion.open = false;
             cx.notify();
@@ -186,8 +192,10 @@ impl InputBaseState<EditorMode> {
                 }
             }
         } else if let Some(insert_text) = item.insert_text.as_ref() {
+            // Tusk patch: like the label, `insertText` replaces the word being
+            // typed (LSP leaves that range to the client); upstream inserted it
+            // after the prefix, so "pro" + "products" became "proproducts".
             new_text.clone_from(insert_text);
-            range = range.end..range.end;
         }
         self.completion_inserting = true;
         let range = self.range_to_utf16(&range);
