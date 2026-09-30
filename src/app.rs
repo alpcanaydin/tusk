@@ -3927,9 +3927,6 @@ impl Render for TuskApp {
         let t = cx.theme();
         div()
             .id("tusk-app")
-            // "--" (SQL comments, CLI flags) must not turn into an em dash:
-            // no ligatures in the editor, grid, console and the rest.
-            .font_features(crate::theme::no_ligatures())
             .key_context("TuskApp")
             .track_focus(&self.focus)
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {
