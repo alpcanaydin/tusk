@@ -419,6 +419,15 @@ pub fn forget_last_connection() {
 
 // ---- Keychain (passwords never touch the JSON file) ----
 
+/// What the OS calls its credential store, for labels and errors.
+pub const CREDENTIAL_STORE: &str = if cfg!(target_os = "macos") {
+    "Keychain"
+} else if cfg!(windows) {
+    "Credential Manager"
+} else {
+    "system keyring"
+};
+
 const KEYCHAIN_SERVICE: &str = "tusk-postgres";
 /// Keychain services under the app's previous name, Veri: read once and
 /// copied to the ones above, so passwords saved before the rename keep working.

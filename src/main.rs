@@ -1,3 +1,7 @@
+// A GUI app on Windows: no console window behind it (release builds only, so
+// `cargo run` still shows logs). `--mcp-bridge` keeps working over its pipes.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use gpui_kit::assets::AllAssets;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;

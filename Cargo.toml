@@ -24,6 +24,7 @@ duckdb = { version = "1", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 hmac = "0.12"
 sha2 = "0.10"
+flate2 = "1"
 hex = "0.4"
 base64 = "0.22"
 jsonwebtoken = "9"
@@ -60,3 +61,6 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }

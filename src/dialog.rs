@@ -401,23 +401,26 @@ impl ConnDialog {
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
             db::save_password(&conn.name, password)
-                .map_err(|e| format!("Credential store error: {e}"))?;
+                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
             match db::load_password(&conn.name) {
                 Ok(back) if back == password => {}
                 Ok(_) => {
-                    keychain_warning =
-                        Some("the credential store gave back a different password".to_string());
+                    keychain_warning = Some(format!(
+                        "the {} gave back a different password",
+                        db::CREDENTIAL_STORE
+                    ));
                 }
                 Err(e) => {
                     keychain_warning = Some(format!(
-                        "the password can't be read back from the credential store ({e})"
+                        "the password can't be read back from the {} ({e})",
+                        db::CREDENTIAL_STORE
                     ));
                 }
             }
         }
         if conn.ssh.is_some() && !ssh_secret.is_empty() {
             db::save_ssh_secret(&conn.name, ssh_secret)
-                .map_err(|e| format!("Credential store error: {e}"))?;
+                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
         }
         // Editing an existing profile: replace it in place (a rename moves
         // its Keychain secrets along); otherwise add or update by name.
@@ -670,7 +673,7 @@ impl ConnDialog {
         use crate::engine::{Engine, Form};
         let engine = self.form.engine;
         let keychain = Checkbox::new("dlg-save-pw")
-            .label("Store in system keyring")
+            .label(format!("Store in {}", db::CREDENTIAL_STORE))
             .checked(self.form.save_password)
             .on_click(cx.listener(|this, checked: &bool, _, cx| {
                 this.form.save_password = *checked;

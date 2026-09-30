@@ -218,7 +218,7 @@ fn find_binary(binary: &str) -> Option<PathBuf> {
     dirs.push("/opt/homebrew/bin".into());
     dirs.push("/usr/local/bin".into());
     dirs.into_iter()
-        .map(|d| d.join(binary))
+        .map(|d| d.join(format!("{binary}{}", std::env::consts::EXE_SUFFIX)))
         .find(|p| p.is_file())
 }
 
