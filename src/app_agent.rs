@@ -507,7 +507,7 @@ impl TuskApp {
                     g.table.schema, g.table.name
                 ));
             }
-            Some(WorkspaceTab::Sql(t)) => {
+            Some(WorkspaceTab::Sql(t)) if crate::settings::get().ai_include_active_query => {
                 let sql = t.editor.read(cx).text().to_string();
                 let sql: String = sql.chars().take(4000).collect();
                 if !sql.trim().is_empty() {
@@ -517,7 +517,7 @@ impl TuskApp {
                     ));
                 }
             }
-            None => {}
+            Some(WorkspaceTab::Sql(_)) | None => {}
         }
         vec![json!({
             "type": "resource",
