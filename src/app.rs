@@ -294,6 +294,9 @@ pub struct TuskApp {
     console_seen: u64,
     history_search: Entity<InputState>,
     console_scroll: panels::ConsoleScroll,
+    /// Editor settings the open SQL tabs were last given (line numbers,
+    /// soft wrap, tab size) — Settings changes apply to them live.
+    editor_prefs: (bool, bool, u32),
     /// Filtered Console / History lists, rebuilt only when the log or the
     /// filter changes (not on every frame).
     console_cache: std::cell::RefCell<Option<panels::ConsoleCache>>,
@@ -393,6 +396,10 @@ impl TuskApp {
             console_seen: 0,
             history_search,
             console_scroll: Default::default(),
+            editor_prefs: {
+                let p = crate::settings::get();
+                (p.editor_line_numbers, p.editor_soft_wrap, p.editor_tab_size)
+            },
             console_cache: Default::default(),
             history_cache: Default::default(),
             problems: Vec::new(),
@@ -2253,6 +2260,31 @@ impl TuskApp {
 
     /// Forget the workspace of the current connection: tabs, split panes,
     /// history, sidebar selection and pending sidebar edits.
+    /// Settings ▸ SQL Editor changed: give every open editor the new values.
+    fn sync_editor_prefs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let p = crate::settings::get();
+        let now = (p.editor_line_numbers, p.editor_soft_wrap, p.editor_tab_size);
+        if now == self.editor_prefs {
+            return;
+        }
+        self.editor_prefs = now;
+        for tab in &self.tabs {
+            if let WorkspaceTab::Sql(t) = tab {
+                t.editor.update(cx, |e, cx| {
+                    e.set_line_number(now.0, window, cx);
+                    e.set_soft_wrap(now.1, window, cx);
+                    e.set_tab_size(
+                        gpui_kit::component::input::TabSize {
+                            tab_size: now.2 as usize,
+                            hard_tabs: false,
+                        },
+                        cx,
+                    );
+                });
+            }
+        }
+    }
+
     fn reset_workspace(&mut self) {
         self.tabs.clear();
         self.split = None;
@@ -3850,6 +3882,7 @@ impl Render for TuskApp {
             crate::toast::push(window, cx, ok, msg);
         }
         self.sync_row_detail(window, cx);
+        self.sync_editor_prefs(window, cx);
         // A tab opened from elsewhere lands in the focused pane.
         if let (Some((l, r)), Some(cur)) = (self.split, self.active_tab)
             && cur != l
@@ -3865,6 +3898,9 @@ impl Render for TuskApp {
         let t = cx.theme();
         div()
             .id("tusk-app")
+            // "--" (SQL comments, CLI flags) must not turn into an em dash:
+            // no ligatures in the editor, grid, console and the rest.
+            .font_features(crate::theme::no_ligatures())
             .key_context("TuskApp")
             .track_focus(&self.focus)
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {

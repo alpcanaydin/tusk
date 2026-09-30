@@ -121,8 +121,10 @@ impl TuskApp {
             .item(item("New Table…", |app, _, _, w, cx| {
                 app.new_table_editor(w, cx)
             }))
-            .item(item("New View…", |app, _, _, w, cx| {
-                app.new_view_editor(w, cx)
+            .item(item("New View…", |app, k, n, w, cx| {
+                // Selecting from the table that was right-clicked.
+                let from = (k != TableKind::Function).then_some(n);
+                app.new_view_editor_from(from, w, cx)
             }));
         if !is_fn {
             menu = menu.separator().item(item("Export…", |app, k, n, w, cx| {
@@ -979,8 +981,26 @@ impl TuskApp {
     /// New View: a query tab with a name field; ⌘S runs
     /// `CREATE VIEW <name> AS <query>`.
     pub(crate) fn new_view_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let first = self.objects.tables.first().cloned();
-        let body = match first {
+        self.new_view_editor_from(None, window, cx);
+    }
+
+    /// New View selecting from `from`; else the selected sidebar object's
+    /// table, else the first table.
+    pub(crate) fn new_view_editor_from(
+        &mut self,
+        from: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let source = from
+            .or_else(|| {
+                self.selected_object
+                    .as_ref()
+                    .filter(|(k, _)| *k != TableKind::Function)
+                    .map(|(_, n)| n.clone())
+            })
+            .or_else(|| self.objects.tables.first().cloned());
+        let body = match source {
             Some(t) => format!(
                 "SELECT *\nFROM {}.{}",
                 db::quote_ident(&self.current_schema),
