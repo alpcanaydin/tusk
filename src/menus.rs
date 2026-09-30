@@ -11,6 +11,7 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &OpenSettings, cx| crate::settings::SettingsWindow::open(cx));
     cx.on_action(|_: &ShowAbout, _| crate::dock::show_about());
+    cx.on_action(|_: &ShowReleaseNotes, cx| crate::whats_new::open_release_notes(cx));
     cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
     cx.on_action(|_: &RestartToUpdate, _| crate::updater::restart_to_update());
     refresh(cx);
@@ -27,6 +28,7 @@ pub fn refresh(cx: &mut App) {
     };
     let mut app_menu = vec![
         MenuItem::action("About Tusk", ShowAbout),
+        MenuItem::action("Release Notes", ShowReleaseNotes),
         MenuItem::separator(),
         MenuItem::action("Settings…", OpenSettings),
     ];

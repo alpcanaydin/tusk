@@ -96,6 +96,7 @@ gpui_kit::actions!(
         OpenSettings,
         CheckForUpdates,
         ShowAbout,
+        ShowReleaseNotes,
         RestartToUpdate,
         OpenConnections,
         BackupDatabase,
