@@ -286,9 +286,10 @@ impl TuskApp {
             if members.is_empty() && !q.is_empty() {
                 continue;
             }
-            // A search, or the connected profile inside, keeps a group open.
-            let holds_active = members.iter().any(|&i| saved[i].name == self.active_name);
-            let open = !crate::settings::group_collapsed(folder) || !q.is_empty() || holds_active;
+            // A search keeps a group open; otherwise the user's fold wins
+            // (connecting unfolds the connection's group once, see
+            // `connected_with`, but it can be folded again).
+            let open = !q.is_empty() || !crate::settings::group_collapsed(folder);
             lines.push(Line::Group(folder.clone(), members.len(), open));
             if open {
                 lines.extend(members.into_iter().map(|ix| Line::Conn(ix, true)));

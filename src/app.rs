@@ -2196,6 +2196,12 @@ impl TuskApp {
         .detach();
         self.pool = Some(pool);
         self.active_name = name.clone();
+        // Connections tree: show the new connection by unfolding its group.
+        if let Some(folder) = conn.folder.as_deref()
+            && crate::settings::group_collapsed(folder)
+        {
+            crate::settings::toggle_group_collapsed(cx, folder);
+        }
         self.server_label = Some(format!("{} · {name} @ {host}:{port}", conn.engine.label()));
         self.status_line.clear();
         self.screen = AppScreen::Workspace;

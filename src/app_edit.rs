@@ -970,12 +970,7 @@ impl TuskApp {
                 n += st.read(cx).delegate().pending_count();
             }
         }
-        (n > 0).then(|| {
-            format!(
-                "{n} unsaved change{}",
-                if n == 1 { "" } else { "s" }
-            )
-        })
+        (n > 0).then(|| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" }))
     }
 
     // ---------- ⌘S ----------
