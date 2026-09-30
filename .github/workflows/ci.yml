@@ -84,6 +84,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.code == 'true') }}
     strategy:
+      # Finish every platform so a failure does not hide other diagnostics.
+      fail-fast: false
       matrix:
         os: [macos-15, ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}

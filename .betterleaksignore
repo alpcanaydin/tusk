@@ -1,0 +1,3 @@
+# Public elastic:tusk credentials for the disposable local Elasticsearch test fixture.
+# Suppress only this historical test-fixture finding; all other secrets remain checked.
+afb581a1e2a3ac7054ff25d6e5b5aa242cfc0443:docker-compose.integration.yml:curl-auth-user:42

@@ -44,6 +44,7 @@ mod migrate;
 mod objects;
 mod omarchy;
 mod palette;
+#[cfg(not(target_os = "macos"))]
 mod release_check;
 mod settings;
 mod sql;
