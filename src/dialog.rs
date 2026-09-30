@@ -396,7 +396,8 @@ impl ConnDialog {
         // leaves the user locked out on restart with no explanation.
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
-            db::save_password(&conn.name, password).map_err(|e| format!("Credential store error: {e}"))?;
+            db::save_password(&conn.name, password)
+                .map_err(|e| format!("Credential store error: {e}"))?;
             match db::load_password(&conn.name) {
                 Ok(back) if back == password => {}
                 Ok(_) => {

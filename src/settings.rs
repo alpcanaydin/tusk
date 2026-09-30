@@ -252,7 +252,7 @@ impl Prefs {
 
 #[cfg(test)]
 mod tests {
-    use super::Prefs;
+    use super::{Prefs, SIDEBAR_LAYOUTS};
 
     #[test]
     fn gpu_preference_accepts_only_pci_device_ids() {
@@ -263,6 +263,20 @@ mod tests {
         assert_eq!(prefs.clone().sanitized().gpu_device, "2520");
         prefs.gpu_device = "not-a-device".into();
         assert!(prefs.sanitized().gpu_device.is_empty());
+    }
+
+    #[test]
+    fn sidebar_layout_defaults_to_objects_and_rejects_unknown() {
+        assert_eq!(Prefs::default().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(r#"{"sidebar_layout": "Sideways"}"#).unwrap();
+        assert_eq!(p.sanitized().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(
+            r#"{"sidebar_layout": "Connections tree", "sidebar_collapsed_groups": ["Acme"]}"#,
+        )
+        .unwrap();
+        let p = p.sanitized();
+        assert_eq!(p.sidebar_layout, SIDEBAR_LAYOUTS[1]);
+        assert_eq!(p.sidebar_collapsed_groups, ["Acme"]);
     }
 }
 
@@ -886,23 +900,23 @@ impl SettingsWindow {
         let safety = SettingPage::new("Safe Mode")
             .icon(IconName::ShieldCheck)
             .group(
-                SettingGroup::new()
-                    .title("Confirmations")
-                    .item(switch(
-                        "Confirm Dangerous Queries",
-                        "Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.",
-                        |p| p.confirm_destructive,
-                        |p, v| p.confirm_destructive = v,
-                        d.confirm_destructive,
-                    ))
-                    .item(switch(
-                        "Confirm Before Saving",
-                        "Ask before saving pending changes, or before a query writes to the database.",
-                        |p| p.confirm_save,
-                        |p, v| p.confirm_save = v,
-                        d.confirm_save,
-                    )),
-            );
+            SettingGroup::new()
+                .title("Confirmations")
+                .item(switch(
+                    "Confirm Dangerous Queries",
+                    "Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.",
+                    |p| p.confirm_destructive,
+                    |p, v| p.confirm_destructive = v,
+                    d.confirm_destructive,
+                ))
+                .item(switch(
+                    "Confirm Before Saving",
+                    "Ask before saving pending changes, or before a query writes to the database.",
+                    |p| p.confirm_save,
+                    |p, v| p.confirm_save = v,
+                    d.confirm_save,
+                )),
+        );
         vec![general, appearance, interface, editor, data, safety]
     }
 }
@@ -956,24 +970,5 @@ impl Render for SettingsWindow {
                     .min_h_0()
                     .child(Settings::new("tusk-settings").small().pages(self.pages())),
             )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Prefs, SIDEBAR_LAYOUTS};
-
-    #[test]
-    fn sidebar_layout_defaults_to_objects_and_rejects_unknown() {
-        assert_eq!(Prefs::default().sidebar_layout, SIDEBAR_LAYOUTS[0]);
-        let p: Prefs = serde_json::from_str(r#"{"sidebar_layout": "Sideways"}"#).unwrap();
-        assert_eq!(p.sanitized().sidebar_layout, SIDEBAR_LAYOUTS[0]);
-        let p: Prefs = serde_json::from_str(
-            r#"{"sidebar_layout": "Connections tree", "sidebar_collapsed_groups": ["Acme"]}"#,
-        )
-        .unwrap();
-        let p = p.sanitized();
-        assert_eq!(p.sidebar_layout, SIDEBAR_LAYOUTS[1]);
-        assert_eq!(p.sidebar_collapsed_groups, ["Acme"]);
     }
 }
