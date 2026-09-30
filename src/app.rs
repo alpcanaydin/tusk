@@ -225,6 +225,7 @@ pub struct TuskApp {
     lsp: Option<std::sync::Arc<crate::lsp::LspClient>>,
     /// Catalog completion for engines without a language server.
     completer: Option<crate::complete::SchemaCompletion>,
+    lsp_note: String,
     active_name: String,
     /// Right-side status label, e.g. "PostgreSQL 17 · name @ host:port".
     /// None while disconnected (right side stays empty).
@@ -342,6 +343,21 @@ pub struct TuskApp {
 }
 
 impl TuskApp {
+    pub fn open_document_editor(&mut self, cx: &mut Context<Self>) {
+        if let Some(db) = self
+            .pool
+            .clone()
+            .filter(|d| d.engine() == crate::engine::Engine::Elasticsearch)
+        {
+            let index = self
+                .active_tab
+                .and_then(|i| self.grid_tab(i))
+                .map(|g| g.table.name.clone())
+                .unwrap_or_default();
+            crate::document_editor::DocumentEditor::open(db, index, cx);
+        }
+    }
+
     pub fn new(
         form: ConnectionForm,
         filter: Entity<InputState>,
@@ -363,6 +379,7 @@ impl TuskApp {
             tunnel: None,
             lsp: None,
             completer: None,
+            lsp_note: String::new(),
             active_name: String::new(),
             server_label: None,
             focus: cx.focus_handle(),
@@ -704,6 +721,25 @@ impl TuskApp {
                     .gap_2()
                     .child(toggles)
                     .children(problems)
+                    .when(workspace, |d| {
+                        d.child(
+                            Button::new("sql-assistance-status")
+                                .ghost()
+                                .xsmall()
+                                .label(
+                                    self.lsp
+                                        .as_ref()
+                                        .map(|c| match c.phase() {
+                                            0 => "SQL assistance starting…",
+                                            1 => "SQL assistance running",
+                                            _ => "SQL assistance unavailable",
+                                        })
+                                        .unwrap_or(&self.lsp_note)
+                                        .to_string(),
+                                )
+                                .on_click(|_, _, cx| crate::settings::SettingsWindow::open(cx)),
+                        )
+                    })
                     .child(
                         div()
                             .text_caption()
@@ -1300,7 +1336,7 @@ impl TuskApp {
         };
         let state = g.state.clone();
         // Pending edits survive a refresh (keyed by ctid).
-        grid::reload(&state, cx);
+        grid::refresh(&state, cx);
     }
 
     // ---------- SQL tabs (Phase 7) ----------
@@ -1349,7 +1385,11 @@ impl TuskApp {
         });
         let editor = cx.new(|cx| {
             gpui_kit::component::input::EditorState::new(window, cx)
-                .language("sql")
+                .language(if db::engine() == crate::engine::Engine::Elasticsearch {
+                    "json"
+                } else {
+                    "sql"
+                })
                 .line_number(crate::settings::get().editor_line_numbers)
                 .soft_wrap(crate::settings::get().editor_soft_wrap)
                 .tab_size(gpui_kit::component::input::TabSize {
@@ -1434,6 +1474,7 @@ impl TuskApp {
             return;
         }
         let result_state = tab.result.clone();
+        let result_id = result_state.entity_id();
         // A completion menu left open over the editor would cover the run.
         tab.editor.update(cx, |e, cx| e.dismiss_lsp_overlays(cx));
         if let Some(WorkspaceTab::Sql(tab)) = self.tabs.get_mut(ix) {
@@ -1448,9 +1489,13 @@ impl TuskApp {
             .map(|(c, _)| (c.name.clone(), c.database.clone()))
             .unwrap_or_default();
         let run_schema = self.current_schema.clone();
-        cx.spawn(async move |_weak, cx: &mut AsyncApp| {
+        let task = cx.spawn(async move |_weak, cx: &mut AsyncApp| {
             let t0 = std::time::Instant::now();
-            let statements = db::split_statements(&sql);
+            let statements = if pool.driver().engine() == crate::engine::Engine::Elasticsearch {
+                vec![sql.clone()]
+            } else {
+                db::split_statements(&sql)
+            };
             // Every statement the user runs lands in History.
             let hist = |stmt: &str, started: std::time::Instant, ok: bool| {
                 crate::console::add_history(crate::console::HistoryItem {
@@ -1468,7 +1513,11 @@ impl TuskApp {
             let mut error: Option<QueryOutput> = None;
             for stmt in &statements {
                 let started = std::time::Instant::now();
-                match db::classify_statement(stmt) {
+                match if pool.driver().engine() == crate::engine::Engine::Elasticsearch {
+                    db::StmtKind::Query
+                } else {
+                    db::classify_statement(stmt)
+                } {
                     db::StmtKind::Query => {
                         let rows =
                             match db::run_query_rows(&pool, stmt, crate::sql::QUERY_ROW_LIMIT + 1)
@@ -1600,7 +1649,7 @@ impl TuskApp {
             cx.update(|cx| {
                 let view = cx.global::<TuskHandle>().0.clone();
                 view.update(cx, |this: &mut TuskApp, cx| {
-                    if let Some(WorkspaceTab::Sql(tab)) = this.tabs.get_mut(ix) {
+                    if let Some(WorkspaceTab::Sql(tab)) = this.tabs.iter_mut().find(|tab| matches!(tab, WorkspaceTab::Sql(tab) if tab.result.entity_id() == result_id)) {
                         tab.running = false;
                         tab.output = output;
                         tab.results = sets;
@@ -1609,8 +1658,10 @@ impl TuskApp {
                     cx.notify();
                 });
             });
-        })
-        .detach();
+        });
+        if let Some(WorkspaceTab::Sql(tab)) = self.tabs.get_mut(ix) {
+            tab.run_task = Some(task);
+        }
 
         fn first_line(stmt: &str) -> String {
             let line = stmt.trim().lines().next().unwrap_or_default();
@@ -1646,6 +1697,7 @@ impl TuskApp {
             RunScope::Last => tab.last_sql.clone().unwrap_or(full),
             _ if !selected.trim().is_empty() => selected,
             RunScope::All => full,
+            RunScope::Current if db::engine() == crate::engine::Engine::Elasticsearch => full,
             RunScope::Current => db::statement_at(&full, cursor).unwrap_or_default(),
         }
     }
@@ -2067,6 +2119,17 @@ impl TuskApp {
                                     .flex()
                                     .items_center()
                                     .gap_2()
+                                    .when(tab.running && db::engine() == crate::engine::Engine::Trino, |d| {
+                                        d.child(Button::new("cancel-trino-query").label("Cancel").small().outline()
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                if let Some(WorkspaceTab::Sql(tab)) = this.active_tab.and_then(|ix| this.tabs.get_mut(ix)) {
+                                                    tab.run_task = None;
+                                                    tab.running = false;
+                                                    tab.output.message = Some("Query cancelled.".into());
+                                                }
+                                                cx.notify();
+                                            })))
+                                    })
                                     .child(
                                         Button::new("run-sql-all")
                                             .label("Run All")
@@ -2590,6 +2653,7 @@ impl TuskApp {
         cx: &mut Context<Self>,
     ) -> bool {
         self.lsp = None;
+        self.lsp_note = "Catalog completion (no language server for this engine)".into();
         let spec = if conn.engine.caps().lsp {
             crate::lsp::ServerSpec::pgls(&crate::lsp::DbSettings {
                 host: host.to_string(),
@@ -2606,7 +2670,56 @@ impl TuskApp {
         };
         match crate::lsp::LspClient::start(spec) {
             Ok((client, mut diagnostics)) => {
-                self.lsp = Some(client);
+                self.lsp = Some(client.clone());
+                cx.spawn(async move |weak, cx| {
+                    let mut previous_phase = None;
+                    loop {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(250))
+                            .await;
+                        let phase = client.phase();
+                        let keep = weak.update(cx, |this, cx| {
+                            if !this
+                                .lsp
+                                .as_ref()
+                                .is_some_and(|c| std::sync::Arc::ptr_eq(c, &client))
+                            {
+                                return false;
+                            }
+                            if phase == 2 {
+                                this.lsp = None;
+                                this.lsp_note =
+                                    "Catalog completion (language server failed)".into();
+                                if let Some(db) = this.pool.clone() {
+                                    let completion = crate::complete::SchemaCompletion::new(
+                                        db,
+                                        this.current_schema.clone(),
+                                    );
+                                    this.completer = Some(completion.clone());
+                                    for tab in &mut this.tabs {
+                                        if let WorkspaceTab::Sql(tab) = tab {
+                                            tab.doc = None;
+                                            let completion = completion.clone();
+                                            tab.editor.update(cx, |editor, _| {
+                                                editor.lsp_mut().completion_provider =
+                                                    Some(std::rc::Rc::new(completion))
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            if previous_phase != Some(phase) {
+                                cx.notify();
+                            }
+                            previous_phase = Some(phase);
+                            phase != 2
+                        });
+                        if !matches!(keep, Ok(true)) {
+                            break;
+                        }
+                    }
+                })
+                .detach();
                 cx.spawn(async move |weak, cx: &mut AsyncApp| {
                     while let Some((uri, diags)) = diagnostics.recv().await {
                         let alive = weak.update(cx, |this: &mut TuskApp, cx| {
@@ -2621,6 +2734,8 @@ impl TuskApp {
                 true
             }
             Err(e) => {
+                self.lsp_note =
+                    "Catalog completion (language server unavailable; see Tools settings)".into();
                 log::warn!("SQL language server unavailable: {e:#}");
                 false
             }

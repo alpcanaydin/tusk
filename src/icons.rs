@@ -102,6 +102,8 @@ pub fn engine_logo(e: crate::engine::Engine) -> Option<&'static [u8]> {
         E::DynamoDb => include_bytes!("../assets/icons/engines/dynamodb.svg"),
         E::LibSql => include_bytes!("../assets/icons/engines/libsql.svg"),
         E::CloudflareD1 => include_bytes!("../assets/icons/engines/d1.svg"),
+        E::Trino => include_bytes!("../assets/icons/engines/trino.svg"),
+        E::Elasticsearch => include_bytes!("../assets/icons/engines/elasticsearch.svg"),
         E::Vertica | E::Greenplum => return None,
     })
 }

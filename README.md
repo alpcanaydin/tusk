@@ -22,7 +22,7 @@ on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framewo
 ## Why Tusk
 
 - **Native and fast.** No Electron and no web view. Tables with millions of rows scroll smoothly because the grid is virtualized and GPU-rendered.
-- **One app for 20 databases.** PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB and more.
+- **One app for 22 databases.** PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB, Trino, Elasticsearch and more.
 - **Keyboard first.** Everything is in the command palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>), and the common actions have shortcuts.
 - **AI that doesn't take the wheel.** Ask about your data in plain English. The agent reads your schema and writes a query into a new tab. It never runs SQL on its own.
 - **Your credentials stay yours.** Passwords are stored in the macOS Keychain, Windows Credential Manager or Linux Secret Service. There's no account and no telemetry.
@@ -74,10 +74,10 @@ Edit columns, types, defaults, nullability, comments and indexes right in the gr
 
 Open the AI panel with <kbd>⌘</kbd><kbd>L</kbd> and ask a question. The agent reads the structure of the tables it needs, writes a query into a new tab, and explains its assumptions. **You review it and run it.** Tusk doesn't let the agent execute SQL.
 
-Tusk talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com), so you can use Claude, Codex or Gemini CLI, or add your own. The agents reach your open connection through Tusk's built-in MCP server.
+Choose a provider in **Settings → AI Providers** and the assistant’s **Provider / Model** menu. Claude, Codex, OpenCode (`opencode acp`), Gemini and custom agents use the [Agent Client Protocol](https://agentclientprotocol.com). Ollama, LM Studio and custom compatible HTTP endpoints connect directly, with model discovery and connection testing. Switching providers or models starts a separate conversation; previous conversations remain available during the session.
 
 > [!NOTE]
-> The agent runs on your machine through the CLI you choose, under that CLI's own account and settings. Tusk doesn't send your data anywhere itself.
+> The assistant shows which provider or endpoint receives context. It can inspect metadata and draft SQL or Elasticsearch Query DSL, but cannot execute queries or change documents. Result rows and credentials are never attached automatically. HTTP API keys and new custom-agent secret environment values use the OS credential store. Local servers and models must be installed separately.
 
 ### Everything is one keystroke away
 
@@ -152,7 +152,7 @@ The Linux packages include the SQL language servers. For backup and restore, ins
 
 On macOS, Tusk updates itself. It checks for a new version once a day and downloads it in the background. When the update is ready, a **Restart to Update** button appears in the top bar. If you don't click it, the update installs the next time you quit Tusk. You can also check right away with **Tusk ▸ Check for Updates…**. Updates are signed, and Tusk verifies each one before installing it. If you installed with Homebrew, `brew upgrade tusk` works too.
 
-On Windows and Linux there's no automatic update yet: download the new zip or package from the [Releases page](https://github.com/alpcanaydin/tusk/releases).
+On Windows and Linux, Tusk checks daily for stable releases with a matching platform download and notifies once per version. Installation is manual. Disable checks in **Settings → General**, or use **Check for Updates** to check immediately.
 
 ### Build from source
 
@@ -285,3 +285,13 @@ Set `TUSK_DATA_DIR` to use a different folder, which is handy for a clean test p
 ## Built with
 
 [GPUI](https://github.com/zed-industries/zed) and [gpui-component](https://github.com/longbridge/gpui-component) for the UI, [sqlx](https://github.com/launchbadge/sqlx) and a native driver per engine, [russh](https://github.com/warp-tech/russh) for SSH tunnels, and [tree-sitter](https://tree-sitter.github.io) for SQL highlighting. Tusk vendors small patches to `gpui-component` and `gpui-base` in `vendor/`, and those keep their Apache-2.0 licenses.
+
+### Trino and Elasticsearch
+
+Trino connections support coordinator TLS, credentials, catalog and schema selection, metadata browsing, SQL results and export. SQL writes depend on the connector and use Tusk’s confirmation settings. Grid editing, structure editing and transactional save batches are unavailable.
+
+Elasticsearch connections support no authentication, basic authentication or an API key. Query tabs use JSON Query DSL; searches paginate with point-in-time contexts and `search_after`, and aggregations retain their raw JSON response. The **Elasticsearch: open document editor** command creates, edits and deletes individual documents on concrete indices. Creation requires an ID; edits and deletes require sequence-number and primary-term checks. Conflicts retain the draft. Aliases, data streams, bulk changes and index administration are unavailable.
+
+**Settings → General → Tools** reports SQL language servers and PostgreSQL backup tools, detected paths and installation guidance. The connection status indicates whether SQL assistance is starting, running or using catalog completion. Font preferences include a live preview; grid and cell editor heights grow with larger fonts.
+
+The new-connection selector includes a remembered **Group by database type** option for relational SQL, analytics/distributed SQL, documents/search, key-value and wide-column engines.

@@ -180,6 +180,11 @@ pub struct AgentThread {
     mcp: Value,
     cwd: PathBuf,
     dirty_tx: mpsc::UnboundedSender<()>,
+    pub http_models: Vec<String>,
+    http_messages: Vec<Value>,
+    http_abort: Option<tokio::task::AbortHandle>,
+    http_generation: u64,
+    http_retry: Option<(String, String, Vec<Value>)>,
     _tasks: Vec<Task<()>>,
 }
 
@@ -366,10 +371,110 @@ impl AgentThread {
             mcp,
             cwd,
             dirty_tx,
+            http_models: Vec::new(),
+            http_messages: Vec::new(),
+            http_abort: None,
+            http_generation: 0,
+            http_retry: None,
             _tasks: vec![redraw],
         };
         t.start(cx);
         t
+    }
+
+    fn start_http(&mut self, provider: crate::http_ai::Provider, cx: &mut Context<Self>) {
+        self.status = Status::Starting(format!("Connecting to {}…", provider.base_url));
+        let id = self.spec.id.clone();
+        let task = crate::db::runtime().spawn(async move {
+            let key = crate::http_ai::load_key(&provider, &id)?;
+            crate::http_ai::models(&provider, &key).await
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await.unwrap_or_else(|e| Err(e.to_string()));
+            let _ = this.update(cx, |t, cx| {
+                match result {
+                    Ok(models) => {
+                        t.http_models = models;
+                        let model = match &t.spec.source { crate::acp_registry::Source::Http(p) => p.model.as_str(), _ => "" };
+                        t.status = if model.is_empty() { Status::Failed("Choose a loaded model using the provider/model menu.".into()) }
+                            else if !t.http_models.is_empty() && !t.http_models.iter().any(|m| m == model) { Status::Failed("Selected model is unavailable; load it or choose another model.".into()) }
+                            else { Status::Ready };
+                    }
+                    Err(e) => {
+                        let manual = matches!(&t.spec.source, crate::acp_registry::Source::Http(p) if !p.model.is_empty()) && (e.contains("HTTP 404") || e.contains("HTTP 405") || e.starts_with("Model discovery unavailable"));
+                        t.status = if manual { Status::Ready } else { Status::Failed(e.clone()) };
+                        t.entries.push(Entry::Notice { text: e, error: true });
+                    }
+                }
+                t.changed(cx);
+            });
+        }).detach();
+    }
+
+    fn send_http(
+        &mut self,
+        provider: crate::http_ai::Provider,
+        text: String,
+        shown: String,
+        context: Vec<Value>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.status != Status::Ready {
+            return;
+        }
+        self.http_retry = Some((text.clone(), shown.clone(), context.clone()));
+        self.entries.push(Entry::User { text: shown });
+        self.status = Status::Busy;
+        self.http_generation += 1;
+        let generation = self.http_generation;
+        let mut messages = self.http_messages.clone();
+        let mut context = context
+            .iter()
+            .filter_map(|v| {
+                v["text"]
+                    .as_str()
+                    .or_else(|| v["resource"]["text"].as_str())
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !provider.tools {
+            context.push_str("\nTool calling is disabled. Use only the schema context the user supplied. Return draft queries in sql or json code fences so the user can insert them into a query tab. Ask for missing schema instead of inventing it.");
+        }
+        if messages.first().is_some_and(|v| v["role"] == "system") {
+            messages.remove(0);
+        }
+        messages.insert(0, json!({"role":"system", "content":context}));
+        messages.push(json!({"role":"user", "content":text}));
+        let id = self.spec.id.clone();
+        let mcp = self.mcp.clone();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let task = crate::db::runtime().spawn(async move {
+            let result = async {
+                let key = crate::http_ai::load_key(&provider, &id)?;
+                crate::http_ai::chat(provider, key, messages, mcp, tx.clone()).await
+            }
+            .await;
+            if let Err(e) = result {
+                let _ = tx.send(crate::http_ai::Event::Error(e));
+            }
+        });
+        self.http_abort = Some(task.abort_handle());
+        self.changed(cx);
+        cx.spawn(async move |this, cx| {
+            while let Some(event) = rx.recv().await {
+                let alive = this.update(cx, |t, cx| {
+                    if t.http_generation != generation { return; }
+                    match event {
+                        crate::http_ai::Event::Text(text) => t.update(&json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":text}}), cx),
+                        crate::http_ai::Event::Notice(text) => t.entries.push(Entry::Notice { text, error: false }),
+                        crate::http_ai::Event::Done(messages) => { t.http_messages = messages; t.http_retry = None; t.http_abort = None; t.status = Status::Ready; }
+                        crate::http_ai::Event::Error(text) => { t.http_abort = None; t.status = Status::Ready; t.entries.push(Entry::Notice { text, error: true }); }
+                    }
+                    t.changed(cx);
+                });
+                if alive.is_err() { break; }
+            }
+        }).detach();
     }
 
     fn changed(&mut self, cx: &mut Context<Self>) {
@@ -378,6 +483,10 @@ impl AgentThread {
     }
 
     fn start(&mut self, cx: &mut Context<Self>) {
+        if let crate::acp_registry::Source::Http(provider) = self.spec.source.clone() {
+            self.start_http(provider, cx);
+            return;
+        }
         let spec = self.spec.clone();
         let cwd = self.cwd.clone();
         self.status = Status::Starting(if crate::acp_registry::installed(&spec) {
@@ -658,6 +767,10 @@ impl AgentThread {
         context: Vec<Value>,
         cx: &mut Context<Self>,
     ) {
+        if let crate::acp_registry::Source::Http(provider) = self.spec.source.clone() {
+            self.send_http(provider, text, shown, context, cx);
+            return;
+        }
         let (Some(conn), Some(sid)) = (self.conn.clone(), self.session_id.clone()) else {
             return;
         };
@@ -722,8 +835,29 @@ impl AgentThread {
         self._tasks.push(task);
     }
 
+    pub fn can_retry_http(&self) -> bool {
+        self.status == Status::Ready && self.http_retry.is_some()
+    }
+    pub fn retry_http(&mut self, cx: &mut Context<Self>) {
+        if self.can_retry_http()
+            && let Some((text, shown, context)) = self.http_retry.take()
+        {
+            self.send_shown(text, shown, context, cx);
+        }
+    }
+
     /// Stop the running prompt.
     pub fn cancel(&mut self, cx: &mut Context<Self>) {
+        if let Some(task) = self.http_abort.take() {
+            task.abort();
+            self.http_generation += 1;
+            self.status = Status::Ready;
+            self.entries.push(Entry::Notice {
+                text: "Reply stopped. Retry by sending your prompt again.".into(),
+                error: false,
+            });
+            self.changed(cx);
+        }
         if let (Some(conn), Some(sid)) = (&self.conn, &self.session_id) {
             conn.notify("session/cancel", json!({ "sessionId": sid }));
         }
@@ -890,6 +1024,7 @@ impl AgentThread {
             "session/resume"
         };
         self.entries.clear();
+        self.http_messages.clear();
         self.plan.clear();
         self.usage = None;
         self.title = Some(title);
@@ -1409,6 +1544,9 @@ impl AgentThread {
 
 impl Drop for AgentThread {
     fn drop(&mut self) {
+        if let Some(task) = self.http_abort.take() {
+            task.abort();
+        }
         for t in self.terminals.values_mut() {
             if let Some(k) = t.kill.take() {
                 let _ = k.send(());

@@ -43,7 +43,7 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &OpenSettings, cx| crate::settings::SettingsWindow::open(cx));
     cx.on_action(|_: &ShowAbout, cx| crate::about::AboutWindow::open(cx));
     cx.on_action(|_: &ShowReleaseNotes, cx| crate::whats_new::open_release_notes(cx));
-    cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
+    cx.on_action(|_: &CheckForUpdates, cx| crate::updater::check_for_updates(cx));
     cx.on_action(|_: &RestartToUpdate, _| crate::updater::restart_to_update());
     cx.on_action(|_: &MinimizeWindow, cx| {
         window_command(cx, "performMiniaturize:", Window::minimize_window)

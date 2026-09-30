@@ -8,12 +8,13 @@
 use std::sync::{LazyLock, RwLock};
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::searchable_list::SearchableVec;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::setting::{
     NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
 };
-use gpui_kit::component::{ActiveTheme as _, IndexPath, Root, Sizable as _, TitleBar};
+use gpui_kit::component::{ActiveTheme as _, IndexPath, Root, TitleBar, v_flex};
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +96,10 @@ pub struct Prefs {
     // ---- general ----
     /// Reconnect to the last connection when the app starts.
     pub reopen_last: bool,
+    /// Check for stable releases daily on Windows and Linux.
+    pub automatic_update_checks: bool,
+    /// Separate database engines by type in the new-connection selector.
+    pub group_database_types: bool,
     /// `statement_timeout` for new connections, seconds (0 = none).
     pub query_timeout_secs: u32,
     /// Linux renderer device ID (four hexadecimal digits); empty = automatic.
@@ -136,6 +141,9 @@ pub struct Prefs {
     // ---- AI panel ----
     /// The agent new chats start with (registry id or `custom:<name>`).
     pub agent: String,
+    /// Automatically attach the open query text to assistant prompts.
+    pub ai_include_active_query: bool,
+    pub ai_http: std::collections::BTreeMap<String, crate::http_ai::Provider>,
     /// Agents added by hand: name → command, args, env.
     pub agent_servers: std::collections::BTreeMap<String, crate::acp_registry::CustomAgent>,
     /// Per agent, the session options picked last (model, mode, …), applied
@@ -176,6 +184,8 @@ impl Default for Prefs {
             ui_font_size: 14.,
             table_font_family: crate::theme::MONO_FONT.to_string(),
             table_font_size: 13.,
+            automatic_update_checks: true,
+            group_database_types: false,
             reopen_last: true,
             query_timeout_secs: 0,
             gpu_device: String::new(),
@@ -195,7 +205,9 @@ impl Default for Prefs {
             filter_default_operator: "=".into(),
             filter_default_enabled: true,
             default_table_sort: TABLE_SORTS[0].into(),
-            agent: "claude-acp".into(),
+            agent: String::new(),
+            ai_include_active_query: true,
+            ai_http: crate::http_ai::defaults(),
             agent_servers: Default::default(),
             agent_config: Default::default(),
         }
@@ -234,6 +246,21 @@ impl Prefs {
         if !SIDEBAR_LAYOUTS.contains(&self.sidebar_layout.as_str()) {
             self.sidebar_layout = d.sidebar_layout.clone();
         }
+        if !FILTER_COLUMN_SORTS.contains(&self.filter_column_sort.as_str()) {
+            self.filter_column_sort = d.filter_column_sort.clone();
+        }
+        if !FILTER_DEFAULT_COLUMNS.contains(&self.filter_default_column.as_str()) {
+            self.filter_default_column = d.filter_default_column.clone();
+        }
+        if !TABLE_SORTS.contains(&self.default_table_sort.as_str()) {
+            self.default_table_sort = d.default_table_sort.clone();
+        }
+        if !crate::filter::FilterOp::ALL
+            .iter()
+            .any(|op| op.label() == self.filter_default_operator)
+        {
+            self.filter_default_operator = d.filter_default_operator.clone();
+        }
         self.editor_tab_size = self.editor_tab_size.clamp(1, 8);
         self.query_timeout_secs = self.query_timeout_secs.min(86_400);
         if self.gpu_device.len() != 4 || !self.gpu_device.bytes().all(|c| c.is_ascii_hexdigit()) {
@@ -253,6 +280,29 @@ impl Prefs {
 #[cfg(test)]
 mod tests {
     use super::{Prefs, SIDEBAR_LAYOUTS};
+
+    #[test]
+    fn legacy_preferences_keep_query_context_and_repair_invalid_grid_defaults() {
+        let prefs: Prefs = serde_json::from_str(r#"{"filter_default_operator":"unknown","default_table_sort":"random","filter_column_sort":"invalid","filter_default_column":"invalid"}"#).unwrap();
+        assert!(prefs.ai_include_active_query);
+        let prefs = prefs.sanitized();
+        let default = Prefs::default();
+        assert_eq!(
+            prefs.filter_default_operator,
+            default.filter_default_operator
+        );
+        assert_eq!(prefs.default_table_sort, default.default_table_sort);
+        assert_eq!(prefs.filter_column_sort, default.filter_column_sort);
+        assert_eq!(prefs.filter_default_column, default.filter_default_column);
+        let mut prefs = prefs;
+        prefs.ai_include_active_query = false;
+        let saved = serde_json::to_string(&prefs).unwrap();
+        assert!(
+            !serde_json::from_str::<Prefs>(&saved)
+                .unwrap()
+                .ai_include_active_query
+        );
+    }
 
     #[test]
     fn gpu_preference_accepts_only_pci_device_ids() {
@@ -480,6 +530,14 @@ pub fn table_font() -> SharedString {
     FONTS.read().map(|f| f.1.clone()).unwrap_or_default()
 }
 
+/// A shared text line box keeps grid display and in-cell editors aligned.
+pub fn table_line_height() -> f32 {
+    (table_text() * 1.5).ceil()
+}
+pub fn table_row_height() -> f32 {
+    (table_line_height() + 8.).max(32.)
+}
+
 pub fn table_text() -> f32 {
     with(|p| p.table_font_size)
 }
@@ -535,11 +593,11 @@ impl SettingsWindow {
         {
             return;
         }
-        let bounds = Bounds::centered(None, size(px(860.), px(600.)), cx);
+        let bounds = Bounds::centered(None, size(px(1040.), px(760.)), cx);
         let result = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(560.), px(360.))),
+                window_min_size: Some(size(px(760.), px(480.))),
                 focus: !crate::background(),
                 kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
@@ -557,6 +615,7 @@ impl SettingsWindow {
     }
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        crate::tool_status::refresh(cx);
         let fonts = font_options(cx);
         let p = get();
         let mut picker = |current: &str, set: fn(&mut Prefs, String)| {
@@ -610,23 +669,48 @@ impl SettingsWindow {
         let render_state = state.clone();
         let reset_state = state.clone();
         let dirty_default = default.clone();
-        SettingField::render(move |_, _, _| Select::new(&render_state).small().w(px(220.)))
-            .on_reset(
-                move |_| family() != dirty_default,
-                move |window, cx| {
-                    let v = default.clone();
-                    update(cx, |p| {
-                        if is_ui {
-                            p.ui_font_family = v.clone();
-                        } else {
-                            p.table_font_family = v.clone();
-                        }
-                    });
-                    reset_state.update(cx, |s, cx| {
-                        s.set_selected_value(&SharedString::from(v), window, cx)
-                    });
-                },
-            )
+        SettingField::render(move |_, _, _| Select::new(&render_state).w(px(260.))).on_reset(
+            move |_| family() != dirty_default,
+            move |window, cx| {
+                let v = default.clone();
+                update(cx, |p| {
+                    if is_ui {
+                        p.ui_font_family = v.clone();
+                    } else {
+                        p.table_font_family = v.clone();
+                    }
+                });
+                reset_state.update(cx, |s, cx| {
+                    s.set_selected_value(&SharedString::from(v), window, cx)
+                });
+            },
+        )
+    }
+
+    fn font_preview(ui: bool) -> SettingItem {
+        SettingItem::new(
+            "Live Preview",
+            SettingField::render(move |_, _, _| {
+                let p = get();
+                let (family, size) = if ui {
+                    (p.ui_font_family.clone(), p.ui_font_size)
+                } else {
+                    (p.table_font_family.clone(), p.table_font_size)
+                };
+                v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .font_family(family)
+                    .text_size(px(size))
+                    .line_height(px((size * 1.6).ceil()))
+                    .child(div().child("SELECT café, price"))
+                    .child(div().child("FROM orders WHERE id = 123;"))
+                    .child(div().child("0O 1Il {} [] !? +-*/ 123.45"))
+                    .child(div().child("Français — العربية 日本語"))
+            }),
+        )
+        .layout(Axis::Vertical)
+        .description("Updates as you change the font family and size.")
     }
 
     fn pages(&self) -> Vec<SettingPage> {
@@ -647,11 +731,31 @@ impl SettingsWindow {
             step: 1.,
         };
 
-        // One group per page, so the sidebar lists pages only (a page with
-        // several titled groups also lists them as scroll-to entries, which
-        // looked broken on pages too short to scroll).
+        let overview = SettingPage::new("Overview")
+            .icon(IconName::Info)
+            .description("Your current preferences at a glance. Changes are saved automatically; search to find a parameter.")
+            .resettable(false)
+            .group(SettingGroup::new().title("Current Configuration").item(
+                SettingItem::render(|_, _, cx| {
+                    let p = get();
+                    let rows = [
+                        ("Appearance", format!("{} · {}", p.appearance.label(), active_theme(cx))),
+                        ("Interface", format!("{} · {} px · {}", p.ui_font_family, p.ui_font_size, p.sidebar_layout)),
+                        ("Query and grid font", format!("{} · {} px", p.table_font_family, p.table_font_size)),
+                        ("Query defaults", format!("{} spaces per indent · {}", p.editor_tab_size, if p.query_timeout_secs == 0 { "No timeout".into() } else { format!("{} second timeout", p.query_timeout_secs) })),
+                        ("Database selection", if p.group_database_types { "Grouped by database type" } else { "All engines together" }.into()),
+                        ("AI provider", if p.agent.is_empty() { "Choose a provider in the assistant".into() } else { p.agent.clone() }),
+                        ("Write confirmations", format!("Dangerous queries: {} · All writes: {}", if p.confirm_destructive { "On" } else { "Off" }, if p.confirm_save { "On" } else { "Off" })),
+                    ];
+                    v_flex().w_full().gap_4().children(rows.into_iter().map(|(label, value)| {
+                        v_flex().gap_1().child(div().font_weight(FontWeight::MEDIUM).child(label))
+                            .child(div().text_sm().text_color(cx.theme().muted_foreground).child(value))
+                    }))
+                }).keywords(["summary", "configuration", "fonts", "provider", "timeout"])
+            ));
         let appearance = SettingPage::new("Appearance")
             .icon(IconName::Palette)
+            .description("Choose the desktop appearance and colors used throughout Tusk.")
             .group(
             SettingGroup::new()
                 .title("Theme")
@@ -713,6 +817,9 @@ impl SettingsWindow {
         );
         let interface = SettingPage::new("Interface")
             .icon(IconName::PanelLeft)
+            .description(
+                "Adjust interface typography and navigation. Font changes apply immediately.",
+            )
             .group(
                 SettingGroup::new()
                     .title("UI Font")
@@ -731,7 +838,8 @@ impl SettingsWindow {
                             .default_value(d.ui_font_size as f64),
                         )
                         .description("Scales the whole interface."),
-                    ),
+                    )
+                    .item(Self::font_preview(true)),
             )
             .group(
                 SettingGroup::new().title("Layout").item(
@@ -754,26 +862,30 @@ impl SettingsWindow {
                     ),
                 ),
             );
-        let data = SettingPage::new("Data Grid").icon(IconName::Table2).group(
-            SettingGroup::new()
-                .title("Table Font")
-                .item(
-                    SettingItem::new("Font Family", Self::font_field(&self.table_font, false))
-                        .description("Data grid, structure view and the SQL editor."),
-                )
-                .item(
-                    SettingItem::new(
-                        "Font Size",
-                        SettingField::number_input(
-                            size_opts(TABLE_SIZE_RANGE),
-                            |_| get().table_font_size as f64,
-                            |v, cx| update(cx, |p| p.table_font_size = v as f32),
-                        )
-                        .default_value(d.table_font_size as f64),
+        let data = SettingPage::new("Data Grid")
+            .icon(IconName::Table2)
+            .description("Configure grid display and the shared font used by query editors.")
+            .group(
+                SettingGroup::new()
+                    .title("Table Font")
+                    .item(
+                        SettingItem::new("Font Family", Self::font_field(&self.table_font, false))
+                            .description("Data grid, structure view and the SQL editor."),
                     )
-                    .description("Column widths scale with it."),
-                ),
-        );
+                    .item(
+                        SettingItem::new(
+                            "Font Size",
+                            SettingField::number_input(
+                                size_opts(TABLE_SIZE_RANGE),
+                                |_| get().table_font_size as f64,
+                                |v, cx| update(cx, |p| p.table_font_size = v as f32),
+                            )
+                            .default_value(d.table_font_size as f64),
+                        )
+                        .description("Column widths scale with it."),
+                    )
+                    .item(Self::font_preview(false)),
+            );
         let switch = |title: &'static str,
                       desc: &'static str,
                       get_v: fn(&Prefs) -> bool,
@@ -791,6 +903,20 @@ impl SettingsWindow {
         };
         let general_group = SettingGroup::new()
             .title("Startup & Connections")
+            .item(switch(
+                "Automatic Update Checks",
+                "Check GitHub daily on Windows and Linux. Updates are installed manually.",
+                |p| p.automatic_update_checks,
+                |p, v| p.automatic_update_checks = v,
+                d.automatic_update_checks,
+            ))
+            .item(switch(
+                "Group Database Types",
+                "Separate SQL, analytical, and NoSQL engines in the new-connection menu.",
+                |p| p.group_database_types,
+                |p, v| p.group_database_types = v,
+                d.group_database_types,
+            ))
             .item(switch(
                 "Reopen Last Connection",
                 "Connect to the last used database when the app starts.",
@@ -831,9 +957,28 @@ impl SettingsWindow {
         );
         let general = SettingPage::new("General")
             .icon(IconName::Settings2)
-            .group(general_group);
+            .group(general_group)
+            .description("Set startup behavior, connection defaults, and discover installed tools.")
+            .group(SettingGroup::new().title("Tools").description("SQL assistance uses postgres-language-server or sqls. Backups require PostgreSQL client tools. Override discovery with TUSK_PGLS, TUSK_SQLS, or TUSK_PG_BIN.").item(
+                SettingItem::render(|_, _, cx| {
+                    use gpui_kit::component::button::Button;
+                    let state = cx.default_global::<crate::tool_status::Tools>().clone();
+                    v_flex().gap_4().w_full().min_w_0()
+                        .children(state.rows.into_iter().map(|(name, status)| {
+                            v_flex().w_full().min_w_0().gap_1()
+                                .child(div().font_weight(FontWeight::MEDIUM).child(name.clone()))
+                                .child(div().id(SharedString::from(format!("tool-status-{name}")))
+                                    .w_full().overflow_x_scroll().whitespace_nowrap().text_sm().child(status))
+                        }))
+                        .child(Button::new("refresh-tools")
+                            .label(if state.scanning { "Scanning…" } else { "Refresh Tools" })
+                            .disabled(state.scanning)
+                            .on_click(|_, _, cx| crate::tool_status::refresh(cx)))
+                }).keywords(["installed tools", "paths", "postgres", "backup", "restore", "sqls", "language server"])
+            ));
         let editor = SettingPage::new("SQL Editor")
             .icon(IconName::SquareTerminal)
+            .description("Control query editing, indentation, and keyword completions.")
             .group(
                 SettingGroup::new()
                     .title("Editor")
@@ -897,6 +1042,78 @@ impl SettingsWindow {
                     .description("How NULL values are shown in grids."),
                 ),
         );
+        let choices = |values: &[&str]| -> Vec<(SharedString, SharedString)> {
+            values
+                .iter()
+                .map(|v| (SharedString::from(*v), SharedString::from(*v)))
+                .collect()
+        };
+        let data = data.group(SettingGroup::new().title("Ordering").item(
+            SettingItem::new("Default Table Sort", SettingField::dropdown(
+                choices(&TABLE_SORTS), |_| get().default_table_sort.clone().into(),
+                |v: SharedString, cx| update(cx, |p| p.default_table_sort = v.to_string()),
+            ).default_value(SharedString::from(d.default_table_sort.clone())))
+            .description("Used when opening a grid without an explicit column sort. Requires a primary key.")
+        ));
+        let filters = SettingPage::new("Filters").icon(IconName::Settings2)
+            .description("Defaults for new grid filters. Available operators depend on the database engine.")
+            .group(SettingGroup::new().title("New Filter Defaults")
+                .item(SettingItem::new("Column Picker Order", SettingField::dropdown(
+                    choices(&FILTER_COLUMN_SORTS), |_| get().filter_column_sort.clone().into(),
+                    |v: SharedString, cx| update(cx, |p| p.filter_column_sort = v.to_string()),
+                ).default_value(SharedString::from(d.filter_column_sort.clone())))
+                    .description("Keep columns in table order or list them alphabetically."))
+                .item(SettingItem::new("Default Column", SettingField::dropdown(
+                    choices(&FILTER_DEFAULT_COLUMNS), |_| get().filter_default_column.clone().into(),
+                    |v: SharedString, cx| update(cx, |p| p.filter_default_column = v.to_string()),
+                ).default_value(SharedString::from(d.filter_default_column.clone())))
+                    .description("Choose the first column, the primary key, or a raw SQL expression."))
+                .item(SettingItem::new("Default Operator", SettingField::dropdown(
+                    crate::filter::FilterOp::ALL.iter().map(|op| (SharedString::from(op.label()), SharedString::from(op.label()))).collect(),
+                    |_| get().filter_default_operator.clone().into(),
+                    |v: SharedString, cx| update(cx, |p| p.filter_default_operator = v.to_string()),
+                ).default_value(SharedString::from(d.filter_default_operator.clone())))
+                    .description("Initial comparison for each new filter row."))
+                .item(switch("Enable New Filters", "Apply new filter rows immediately; turn off to prepare them before enabling.",
+                    |p| p.filter_default_enabled, |p, v| p.filter_default_enabled = v, d.filter_default_enabled))
+            );
+        let ai = SettingPage::new("AI Providers").icon(IconName::Sparkles)
+            .description("Connect local model servers or ACP agents. Select a provider and model in the assistant.")
+            .group(SettingGroup::new().title("Prompt Context").item(switch(
+                "Attach Open Query Automatically",
+                "Include the open query text with assistant prompts. Agents can still request it through tools. Result rows and credentials are never attached automatically.",
+                |p| p.ai_include_active_query, |p, v| p.ai_include_active_query = v, d.ai_include_active_query,
+            )))
+            .group(SettingGroup::new().title("Agents and Model Servers")
+                .description("Claude, Codex, Gemini, and registry agents are available in the assistant. OpenCode uses its native opencode acp command. Configure model discovery, connection tests, credentials, and custom commands below.")
+                .item(SettingItem::render(|_, _, cx| {
+                    use gpui_kit::component::button::Button;
+                    let prefs = get();
+                    v_flex().gap_4().w_full().min_w_0()
+                        .children(prefs.ai_http.iter().map(|(id, p)| {
+                            let id=id.clone();
+                            v_flex().gap_1().w_full().min_w_0()
+                                .child(div().font_weight(FontWeight::MEDIUM).child(p.name.clone()))
+                                .child(div().text_sm().text_color(cx.theme().muted_foreground).child(format!("{} · Model: {}", p.base_url, if p.model.is_empty() { "Not selected" } else { &p.model })))
+                                .child(Button::new(SharedString::from(format!("configure-{id}"))).label("Configure / Test Connection").on_click(move|_,_,cx|crate::ai_settings::ProviderEditor::open(id.clone(),false,cx)))
+                        }))
+                        .children(prefs.agent_servers.iter().map(|(id, p)| {
+                            let id=id.clone();
+                            v_flex().gap_1().w_full().min_w_0()
+                                .child(div().font_weight(FontWeight::MEDIUM).child(p.name.clone()))
+                                .child(div().text_sm().text_color(cx.theme().muted_foreground).child(format!("ACP executable: {}", p.command)))
+                                .child(Button::new(SharedString::from(format!("configure-acp-{id}"))).label("Configure Agent").on_click(move|_,_,cx|crate::ai_settings::ProviderEditor::open(id.clone(),true,cx)))
+                        }))
+                        .child(Button::new("add-http-provider").label("Add Custom Model Endpoint").on_click(|_,_,cx| {
+                            let id=format!("custom-{}", chrono::Utc::now().timestamp_millis());
+                            crate::ai_settings::ProviderEditor::open(id,false,cx);
+                        }))
+                        .child(Button::new("add-acp-provider").label("Add Custom ACP Agent").on_click(|_,_,cx| {
+                            let id=format!("custom-{}", chrono::Utc::now().timestamp_millis());
+                            crate::ai_settings::ProviderEditor::open(id,true,cx);
+                        }))
+                }).keywords(["providers", "ollama", "lm studio", "claude", "codex", "opencode", "endpoint", "model", "custom agent"]))
+            );
         let safety = SettingPage::new("Safe Mode")
             .icon(IconName::ShieldCheck)
             .group(
@@ -917,7 +1134,9 @@ impl SettingsWindow {
                     d.confirm_save,
                 )),
         );
-        vec![general, appearance, interface, editor, data, safety]
+        vec![
+            overview, general, appearance, interface, editor, data, filters, ai, safety,
+        ]
     }
 }
 
@@ -967,10 +1186,11 @@ impl Render for SettingsWindow {
                     .child(div().w(px(60.))),
             )
             .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .child(Settings::new("tusk-settings").small().pages(self.pages())),
+                div().flex_1().min_h_0().child(
+                    Settings::new("tusk-settings")
+                        .sidebar_width(px(220.))
+                        .pages(self.pages()),
+                ),
             )
     }
 }

@@ -334,6 +334,8 @@ impl CellEditor {
                 .w_full()
                 .when(self.right, |i| i.text_align(TextAlign::Right))
                 .text_size(px(crate::settings::table_text()))
+                .line_height(px(crate::settings::table_line_height()))
+                .h(px(crate::settings::table_line_height() + 4.))
                 .font_family(crate::settings::table_font())
                 .into_any_element(),
             Widget::Choice { state, .. } => Select::new(state)

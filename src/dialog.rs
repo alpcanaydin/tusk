@@ -714,6 +714,8 @@ impl ConnDialog {
                 rows.push(
                     line(vec![
                         label(match engine {
+                            Engine::Trino => "Catalog",
+                            Engine::Elasticsearch => "Default Index",
                             Engine::Oracle => "Service",
                             Engine::Cassandra => "Keyspace",
                             Engine::Redis => "Database",
@@ -724,6 +726,12 @@ impl ConnDialog {
                     ])
                     .into_any_element(),
                 );
+                if engine == Engine::Trino {
+                    rows.extend(opt_row("Schema", "schema"));
+                }
+                if engine == Engine::Elasticsearch {
+                    rows.extend(opt_row("Authentication", "auth_mode"));
+                }
                 if !matches!(engine, Engine::Redis | Engine::Cassandra | Engine::MongoDb) {
                     rows.push(
                         line(vec![
@@ -1023,7 +1031,7 @@ impl ConnDialog {
             t.border,
             t.tokens.table_active,
         );
-        let tiles = Engine::ALL.iter().map(|&e| {
+        let tile = |e: Engine| {
             let on = e == self.picked;
             div()
                 .id(("engine", e as usize))
@@ -1058,22 +1066,57 @@ impl ConnDialog {
                     }
                     cx.notify();
                 }))
+        };
+        let grouped = crate::settings::get().group_database_types;
+        let categories = if grouped {
+            Engine::CATEGORIES.into_iter().map(Some).collect::<Vec<_>>()
+        } else {
+            vec![None]
+        };
+        let sections = categories.into_iter().map(|category| {
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .children(category.map(|label| {
+                    div()
+                        .text_caption()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(muted)
+                        .child(label)
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_1()
+                        .p_2()
+                        .rounded(crate::theme::RADIUS_LG)
+                        .border_1()
+                        .border_color(border)
+                        .children(
+                            Engine::ALL
+                                .into_iter()
+                                .filter(|engine| {
+                                    category.is_none_or(|category| engine.category() == category)
+                                })
+                                .map(tile),
+                        ),
+                )
         });
         div()
             .flex()
             .flex_col()
             .gap_3()
             .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_1()
-                    .p_2()
-                    .rounded(crate::theme::RADIUS_LG)
-                    .border_1()
-                    .border_color(border)
-                    .children(tiles),
+                Checkbox::new("group-database-types")
+                    .label("Group by database type")
+                    .checked(grouped)
+                    .on_click(|checked, _, cx| {
+                        crate::settings::update(cx, |prefs| prefs.group_database_types = *checked)
+                    }),
             )
+            .children(sections)
             .children(self.url.as_ref().map(|url| {
                 div()
                     .flex()

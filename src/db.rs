@@ -202,11 +202,16 @@ impl SavedConnection {
                 // Some servers take any database / no user.
                 let needs_db = !matches!(
                     self.engine,
-                    Engine::Redis | Engine::MongoDb | Engine::Cassandra | Engine::ClickHouse
+                    Engine::Redis
+                        | Engine::MongoDb
+                        | Engine::Cassandra
+                        | Engine::ClickHouse
+                        | Engine::Trino
+                        | Engine::Elasticsearch
                 );
                 let needs_user = !matches!(
                     self.engine,
-                    Engine::Redis | Engine::MongoDb | Engine::Cassandra
+                    Engine::Redis | Engine::MongoDb | Engine::Cassandra | Engine::Elasticsearch
                 );
                 !self.host.trim().is_empty()
                     && self.port != 0
