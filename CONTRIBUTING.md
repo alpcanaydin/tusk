@@ -10,8 +10,12 @@ Thanks for helping! Bug reports, ideas and pull requests are all welcome.
 
 ## Development setup
 
-You need macOS 14 or later on Apple Silicon with the Xcode Command Line Tools,
-or Linux with the [system dependencies in the README](README.md#linux-build).
+Tusk builds on all three platforms:
+
+- **macOS:** macOS 14 or later on Apple Silicon, with the Xcode Command Line Tools.
+- **Windows:** Windows 10 or 11 with the [build tools in the README](README.md#windows-build).
+- **Linux:** the [system dependencies in the README](README.md#linux-build).
+
 Docker provides the sample database. `rust-toolchain.toml` pins the Rust
 version, and rustup installs it on the first build.
 
