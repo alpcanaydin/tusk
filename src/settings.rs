@@ -732,9 +732,8 @@ impl SettingsWindow {
                         .description("Scales the whole interface."),
                     ),
             )
-            // Untitled: stays under "UI Font" instead of adding a sidebar entry.
             .group(
-                SettingGroup::new().item(
+                SettingGroup::new().title("Layout").item(
                     SettingItem::new(
                         "Sidebar Layout",
                         SettingField::dropdown(
@@ -875,9 +874,9 @@ impl SettingsWindow {
                         d.editor_uppercase_keywords,
                     )),
             );
-        // Untitled: stays under "Table Font" instead of adding a sidebar entry.
         let data = data.group(
             SettingGroup::new()
+                .title("Display")
                 .item(switch(
                     "Alternating Row Colors",
                     "Stripe every other row.",
