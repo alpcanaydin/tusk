@@ -237,6 +237,9 @@ pub struct TuskApp {
     /// Set on connect: the next render empties the connection search, which
     /// the manager and the connections-tree sidebar share.
     clear_conn_search: bool,
+    /// Connections tree: the connected connection's objects are folded away
+    /// (clicking its row toggles this; a new connection starts unfolded).
+    pub(super) active_conn_folded: bool,
     /// Set when the connection manager opens: the next render focuses its search.
     pub(super) focus_conn_search: bool,
     /// Runs parallel to the currently rendered command items.
@@ -366,6 +369,7 @@ impl TuskApp {
             palette: None,
             conn_manager: false,
             clear_conn_search: false,
+            active_conn_folded: false,
             focus_conn_search: false,
             palette_runs: Vec::new(),
             tables: Vec::new(),
@@ -2341,6 +2345,7 @@ impl TuskApp {
     ) {
         let name = conn.name.clone();
         self.clear_conn_search = true;
+        self.active_conn_folded = false;
         // Another connection (or database): the old tabs, split, selection
         // and pending edits belong to the old one.
         let same = self

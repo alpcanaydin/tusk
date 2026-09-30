@@ -165,9 +165,13 @@ impl TuskApp {
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(div().w(px(12.)).flex_none().when(active, |this| {
                 this.child(
-                    Icon::new(IconName::ChevronDown)
-                        .size(px(11.))
-                        .text_color(muted),
+                    Icon::new(if self.active_conn_folded {
+                        IconName::ChevronRight
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .size(px(11.))
+                    .text_color(muted),
                 )
             }))
             .child(icon.size(px(13.)).text_color(tint))
@@ -207,7 +211,14 @@ impl TuskApp {
                 this.child(div().size(px(6.)).flex_none().rounded_full().bg(accent))
             })
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_saved(ix, window, cx);
+                // The connected row folds / unfolds its objects, like a
+                // group; any other row switches to that connection.
+                if active {
+                    this.active_conn_folded = !this.active_conn_folded;
+                    cx.notify();
+                } else {
+                    this.open_saved(ix, window, cx);
+                }
             }))
             .context_menu(move |menu, window, cx| {
                 Self::connection_menu(ix, folders.clone(), menu, window, cx)
@@ -369,6 +380,7 @@ impl TuskApp {
                     list = list.child(self.tree_connection_row(ix, &folders, indent, cx));
                     if saved[ix].name == self.active_name
                         && let Some(o) = objects.take()
+                        && !self.active_conn_folded
                     {
                         list = list.child(o.when(indent, |o| o.pl(px(28.))));
                     }
@@ -434,7 +446,7 @@ impl TuskApp {
 
         let search = div().px_2().pt_2().pb_1().child(
             Input::new(&self.conn_search)
-                .xsmall()
+                .small()
                 .prefix(Icon::new(IconName::Search).size(px(12.)).text_color(muted))
                 .font_family(crate::settings::ui_font()),
         );
