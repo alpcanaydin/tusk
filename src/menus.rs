@@ -9,10 +9,32 @@ use crate::actions::*;
 const REPO: &str = "https://github.com/alpcanaydin/tusk";
 
 /// Window-menu commands act on the key window (a main or a secondary one).
-fn with_active_window(cx: &mut App, f: fn(&Window)) {
-    if let Some(w) = cx.active_window() {
-        let _ = w.update(cx, |_, window, _| f(window));
-    }
+/// On macOS they go through AppKit's own responder actions, the path the
+/// system's View ▸ Enter Full Screen takes: GPUI's minimize / zoom /
+/// fullscreen calls were ignored when sent from a menu or shortcut.
+#[cfg(target_os = "macos")]
+fn window_command(cx: &mut App, selector: &'static str, _fallback: fn(&Window)) {
+    cx.defer(move |_| {
+        use objc2::runtime::{AnyObject, Sel};
+        use objc2::{MainThreadMarker, msg_send};
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+        let sel = Sel::register(&std::ffi::CString::new(selector).unwrap());
+        let nil: *const AnyObject = std::ptr::null();
+        // Target nil: the first responder chain, i.e. the key window.
+        let _: bool = unsafe { msg_send![&*app, sendAction: sel, to: nil, from: nil] };
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_command(cx: &mut App, _selector: &'static str, f: fn(&Window)) {
+    cx.defer(move |cx| {
+        if let Some(w) = cx.active_window() {
+            let _ = w.update(cx, |_, window, _| f(window));
+        }
+    });
 }
 
 pub fn install(cx: &mut App) {
@@ -23,9 +45,13 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &ShowReleaseNotes, cx| crate::whats_new::open_release_notes(cx));
     cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
     cx.on_action(|_: &RestartToUpdate, _| crate::updater::restart_to_update());
-    cx.on_action(|_: &MinimizeWindow, cx| with_active_window(cx, Window::minimize_window));
-    cx.on_action(|_: &ZoomWindow, cx| with_active_window(cx, Window::zoom_window));
-    cx.on_action(|_: &ToggleFullScreen, cx| with_active_window(cx, Window::toggle_fullscreen));
+    cx.on_action(|_: &MinimizeWindow, cx| {
+        window_command(cx, "performMiniaturize:", Window::minimize_window)
+    });
+    cx.on_action(|_: &ZoomWindow, cx| window_command(cx, "performZoom:", Window::zoom_window));
+    cx.on_action(|_: &ToggleFullScreen, cx| {
+        window_command(cx, "toggleFullScreen:", Window::toggle_fullscreen)
+    });
     cx.on_action(|_: &BringAllToFront, cx| {
         for w in cx.windows() {
             let _ = w.update(cx, |_, window, _| window.activate_window());
