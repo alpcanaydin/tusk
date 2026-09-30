@@ -342,11 +342,10 @@ impl CompletionMenu {
         cx.notify();
     }
 
-    /// Sets the trigger start offset if it is not already set.
+    /// Sets the trigger start offset — Tusk patch: always the editor's latest
+    /// (the start of the word under the cursor), not the first one seen.
     pub(crate) fn update_query(&mut self, start_offset: usize, query: impl Into<SharedString>) {
-        if self.trigger_start_offset.is_none() {
-            self.trigger_start_offset = Some(start_offset);
-        }
+        self.trigger_start_offset = Some(start_offset);
         self.query = query.into();
     }
 

@@ -6,7 +6,7 @@
 
 **The gentle giant for your databases.**
 
-A fast, native, keyboard-driven database client for macOS. It's written in Rust
+A fast, native, keyboard-driven database client for macOS and Linux. It's written in Rust
 on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framework behind the Zed editor.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -23,7 +23,7 @@ on [GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framewo
 - **One app for 20 databases.** PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Snowflake, BigQuery, Redis, MongoDB and more.
 - **Keyboard first.** Everything is in the command palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>), and the common actions have shortcuts.
 - **AI that doesn't take the wheel.** Ask about your data in plain English. The agent reads your schema and writes a query into a new tab. It never runs SQL on its own.
-- **Your credentials stay yours.** Passwords are stored only in the macOS Keychain. There's no account and no telemetry.
+- **Your credentials stay yours.** Passwords are stored in the macOS Keychain or Linux Secret Service. There's no account and no telemetry.
 
 ## Features
 
@@ -95,11 +95,13 @@ Tusk ships with more than 30 light and dark themes: Tusk, Kanagawa, Catppuccin, 
 
 ### Also included
 
-- **Backup and restore** for PostgreSQL with bundled `pg_dump`, `pg_restore` and `psql`, so you don't need Homebrew.
+- **Backup and restore** for PostgreSQL using bundled client tools on macOS or installed client tools on Linux.
 - **Export** tables and results as CSV, JSON or SQL, and **import** from CSV.
 - **Process list** with cancel and kill, for every engine.
 
 ## Keyboard shortcuts
+
+On Linux, use <kbd>Ctrl</kbd> wherever the table shows <kbd>⌘</kbd>.
 
 | Action | Shortcut |
 | --- | --- |
@@ -116,7 +118,8 @@ Tusk ships with more than 30 light and dark themes: Tusk, Kanagawa, Catppuccin, 
 ## Getting started
 
 > [!IMPORTANT]
-> Tusk runs on **macOS 14 (Sonoma) or later** on Apple Silicon.
+> macOS requires **macOS 14 (Sonoma) or later** on Apple Silicon. Linux supports
+> x86_64 Wayland desktops; older releases may have only macOS downloads.
 
 ### Download
 
@@ -151,6 +154,59 @@ To build a standalone `Tusk.app` with the bundled language servers and PostgreSQ
 scripts/bundle.sh            # → target/release/bundle/Tusk.app
 ```
 
+### Linux build
+
+On Ubuntu 24.04, install the `Tusk-<version>-ubuntu-amd64.deb` from the
+[Releases page](https://github.com/alpcanaydin/tusk/releases) with
+`sudo apt install ./Tusk-*-ubuntu-amd64.deb`. On Fedora, install
+`Tusk-<version>-fedora-x86_64.rpm` with
+`sudo dnf install ./Tusk-*-fedora-x86_64.rpm`. On Arch Linux, install
+`Tusk-<version>-arch-x86_64.pkg.tar.zst` with
+`sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst`.
+
+To build from source, clone the repository and install the pinned Rust
+toolchain with [rustup](https://rustup.rs). You also
+need a C/C++ compiler, CMake, Go (for the SQL language server), `pkg-config`,
+and GPUI's Wayland/Xwayland, font, and Vulkan dependencies. On Arch-based
+distributions:
+
+```sh
+sudo pacman -S --needed base-devel clang cmake go git curl pkgconf wayland libxkbcommon-x11 fontconfig vulkan-icd-loader dbus gnome-keyring postgresql-libs
+git clone https://github.com/alpcanaydin/tusk.git && cd tusk
+cargo run --release
+```
+
+On Ubuntu 24.04, install build dependencies with:
+
+```sh
+sudo apt update
+sudo apt install clang cmake golang-go git curl pkg-config libasound2-dev libdbus-1-dev libfontconfig-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan-dev
+```
+
+On Fedora, install build dependencies with:
+
+```sh
+sudo dnf install clang cmake golang git curl pkgconf-pkg-config alsa-lib-devel dbus-devel fontconfig-devel wayland-devel libxcb-devel libxkbcommon-x11-devel vulkan-loader-devel
+```
+
+To install the binary, SQL language servers, and desktop launcher under `~/.local`, run
+`scripts/install-linux.sh`. Restart the desktop session if the launcher does
+not appear immediately. Linux uses your desktop's Secret Service provider
+(such as GNOME Keyring or a compatible KWallet service) for saved passwords.
+The app refuses to report a password as saved when the service is unavailable.
+On Linux, choose the graphics device in **Settings → General → Graphics Device**
+and restart Tusk. The choice asks GPUI to prefer that GPU; if it cannot render
+the window, GPUI falls back to another compatible device.
+On a Wayland desktop, GPUI uses native Wayland when available and can use
+Xwayland as a fallback. Standalone X11 sessions are not a supported target.
+
+PostgreSQL backup and restore use `pg_dump`, `pg_restore`, and `psql` from
+`PATH` (or `TUSK_PG_BIN`); install your distribution's PostgreSQL client tools
+for these features. SQL completions use `postgres-language-server` and `sqls`
+from `PATH`; `scripts/install-linux.sh` installs both. A direct `cargo run`
+build can use `TUSK_PGLS` or `TUSK_SQLS` to locate them. Linux builds do not
+use the macOS updater.
+
 ### Releasing (maintainers)
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`). The workflow:
@@ -158,8 +214,9 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`). The work
 1. Builds the app and signs it with the Developer ID.
 2. Notarizes and staples both the app and the DMG.
 3. Signs the DMG for Sparkle and writes the update feed (`appcast.xml`).
-4. Publishes a GitHub release with the DMG and the feed.
-5. Updates the Homebrew cask.
+4. Builds Ubuntu DEB, Fedora RPM, and Arch Linux packages with the desktop launcher and SQL language servers.
+5. Publishes a GitHub release with the DMG, Linux packages, and update feed.
+6. Updates the Homebrew cask.
 
 One-time setup: run `scripts/setup-release.sh`. The wizard walks you through the certificate, the notarization key, the update-signing key and the Homebrew token, and checks each one. After that, a release is one command:
 
@@ -194,8 +251,8 @@ Some integration tests need the Docker database above. Tests for other engines u
 
 | What | Where |
 | --- | --- |
-| Connection profiles, groups, settings, history | `~/Library/Application Support/tusk/` |
-| Passwords and SSH passphrases | macOS Keychain (`tusk-postgres`, `tusk-ssh`) |
+| Connection profiles, groups, settings, history | macOS: `~/Library/Application Support/tusk/`; Linux: `$XDG_DATA_HOME/tusk/` (default `~/.local/share/tusk/`) |
+| Passwords and SSH passphrases | macOS Keychain or Linux Secret Service (`tusk-postgres`, `tusk-ssh`) |
 
 Set `TUSK_DATA_DIR` to use a different folder, which is handy for a clean test profile.
 

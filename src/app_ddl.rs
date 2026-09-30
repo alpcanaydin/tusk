@@ -60,6 +60,9 @@ impl TuskApp {
             Some(st) => st,
             None => {
                 let st = crate::sql::new_result_state(window, cx);
+                st.update(cx, |s, _| {
+                    s.delegate_mut().empty_text = "No triggers".into()
+                });
                 if let Some(t) = self.grid_tab_mut(ix) {
                     t.triggers = Some(st.clone());
                 }

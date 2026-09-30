@@ -195,6 +195,47 @@ fn s(v: &Value) -> String {
 }
 
 /// Text of a content block (text, or the name / text of a resource).
+/// URI of the database context Tusk sends with every prompt.
+pub(crate) const CONTEXT_URI: &str = "tusk://context";
+
+/// A prompt block carrying Tusk's injected context (not something the user typed).
+fn is_context_block(b: &Value) -> bool {
+    matches!(b["type"].as_str(), Some("resource" | "resource_link"))
+        && (b["resource"]["uri"] == CONTEXT_URI || b["uri"] == CONTEXT_URI)
+}
+
+/// The user's own words from a replayed prompt: agents replay the injected
+/// context as text (`tusk://context` plus `<context ref="tusk://context">…
+/// </context>`), which must not show in the user's bubble.
+pub(crate) fn strip_injected_context(text: &str) -> String {
+    let open = format!("<context ref=\"{CONTEXT_URI}\">");
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(&open) {
+        out.push_str(&rest[..i]);
+        rest = &rest[i + open.len()..];
+        match rest.find("</context>") {
+            Some(j) => rest = &rest[j + "</context>".len()..],
+            None => rest = "",
+        }
+    }
+    out.push_str(rest);
+    // Replayed chunks can arrive glued together ("…the numbertusk://context"),
+    // so the bare URI is also dropped where it ends a line.
+    out.lines()
+        .map(|l| l.trim_end().strip_suffix(CONTEXT_URI).unwrap_or(l))
+        .filter(|l| {
+            let t = l.trim();
+            t != CONTEXT_URI
+                && t != format!("@{CONTEXT_URI}")
+                && !(t.starts_with('[') && t.ends_with(&format!("]({CONTEXT_URI})")))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 fn block_text(b: &Value) -> String {
     match b["type"].as_str() {
         Some("text") => s(&b["text"]),
@@ -531,6 +572,27 @@ impl AgentThread {
 
     /// `authenticate` with one of the agent's login methods.
     pub fn authenticate(&mut self, method: &AuthMethod, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        if let (Some((args, env)), Some(prog)) = (&method.terminal, &self.program) {
+            // Terminal login: run the agent's own login flow in a new console.
+            use std::os::windows::process::CommandExt as _;
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            let _ = std::process::Command::new(&prog.program)
+                .args(prog.args.iter().chain(args))
+                .envs(env.iter().map(|(k, v)| (k, v)))
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .spawn();
+            self.entries.push(Entry::Notice {
+                text: format!(
+                    "Finish signing in to {} in the console window, then press Retry.",
+                    self.agent_name
+                ),
+                error: false,
+            });
+            self.changed(cx);
+            return;
+        }
+        #[cfg(not(windows))]
         if let (Some((args, env)), Some(prog)) = (&method.terminal, &self.program) {
             // Terminal login: run the agent's own login flow in Terminal.
             let mut line = shell_quote(&prog.program.display().to_string());
@@ -611,7 +673,13 @@ impl AgentThread {
             if embedded || c["type"] == "text" {
                 prompt.push(c);
             } else if c["type"] == "resource" {
-                prompt.push(json!({ "type": "text", "text": s(&c["resource"]["text"]) }));
+                // Tagged, so a replay of this prompt can hide it again.
+                let body = s(&c["resource"]["text"]);
+                let uri = s(&c["resource"]["uri"]);
+                prompt.push(json!({
+                    "type": "text",
+                    "text": format!("<context ref=\"{uri}\">\n{body}\n</context>"),
+                }));
             }
         }
         let task = cx.spawn(async move |this, cx| {
@@ -918,6 +986,10 @@ impl AgentThread {
                 }
             }
             "user_message_chunk" => {
+                // A replayed prompt also carries Tusk's context block.
+                if is_context_block(&u["content"]) {
+                    return;
+                }
                 let text = block_text(&u["content"]);
                 match self.entries.last_mut() {
                     Some(Entry::User { text: t }) => t.push_str(&text),
@@ -1345,6 +1417,7 @@ impl Drop for AgentThread {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))] // Terminal login is POSIX-shell only
 fn shell_quote(s: &str) -> String {
     if !s.is_empty()
         && s.chars()
@@ -1360,7 +1433,9 @@ fn shell_quote(s: &str) -> String {
 mod tests {
     // Explicit imports: a glob of the parent would bring gpui's `test`
     // attribute macro in place of the standard `#[test]`.
-    use super::{ConfigKind, block_text, parse_config, shell_quote};
+    use super::{
+        ConfigKind, block_text, is_context_block, parse_config, shell_quote, strip_injected_context,
+    };
     use serde_json::json;
 
     #[test]
@@ -1382,6 +1457,35 @@ mod tests {
             matches!(&c[1].kind, ConfigKind::Select { options, .. } if options[0].group.as_deref() == Some("Group"))
         );
         assert!(matches!(c[2].kind, ConfigKind::Boolean(true)));
+    }
+
+    #[test]
+    fn replayed_prompt_hides_injected_context() {
+        assert_eq!(
+            strip_injected_context("Reply with just the numbertusk://context"),
+            "Reply with just the number"
+        );
+        let replay = "why is it slow?\ntusk://context\n<context ref=\"tusk://context\">\nYou are the assistant inside Tusk…\nConnection: x\n</context>";
+        assert_eq!(strip_injected_context(replay), "why is it slow?");
+        assert_eq!(
+            strip_injected_context("[@tusk://context](tusk://context)\nhi"),
+            "hi"
+        );
+        // Cut off mid-context (still streaming): nothing of it shows.
+        assert_eq!(
+            strip_injected_context("hi <context ref=\"tusk://context\">You are"),
+            "hi"
+        );
+        assert_eq!(
+            strip_injected_context("plain <context> tag"),
+            "plain <context> tag"
+        );
+        assert!(is_context_block(
+            &json!({"type":"resource","resource":{"uri":"tusk://context","text":"x"}})
+        ));
+        assert!(!is_context_block(
+            &json!({"type":"text","text":"tusk://context"})
+        ));
     }
 
     #[test]

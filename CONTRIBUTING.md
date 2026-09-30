@@ -5,12 +5,15 @@ Thanks for helping! Bug reports, ideas and pull requests are all welcome.
 ## Questions and ideas
 
 - **A question, or an idea you want to talk through:** start a [discussion](https://github.com/alpcanaydin/tusk/discussions).
-- **A bug:** open an [issue](https://github.com/alpcanaydin/tusk/issues/new/choose) with your macOS version, the Tusk version (Tusk ▸ About) and the database engine.
+- **A bug:** open an [issue](https://github.com/alpcanaydin/tusk/issues/new/choose) with your OS version, the Tusk version and the database engine.
 - **A security problem:** don't open an issue. See [SECURITY.md](SECURITY.md).
 
 ## Development setup
 
-You need macOS 14 or later on Apple Silicon, the Xcode Command Line Tools, and Docker for the sample database. `rust-toolchain.toml` pins the Rust version, and rustup installs it on the first build.
+You need macOS 14 or later on Apple Silicon with the Xcode Command Line Tools,
+or Linux with the [system dependencies in the README](README.md#linux-build).
+Docker provides the sample database. `rust-toolchain.toml` pins the Rust
+version, and rustup installs it on the first build.
 
 ```sh
 git clone https://github.com/alpcanaydin/tusk.git && cd tusk

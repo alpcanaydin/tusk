@@ -28,15 +28,14 @@ fn pill_frame(id: impl Into<ElementId>, active: bool, cx: &App) -> Stateful<Div>
     let (muted, fg, border) = (t.muted_foreground, t.foreground, t.border);
     div()
         .id(id)
-        .cursor_pointer()
         .h(px(crate::settings::row_h()))
         .px_2()
         .flex()
         .items_center()
-        .rounded(px(6.))
+        .rounded(crate::theme::RADIUS_MD)
         .border_1()
         .border_color(border)
-        .text_xs()
+        .text_caption()
         .text_color(if active { fg } else { muted })
         .when(active, |this| this.bg(muted.opacity(0.18)))
         .hover(|this| this.bg(muted.opacity(0.1)).text_color(fg))
@@ -52,11 +51,10 @@ fn icon_btn(id: impl Into<ElementId>, icon: IconName, enabled: bool, cx: &App) -
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(5.))
+        .rounded(crate::theme::RADIUS_SM)
         .text_color(if enabled { muted } else { muted.opacity(0.3) })
         .when(enabled, |this| {
-            this.cursor_pointer()
-                .hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
+            this.hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
         })
         .child(Icon::new(icon).size(px(14.)))
 }
@@ -132,7 +130,15 @@ impl TuskApp {
         let Some(tab) = self.grid_tab(ix) else { return };
         let needs_structure = view == TabView::Structure && tab.structure.is_none();
         if needs_structure {
-            let metas = tab.state.read(cx).delegate().metas.clone();
+            // Real column order: a header drag in Data only moves the display.
+            let metas = {
+                let d = tab.state.read(cx).delegate();
+                if d.table_metas.is_empty() {
+                    d.metas.clone()
+                } else {
+                    d.table_metas.clone()
+                }
+            };
             let ddl = self.pool.as_ref().is_some_and(|p| p.caps().edit_structure);
             let d = StructureDelegate::new(
                 tab.table.schema.clone(),
@@ -913,6 +919,23 @@ impl TuskApp {
         cx.notify();
     }
 
+    /// Keyboard focus back on the active tab's visible table (after its
+    /// cell editor or a picker closed), so ⌘S / arrows work without a click.
+    pub(super) fn focus_active_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let handle = match self.active_tab.and_then(|ix| self.tabs.get(ix)) {
+            Some(WorkspaceTab::Sql(t)) => Some(t.result.read(cx).focus_handle(cx)),
+            Some(WorkspaceTab::Grid(g)) => match g.view {
+                TabView::Structure => g.structure.as_ref().map(|s| s.read(cx).focus_handle(cx)),
+                TabView::Index => g.indexes.as_ref().map(|s| s.read(cx).focus_handle(cx)),
+                _ => Some(g.state.read(cx).focus_handle(cx)),
+            },
+            None => None,
+        };
+        if let Some(h) = handle {
+            h.focus(window, cx);
+        }
+    }
+
     /// Esc: close an open cell/rename editor without keeping its value.
     pub(super) fn cancel_editors(&mut self, cx: &mut Context<Self>) -> bool {
         if self.renaming.take().is_some() {
@@ -959,25 +982,12 @@ impl TuskApp {
     }
 
     pub(super) fn pending_summary(&self, cx: &App) -> Option<String> {
-        let mut n = self.pending_drops.len() + self.pending_renames.len();
-        if let Some(WorkspaceTab::Sql(t)) = self.active_tab.and_then(|ix| self.tabs.get(ix)) {
-            n += t.result.read(cx).delegate().pending_count();
-        }
-        if let Some(tab) = self.active_tab.and_then(|ix| self.grid_tab(ix)) {
-            n += tab.state.read(cx).delegate().pending_count();
-            if let Some(st) = &tab.structure {
-                n += st.read(cx).delegate().pending_count();
-            }
-            if let Some(st) = &tab.indexes {
-                n += st.read(cx).delegate().pending_count();
-            }
-        }
-        (n > 0).then(|| {
-            format!(
-                "{n} unsaved change{} — [cmd-s] to save",
-                if n == 1 { "" } else { "s" }
-            )
-        })
+        // tab_pending also counts a New View draft, so safe mode asks before
+        // ⌘S creates the view instead of finding "nothing to save".
+        let n = self.pending_drops.len()
+            + self.pending_renames.len()
+            + self.active_tab.map_or(0, |ix| self.tab_pending(ix, cx));
+        (n > 0).then(|| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" }))
     }
 
     // ---------- ⌘S ----------
@@ -1089,6 +1099,7 @@ impl TuskApp {
         }
         // New View draft: CREATE VIEW <name> AS <editor text>.
         let mut view_stmt: Option<(usize, Stmt)> = None;
+        let mut view_name: Option<String> = None;
         if let Some(ix) = tab_ix
             && let Some(WorkspaceTab::Sql(t)) = self.tabs.get(ix)
             && let Some(input) = &t.view_draft
@@ -1101,6 +1112,7 @@ impl TuskApp {
                 cx.notify();
                 return;
             }
+            view_name = Some(name.clone());
             view_stmt = Some((
                 ix,
                 Stmt::plain(format!(
@@ -1154,7 +1166,11 @@ impl TuskApp {
             return;
         }
         self.saving = true;
-        self.status_line = format!("Saving {} statement(s)…", stmts.len());
+        self.status_line = format!(
+            "Saving {} statement{}…",
+            stmts.len(),
+            if stmts.len() == 1 { "" } else { "s" }
+        );
         cx.notify();
         let n_stmts = stmts.len();
         let struct_changed = struct_state
@@ -1183,6 +1199,10 @@ impl TuskApp {
                                 this.ensure_rename_input(ix, window, cx);
                                 if let Some(WorkspaceTab::Sql(t)) = this.tabs.get_mut(ix) {
                                     t.view_draft = None;
+                                    // The draft tab now edits a real view: name it so.
+                                    if let Some(name) = &view_name {
+                                        t.title = name.clone();
+                                    }
                                 }
                             }
                             let schema = this.current_schema.clone();
@@ -1219,7 +1239,11 @@ impl TuskApp {
                         this.status_line.clear();
                         this.toast(
                             true,
-                            format!("Saved — {n_stmts} statement(s), {affected} row(s) affected · {ms} ms"),
+                            format!(
+                                "Saved — {n_stmts} statement{}, {} affected · {ms} ms",
+                                if n_stmts == 1 { "" } else { "s" },
+                                crate::sql::n_rows(affected as usize)
+                            ),
                         );
                     }
                     Err(e) => {
@@ -1438,7 +1462,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_1p5()
-                    .text_xs()
+                    .text_caption()
                     .child(div().text_color(muted.opacity(0.7)).child(label))
                     .child(crate::kbd::caps(key))
             }));
@@ -1490,12 +1514,11 @@ impl TuskApp {
                 .h_full()
                 .flex()
                 .items_center()
-                .text_xs()
+                .text_caption()
                 .text_color(if active { fg } else { muted })
                 .when(active, |this| this.bg(muted.opacity(0.18)))
                 .hover(|this| this.bg(muted.opacity(0.08)))
                 .child(label)
-                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.set_tab_view(ix, v, window, cx);
                 }))
@@ -1505,17 +1528,25 @@ impl TuskApp {
         let center = match view {
             TabView::Data => match (d.total_rows(), d.page_len()) {
                 (Some(0), _) => "0 rows".to_string(),
-                (Some(n), Some(len)) => format!(
-                    "{}–{} of {} rows{}",
-                    super::fmt_int(d.page_offset + 1),
-                    super::fmt_int(d.page_offset + len),
-                    super::fmt_int(n),
-                    if d.filter.is_some() {
+                (Some(n), Some(len)) => {
+                    let filtered = if d.filter.is_some() {
                         " (filtered)"
                     } else {
                         ""
+                    };
+                    let rows = if n == 1 { "row" } else { "rows" };
+                    // Every row on screen: just the count, no range.
+                    if d.page_offset == 0 && len >= n {
+                        format!("{} {rows}{filtered}", super::fmt_int(n))
+                    } else {
+                        format!(
+                            "{}–{} of {} {rows}{filtered}",
+                            super::fmt_int(d.page_offset + 1),
+                            super::fmt_int(d.page_offset + len),
+                            super::fmt_int(n),
+                        )
                     }
-                ),
+                }
                 _ => "…".to_string(),
             },
             TabView::Structure => {
@@ -1546,7 +1577,7 @@ impl TuskApp {
             .flex()
             .flex_row()
             .h(px(crate::settings::row_h()))
-            .rounded(px(6.))
+            .rounded(crate::theme::RADIUS_MD)
             .border_1()
             .border_color(border)
             .overflow_hidden()
@@ -1635,7 +1666,7 @@ impl TuskApp {
                     .flex_1()
                     .flex()
                     .justify_center()
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::ui_font())
                     .text_color(muted)
                     .child(center),
@@ -1679,7 +1710,7 @@ impl TuskApp {
                                         view.update(cx, |this, cx| this.apply_page_inputs(ix, cx));
                                     }),
                             )
-                            .child(div().text_xs().text_color(muted).child(
+                            .child(div().text_caption().text_color(muted).child(
                                 crate::kbd::rich_colored(
                                     "[cmd-left] / [cmd-right] previous / next page",
                                     muted,

@@ -65,11 +65,10 @@ pub struct CustomAgent {
     pub env: std::collections::BTreeMap<String, String>,
 }
 
+/// Agents, their installs, icons and the MCP bridge socket live in Tusk's
+/// data folder, so a `TUSK_DATA_DIR` profile keeps them separate too.
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("tusk")
-        .join("agents")
+    crate::db::app_dir().join("agents")
 }
 
 /// PATH for agents and installers: the inherited one plus the places node,
@@ -101,6 +100,12 @@ pub fn search_path() -> std::ffi::OsString {
             }
         }
     }
+    // Windows: the node installer and npm's global shims.
+    for (var, sub) in [("ProgramFiles", "nodejs"), ("APPDATA", "npm")] {
+        if let Some(base) = std::env::var_os(var) {
+            dirs.push(PathBuf::from(base).join(sub));
+        }
+    }
     for d in [
         "/opt/homebrew/bin",
         "/usr/local/bin",
@@ -116,10 +121,16 @@ pub fn search_path() -> std::ffi::OsString {
     std::env::join_paths(dirs).unwrap_or_default()
 }
 
-/// `name` on [`search_path`].
+/// `name` on [`search_path`] (on Windows `name.exe`, else the npm-style
+/// `name.cmd` shim).
 pub fn which(name: &str) -> Option<PathBuf> {
+    let exts: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd"]
+    } else {
+        &[""]
+    };
     std::env::split_paths(&search_path())
-        .map(|d| d.join(name))
+        .flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}"))))
         .find(|p| p.is_file())
 }
 
@@ -469,28 +480,25 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
                 let file = dir.join(file_name);
                 curl(archive, &file)?;
                 if let Some(want) = sha256 {
-                    let out = Command::new("shasum")
-                        .args(["-a", "256"])
-                        .arg(&file)
-                        .output()?;
-                    let got = String::from_utf8_lossy(&out.stdout);
-                    if !got
-                        .split_whitespace()
-                        .next()
-                        .is_some_and(|h| h.eq_ignore_ascii_case(want))
-                    {
+                    use sha2::Digest as _;
+                    let got = hex::encode(sha2::Sha256::digest(std::fs::read(&file)?));
+                    if !got.eq_ignore_ascii_case(want) {
                         let _ = std::fs::remove_file(&file);
                         bail!("{} download failed its checksum", spec.name);
                     }
                 }
-                let status = if file_name.ends_with(".zip") {
+                // Windows has no unzip, but its bundled bsdtar reads zips.
+                let status = if file_name.ends_with(".zip") && !cfg!(windows) {
                     Command::new("unzip")
                         .args(["-q", "-o"])
                         .arg(&file)
                         .arg("-d")
                         .arg(&dir)
                         .status()?
-                } else if file_name.contains(".tar") || file_name.ends_with(".tgz") {
+                } else if file_name.contains(".tar")
+                    || file_name.ends_with(".tgz")
+                    || file_name.ends_with(".zip")
+                {
                     Command::new("tar")
                         .arg("xf")
                         .arg(&file)
@@ -554,7 +562,9 @@ mod tests {
                 "darwin-aarch64":{"archive":"https://e/b.zip","cmd":"./b","args":["acp"]},
                 "darwin-x86_64":{"archive":"https://e/b.zip","cmd":"./b","args":["acp"]},
                 "linux-x86_64":{"archive":"https://e/b.tgz","cmd":"./b"},
-                "linux-aarch64":{"archive":"https://e/b.tgz","cmd":"./b"}}}},
+                "linux-aarch64":{"archive":"https://e/b.tgz","cmd":"./b"},
+                "windows-x86_64":{"archive":"https://e/b.zip","cmd":"./b"},
+                "windows-aarch64":{"archive":"https://e/b.zip","cmd":"./b"}}}},
             {"id":"c","distribution":{"uvx":{"package":"c"}}},
             {"id":"d","distribution":{}}
         ]});

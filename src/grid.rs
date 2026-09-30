@@ -97,6 +97,9 @@ pub struct GridDelegate {
     pub editable: bool,
     pub columns: Vec<GridColumn>,
     pub metas: Vec<GridColumnMeta>,
+    /// The table's columns in their real (ordinal) order; `metas` follows
+    /// the display order after a header drag, this never moves.
+    pub table_metas: Vec<GridColumnMeta>,
     rows: BTreeMap<usize, Vec<Value>>,
     ctids: BTreeMap<usize, String>,
     total: Option<i64>,
@@ -107,6 +110,9 @@ pub struct GridDelegate {
     generation: u64,
     pub error: Option<String>,
     pub query_ms: Option<u128>,
+    /// A cell value that was refused (text in a number column); the app
+    /// shows it as a toast and clears it.
+    pub cell_error: Option<String>,
     // ---- pending changes (saved with ⌘S) ----
     pub edits: BTreeMap<String, RowEdit>,
     pub deleted: BTreeMap<String, Vec<Value>>,
@@ -153,6 +159,7 @@ impl GridDelegate {
             editable,
             columns: Vec::new(),
             metas: Vec::new(),
+            table_metas: Vec::new(),
             rows: BTreeMap::new(),
             ctids: BTreeMap::new(),
             total: None,
@@ -162,6 +169,7 @@ impl GridDelegate {
             generation: 0,
             error: None,
             query_ms: None,
+            cell_error: None,
             edits: BTreeMap::new(),
             deleted: BTreeMap::new(),
             editing: None,
@@ -416,7 +424,16 @@ impl GridDelegate {
         let Some(original) = self.original(row) else {
             return;
         };
-        let change = cell_edit::change_for(ed.editor.value(cx), original.get(col));
+        let value = ed.editor.value(cx);
+        if let (Some(cell_edit::EditValue::Text(t)), Some(meta)) = (&value, self.metas.get(col))
+            && let Some(why) = cell_edit::invalid_for(&meta.sql_type, t)
+        {
+            // Refuse it here instead of failing the whole ⌘S later.
+            self.cell_error = Some(why);
+            cx.notify();
+            return;
+        }
+        let change = cell_edit::change_for(value, original.get(col));
         self.set_change(ed.key, original, col, change);
         cx.notify();
     }
@@ -501,6 +518,12 @@ impl GridDelegate {
         if self.deleted.contains_key(&key) {
             return;
         }
+        if let (Some(t), Some(meta)) = (&value, self.metas.get(col_ix))
+            && let Some(why) = cell_edit::invalid_for(&meta.sql_type, t)
+        {
+            self.cell_error = Some(why);
+            return;
+        }
         let v = match value {
             Some(t) => cell_edit::EditValue::Text(t),
             None => cell_edit::EditValue::Null,
@@ -522,6 +545,19 @@ impl GridDelegate {
             ),
             _ => None,
         }
+    }
+
+    /// ⌘C on a cell range: its cells as tab / newline separated text.
+    pub fn copy_range(&self, (r0, c0): (usize, usize), (r1, c1): (usize, usize)) -> String {
+        (r0..=r1)
+            .map(|r| {
+                (c0..=c1.min(self.columns.len().saturating_sub(1)))
+                    .map(|c| self.cell_plain(r, c))
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// ⇧⌘V: tab / newline separated text into the cells from `(row, col)`
@@ -958,7 +994,7 @@ fn default_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<
     }
 }
 
-fn pk_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<String> {
+pub(crate) fn pk_order(d: crate::engine::Dialect, metas: &[GridColumnMeta]) -> Option<String> {
     let pk: Vec<String> = metas
         .iter()
         .filter(|m| m.is_pk)
@@ -1067,6 +1103,7 @@ pub fn apply_initial(state: &Entity<TableState<GridDelegate>>, data: InitialData
         match data.metas {
             Ok(metas) => {
                 d.columns = metas.iter().map(GridColumn::from_meta).collect();
+                d.table_metas = metas.clone();
                 d.metas = metas;
             }
             Err(e) => d.error = Some(e),
@@ -1086,6 +1123,34 @@ pub fn apply_initial(state: &Entity<TableState<GridDelegate>>, data: InitialData
         state.refresh(cx);
         cx.notify();
     });
+}
+
+/// `timestamp` / `timestamptz` (any spelling the catalogs use).
+pub(crate) fn is_timestamp_type(pg_type: &str) -> bool {
+    let t = pg_type.to_ascii_lowercase();
+    t.starts_with("timestamp")
+}
+
+/// psql-style timestamp for display: `2026-09-11 21:56:05.750648+00`
+/// instead of JSON's `2026-09-11T21:56:05.750648+00:00`. Full precision is
+/// kept; editing still starts from the stored value (both parse back).
+pub(crate) fn pretty_timestamp(s: &str) -> String {
+    let b = s.as_bytes();
+    if b.len() < 19 || b[10] != b'T' || b[4] != b'-' || b[13] != b':' {
+        return s.to_string();
+    }
+    let mut out = format!("{} {}", &s[..10], &s[11..]);
+    // `+HH:00` / `-HH:00` → `+HH`; `Z` → `+00`.
+    if let Some(stripped) = out.strip_suffix('Z') {
+        out = format!("{stripped}+00");
+    } else if out.len() >= 6 {
+        let tail = &out[out.len() - 6..];
+        let tb = tail.as_bytes();
+        if (tb[0] == b'+' || tb[0] == b'-') && tb[3] == b':' && &tail[4..] == "00" {
+            out.truncate(out.len() - 3);
+        }
+    }
+    out
 }
 
 pub(crate) fn cell_text(v: &Value) -> String {
@@ -1157,7 +1222,7 @@ pub(crate) fn render_value(
     let Some(v) = value else {
         return base
             .italic()
-            .text_color(t.colors.muted_foreground.opacity(0.5))
+            .text_color(t.colors.muted_foreground)
             .when(right_align, |this| this.w_full().text_right())
             .child("…")
             .into_any_element();
@@ -1170,8 +1235,9 @@ pub(crate) fn render_value(
             .when(right_align, |this| this.w_full().text_right())
             .child(crate::settings::get().null_text.clone())
             .into_any_element(),
+        // Neutral: accent-colored values read like links.
         Value::Bool(b) => base
-            .text_color(t.colors.accent)
+            .text_color(t.colors.foreground)
             .child(b.to_string())
             .into_any_element(),
         Value::Number(n) => base
@@ -1191,6 +1257,8 @@ pub(crate) fn render_value(
                 } else {
                     format!("\\x{preview}")
                 }
+            } else if is_timestamp_type(pg_type) {
+                pretty_timestamp(s)
             } else {
                 truncate_chars(s, 200)
             };
@@ -1220,6 +1288,13 @@ impl CellEditHost for GridDelegate {
 }
 
 impl TableDelegate for GridDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No rows", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         self.columns.len()
     }
@@ -1262,6 +1337,56 @@ impl TableDelegate for GridDelegate {
             _ => ColumnSort::Default,
         });
         c
+    }
+
+    /// A column header dragged to another spot: reorder the columns and
+    /// every column-indexed value with it (loaded rows, pending edits and
+    /// deletes), so cells keep following their header. Display only: the
+    /// table in the database is untouched. The undo history (indexed by
+    /// the old positions) starts over.
+    fn move_column(
+        &mut self,
+        col_ix: usize,
+        to_ix: usize,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) {
+        let n = self.columns.len();
+        if col_ix >= n || to_ix >= n || col_ix == to_ix {
+            return;
+        }
+        fn shift<T>(v: &mut Vec<T>, from: usize, to: usize) {
+            if from < v.len() && to < v.len() {
+                let x = v.remove(from);
+                v.insert(to, x);
+            }
+        }
+        // new_ix[old] = where the column at `old` ends up.
+        let mut order: Vec<usize> = (0..n).collect();
+        shift(&mut order, col_ix, to_ix);
+        let mut new_ix = vec![0; n];
+        for (pos, old) in order.iter().enumerate() {
+            new_ix[*old] = pos;
+        }
+        shift(&mut self.columns, col_ix, to_ix);
+        if self.metas.len() == n {
+            shift(&mut self.metas, col_ix, to_ix);
+        }
+        for row in self.rows.values_mut() {
+            shift(row, col_ix, to_ix);
+        }
+        for e in self.edits.values_mut() {
+            shift(&mut e.original, col_ix, to_ix);
+            e.changes = std::mem::take(&mut e.changes)
+                .into_iter()
+                .map(|(c, v)| (new_ix.get(c).copied().unwrap_or(c), v))
+                .collect();
+        }
+        for row in self.deleted.values_mut() {
+            shift(row, col_ix, to_ix);
+        }
+        self.editing = None;
+        self.history.clear();
     }
 
     fn render_last_empty_col(
@@ -1371,7 +1496,7 @@ impl TableDelegate for GridDelegate {
                             .italic()
                             .text_size(px(crate::settings::table_text()))
                             .font_family(crate::settings::table_font())
-                            .text_color(muted.opacity(0.5))
+                            .text_color(muted)
                             .when(col.right_align, |d| d.w_full().text_right())
                             .child("DEFAULT"),
                     )
@@ -1538,20 +1663,26 @@ fn cell_menu(
     if editable {
         let e = entity.clone();
         menu = menu.item(
-            PopupMenuItem::new("Edit Cell").on_click(move |_, window, cx| {
-                e.update(cx, |st, cx| {
-                    st.set_selected_cell(row_ix, col_ix, cx);
-                    st.delegate_mut().begin_edit(row_ix, col_ix, window, cx);
-                });
-            }),
+            PopupMenuItem::new("Edit Cell")
+                .action(Box::new(crate::actions::GridEdit))
+                .on_click(move |_, window, cx| {
+                    e.update(cx, |st, cx| {
+                        st.set_selected_cell(row_ix, col_ix, cx);
+                        st.delegate_mut().begin_edit(row_ix, col_ix, window, cx);
+                    });
+                }),
         );
         let e = entity.clone();
-        menu = menu.item(PopupMenuItem::new("Set NULL").on_click(move |_, _, cx| {
-            e.update(cx, |st, cx| {
-                st.delegate_mut().set_null(row_ix, col_ix);
-                cx.notify();
-            });
-        }));
+        menu = menu.item(
+            PopupMenuItem::new("Set NULL")
+                .action(Box::new(crate::actions::GridSetNull))
+                .on_click(move |_, _, cx| {
+                    e.update(cx, |st, cx| {
+                        st.delegate_mut().set_null(row_ix, col_ix);
+                        cx.notify();
+                    });
+                }),
+        );
         let e = entity.clone();
         menu = menu
             .item(
@@ -1566,9 +1697,13 @@ fn cell_menu(
     }
     let copy_value = text.clone();
     menu = menu
-        .item(PopupMenuItem::new("Copy Value").on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()));
-        }))
+        .item(
+            PopupMenuItem::new("Copy Value")
+                .action(Box::new(crate::actions::GridCopy))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()));
+                }),
+        )
         .item(
             PopupMenuItem::new("Copy Column Name").on_click(move |_, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
@@ -1578,7 +1713,7 @@ fn cell_menu(
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")
-                .icon(gpui_kit::assets::IconName::Sparkles)
+                .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
                     let (Some(json), table) = (d.row_json(row_ix), d.table.clone()) else {
@@ -1595,19 +1730,17 @@ fn cell_menu(
         .item(PopupMenuItem::submenu("Sort", sort_menu));
     if editable {
         let e = entity.clone();
-        menu = menu.separator().item(
-            PopupMenuItem::new(if deleted {
-                "Undo Delete Row"
-            } else {
-                "Delete Row"
-            })
-            .on_click(move |_, _, cx| {
-                e.update(cx, |st, cx| {
-                    st.delegate_mut().toggle_delete(row_ix);
-                    cx.notify();
-                });
-            }),
-        );
+        let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+            e.update(cx, |st, cx| {
+                st.delegate_mut().toggle_delete(row_ix);
+                cx.notify();
+            });
+        };
+        menu = menu.separator().item(if deleted {
+            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+        } else {
+            crate::theme::danger_item("Delete Row", toggle)
+        });
     }
     menu
 }
@@ -1698,5 +1831,24 @@ mod live_save_tests {
         let r = rt.block_on(d.query_rows("TTL user:1".into(), 1)).unwrap();
         assert!(r[0]["result"].as_i64().unwrap() > 0);
         rt.block_on(d.query_rows("FLUSHDB".into(), 1)).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    #[test]
+    fn timestamps_display_psql_style() {
+        use super::pretty_timestamp as p;
+        assert_eq!(
+            p("2026-09-11T21:56:05.750648+00:00"),
+            "2026-09-11 21:56:05.750648+00"
+        );
+        assert_eq!(p("2026-09-11T21:56:05+05:30"), "2026-09-11 21:56:05+05:30");
+        assert_eq!(p("2026-09-11T21:56:05Z"), "2026-09-11 21:56:05+00");
+        assert_eq!(p("2026-09-11T21:56:05.5"), "2026-09-11 21:56:05.5");
+        assert_eq!(p("not a timestamp"), "not a timestamp");
+        assert!(super::is_timestamp_type("timestamp with time zone"));
+        assert!(super::is_timestamp_type("timestamptz"));
+        assert!(!super::is_timestamp_type("text"));
     }
 }

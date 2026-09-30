@@ -10,6 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableState};
 use gpui_kit::component::theme::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -145,8 +146,9 @@ impl StructureDelegate {
         }
     }
 
-    /// A new table: an `id serial` primary key to start from.
-    pub fn new_table(schema: String, table: String) -> Self {
+    /// A new table: an `id` primary key to start from, `id_type` being the
+    /// engine's auto-numbering integer (`Engine::new_table_id_type`).
+    pub fn new_table(schema: String, table: String, id_type: &str) -> Self {
         Self {
             schema,
             table,
@@ -154,7 +156,7 @@ impl StructureDelegate {
             rows: vec![StructRow {
                 orig: None,
                 name: "id".into(),
-                sql_type: "serial".into(),
+                sql_type: id_type.into(),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -581,6 +583,13 @@ impl StructureDelegate {
 }
 
 impl TableDelegate for StructureDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No columns", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         // A table being designed: name / type / nullable / default only.
         if self.create { 4 } else { FIELDS.len() }
@@ -593,6 +602,8 @@ impl TableDelegate for StructureDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let (name, width) = FIELDS[col_ix];
         let mut c = Column::new(name, name);
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         // Cells pad themselves (px_2): tints / editors / frames fill edge to edge.
         c = c.p_0();
         c.width = px(width);
@@ -749,13 +760,15 @@ impl TableDelegate for StructureDelegate {
         let placeholder = match col_ix {
             _ if row.orig.is_none() && !row.pk => "DEFAULT",
             F_DEFAULT => "NULL",
-            F_FK | F_COMMENT => "EMPTY",
             _ => "",
         };
         let is_pk = col_ix == F_NAME && row.pk;
         // data_type reads as a combo box (↕ opens the type list).
         let type_combo = col_ix == F_TYPE && self.editable && !row.deleted;
+        let (editable, deleted, col_name) = (self.editable, row.deleted, row.name.clone());
+        let entity = cx.entity();
         div()
+            .id(("scell", row_ix * 8 + col_ix))
             .size_full()
             .flex()
             .items_center()
@@ -774,7 +787,7 @@ impl TableDelegate for StructureDelegate {
                     .map(|this| {
                         if empty {
                             this.italic()
-                                .text_color(t.colors.muted_foreground.opacity(0.5))
+                                .text_color(t.colors.muted_foreground)
                                 .child(placeholder)
                         } else {
                             this.text_color(t.colors.foreground).child(text)
@@ -785,9 +798,8 @@ impl TableDelegate for StructureDelegate {
                 this.child(div().flex_1()).child(
                     div()
                         .id(("type-combo", row_ix))
-                        .cursor_pointer()
                         .flex_none()
-                        .text_color(t.colors.muted_foreground.opacity(0.7))
+                        .text_color(t.colors.muted_foreground)
                         .child(Icon::new(IconName::ChevronsUpDown).size(px(12.)))
                         .on_mouse_down(
                             MouseButton::Left,
@@ -798,6 +810,50 @@ impl TableDelegate for StructureDelegate {
                             }),
                         ),
                 )
+            })
+            // Right-click: the column row's actions (a new column is always
+            // added last: ADD COLUMN can't place it elsewhere).
+            .context_menu(move |menu: PopupMenu, _, _| {
+                let name = col_name.clone();
+                let (add, del) = (entity.clone(), entity.clone());
+                let menu = menu.item(PopupMenuItem::new("Copy Column Name").on_click(
+                    move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(name.clone())),
+                ));
+                if !editable {
+                    return menu;
+                }
+                menu.item(
+                    PopupMenuItem::new("Add Column").on_click(move |_, window, cx| {
+                        add.update(cx, |st, cx| {
+                            let row = st.delegate_mut().add_column();
+                            st.scroll_to_row(row, cx);
+                            st.set_selected_cell(row, F_NAME, cx);
+                            st.focus_handle(cx).focus(window, cx);
+                            cx.notify();
+                        });
+                        if let Some(app) = cx.try_global::<crate::app::TuskHandle>() {
+                            app.0.clone().update(cx, |_, cx| cx.notify());
+                        }
+                    }),
+                )
+                .separator()
+                .map(|m| {
+                    let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                        del.update(cx, |st, cx| {
+                            st.delegate_mut().toggle_delete(row_ix);
+                            cx.notify();
+                        });
+                        // The status bar's pending count lives in the app.
+                        if let Some(app) = cx.try_global::<crate::app::TuskHandle>() {
+                            app.0.clone().update(cx, |_, cx| cx.notify());
+                        }
+                    };
+                    if deleted {
+                        m.item(PopupMenuItem::new("Keep Column").on_click(on_click))
+                    } else {
+                        m.item(crate::theme::danger_item("Delete Column", on_click))
+                    }
+                })
             })
             .into_any_element()
     }
@@ -892,7 +948,8 @@ mod tests {
 
     #[test]
     fn create_table_uses_primary_key_columns() {
-        let mut d = StructureDelegate::new_table("public".into(), "untitled_table_1".into());
+        let mut d =
+            StructureDelegate::new_table("public".into(), "untitled_table_1".into(), "serial");
         let ix = d.add_column();
         d.rows[ix].name = "tenant".into();
         d.rows[ix].sql_type = "int4".into();

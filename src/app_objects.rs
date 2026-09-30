@@ -69,6 +69,21 @@ impl TuskApp {
             })
         };
 
+        let danger = |label: &'static str,
+                      f: fn(
+            &mut TuskApp,
+            TableKind,
+            String,
+            &mut Window,
+            &mut Context<TuskApp>,
+        )| {
+            let (k, n) = (kind.clone(), name.clone());
+            crate::theme::danger_item(label, move |_, window, cx| {
+                let (k, n) = (k.clone(), n.clone());
+                with_app(cx, |app, cx| f(app, k, n, window, cx));
+            })
+        };
+
         let mut menu = menu.item(item(
             if is_fn { "Select" } else { "Open" },
             |app, k, n, w, cx| {
@@ -91,7 +106,7 @@ impl TuskApp {
                     let schema = app.current_schema.clone();
                     app.send_table_to_chat(k, schema, n, w, cx);
                 })
-                .icon(IconName::Sparkles),
+                .action(Box::new(SendToChat)),
             )
             .item(PopupMenuItem::submenu("Copy Script As", script_menu))
             .item(PopupMenuItem::submenu(
@@ -99,14 +114,17 @@ impl TuskApp {
                 open_script_menu,
             ))
             .separator()
-            .item(item("New Query", |app, _, _, w, cx| {
-                app.open_sql_tab(w, cx)
-            }))
+            .item(
+                item("New Query", |app, _, _, w, cx| app.open_sql_tab(w, cx))
+                    .action(Box::new(NewSqlTab)),
+            )
             .item(item("New Table…", |app, _, _, w, cx| {
                 app.new_table_editor(w, cx)
             }))
-            .item(item("New View…", |app, _, _, w, cx| {
-                app.new_view_editor(w, cx)
+            .item(item("New View…", |app, k, n, w, cx| {
+                // Selecting from the table that was right-clicked.
+                let from = (k != TableKind::Function).then_some(n);
+                app.new_view_editor_from(from, w, cx)
             }));
         if !is_fn {
             menu = menu.separator().item(item("Export…", |app, k, n, w, cx| {
@@ -143,21 +161,29 @@ impl TuskApp {
                     }),
                 )
             });
+            menu = menu.item(PopupMenuItem::submenu("Duplicate", dup));
+        }
+        menu = menu.item(
+            item("Refresh", |app, _, _, _, cx| {
+                let schema = app.current_schema.clone();
+                app.fetch_objects_for(&schema, cx);
+            })
+            .action(Box::new(RefreshActive)),
+        );
+        // Destructive actions last, in red.
+        menu = menu.separator();
+        if is_table {
             menu = menu
-                .item(PopupMenuItem::submenu("Duplicate", dup))
-                .item(item("Truncate…", |app, _, n, w, cx| {
+                .item(danger("Truncate…", |app, _, n, w, cx| {
                     app.truncate_object(n, false, w, cx)
                 }))
-                .item(item("Truncate Cascade…", |app, _, n, w, cx| {
+                .item(danger("Truncate Cascade…", |app, _, n, w, cx| {
                     app.truncate_object(n, true, w, cx)
                 }));
         }
-        menu.item(item("Delete", |app, k, n, _, cx| app.toggle_drop(k, n, cx)))
-            .separator()
-            .item(item("Refresh", |app, _, _, _, cx| {
-                let schema = app.current_schema.clone();
-                app.fetch_objects_for(&schema, cx);
-            }))
+        menu.item(danger("Delete", |app, k, n, _, cx| {
+            app.toggle_drop(k, n, cx)
+        }))
     }
 
     /// Backup / Restore window, the current connection + database picked.
@@ -166,7 +192,9 @@ impl TuskApp {
             .active_conn
             .as_ref()
             .map(|(c, _)| (c.name.clone(), c.database.clone()));
-        crate::backup::BackupWindow::open(mode, pre, cx);
+        // The password this workspace connected with (maybe not stored).
+        let session = self.active_conn.as_ref().map(|(_, pw)| pw.clone());
+        crate::backup::BackupWindow::open(mode, pre, session, cx);
     }
 
     /// Export window for a table / view; an open, filtered grid of it
@@ -334,19 +362,20 @@ impl TuskApp {
             return;
         };
         let schema = self.current_schema.clone();
-        let answer = window.prompt(
-            PromptLevel::Warning,
+        let answer = crate::dialog_keys::confirm(
+            window,
+            PromptLevel::Critical,
             &format!("Truncate “{name}”?"),
             Some(if cascade {
                 "Deletes every row, and every row referencing it in other tables (CASCADE). This can't be undone."
             } else {
                 "Deletes every row of the table. This can't be undone."
             }),
-            &["Truncate", "Cancel"],
+            "Truncate",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let sql = format!(
@@ -609,13 +638,12 @@ impl TuskApp {
         let (toggle, menu_name) = (name.clone(), name.clone());
         div()
             .id(SharedString::from(format!("obj-group-{name}")))
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1p5()
             .px_2()
             .h(px(crate::settings::row_h()))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 Icon::new(if collapsed {
@@ -630,8 +658,8 @@ impl TuskApp {
             .child(title)
             .child(
                 div()
-                    .text_xs()
-                    .text_color(muted.opacity(0.6))
+                    .text_caption()
+                    .text_color(muted)
                     .child(count.to_string()),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -648,12 +676,13 @@ impl TuskApp {
                         with_app(cx, |app, cx| app.start_obj_group_rename(r, window, cx));
                     }),
                 )
-                .item(
-                    PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+                .item(crate::theme::danger_item(
+                    "Delete Group",
+                    move |_, _, cx| {
                         let d = d.clone();
                         with_app(cx, |app, cx| app.delete_obj_group(d, cx));
-                    }),
-                )
+                    },
+                ))
             })
             .into_any_element()
     }
@@ -738,7 +767,7 @@ impl TuskApp {
                 Vec::new(),
             ),
         };
-        let label = |s: &'static str| div().flex_none().text_xs().text_color(muted).child(s);
+        let label = |s: &'static str| div().flex_none().text_caption().text_color(muted).child(s);
         let chips = div()
             .flex()
             .items_center()
@@ -746,9 +775,9 @@ impl TuskApp {
             .children(pk.iter().map(|c| {
                 div()
                     .px_1p5()
-                    .rounded(px(3.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .bg(chip_bg)
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::table_font())
                     .text_color(fg)
                     .child(c.clone())
@@ -756,9 +785,9 @@ impl TuskApp {
             .when(pk.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .italic()
-                        .text_color(muted.opacity(0.6))
+                        .text_color(muted)
                         .child("none"),
                 )
             });
@@ -810,10 +839,18 @@ impl TuskApp {
             .child(label("Primary"))
             .child(primary)
             .when(designing, |d| {
-                d.child(div().flex_1())
-                    .child(div().text_xs().text_color(muted.opacity(0.7)).child(
-                        crate::kbd::rich_colored("[cmd-s] creates the table", muted.opacity(0.7)),
-                    ))
+                // One line, never squeezed: the hint yields to the name field.
+                d.child(div().flex_1().min_w_0()).child(
+                    div()
+                        .flex_none()
+                        .whitespace_nowrap()
+                        .text_caption()
+                        .text_color(muted)
+                        .child(
+                            crate::kbd::rich_colored("[cmd-s] creates the table", muted)
+                                .flex_nowrap(),
+                        ),
+                )
             })
             .into_any_element()
     }
@@ -844,12 +881,9 @@ impl TuskApp {
             )
             .child(
                 div()
-                    .text_xs()
-                    .text_color(t.muted_foreground.opacity(0.7))
-                    .child(crate::kbd::rich_colored(
-                        hint,
-                        t.muted_foreground.opacity(0.7),
-                    )),
+                    .text_caption()
+                    .text_color(t.muted_foreground)
+                    .child(crate::kbd::rich_colored(hint, t.muted_foreground)),
             )
             .into_any_element()
     }
@@ -900,13 +934,14 @@ impl TuskApp {
             name: name.clone(),
             kind: TableKind::Table,
         };
+        let id_type = pool.engine().new_table_id_type();
         let state = crate::grid::new_state(
             GridDelegate::new(pool, schema.clone(), name.clone(), true),
             window,
             cx,
         );
         let st = crate::structure::new_state(
-            StructureDelegate::new_table(schema, name.clone()),
+            StructureDelegate::new_table(schema, name.clone(), id_type),
             window,
             cx,
         );
@@ -948,8 +983,26 @@ impl TuskApp {
     /// New View: a query tab with a name field; ⌘S runs
     /// `CREATE VIEW <name> AS <query>`.
     pub(crate) fn new_view_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let first = self.objects.tables.first().cloned();
-        let body = match first {
+        self.new_view_editor_from(None, window, cx);
+    }
+
+    /// New View selecting from `from`; else the selected sidebar object's
+    /// table, else the first table.
+    pub(crate) fn new_view_editor_from(
+        &mut self,
+        from: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let source = from
+            .or_else(|| {
+                self.selected_object
+                    .as_ref()
+                    .filter(|(k, _)| *k != TableKind::Function)
+                    .map(|(_, n)| n.clone())
+            })
+            .or_else(|| self.objects.tables.first().cloned());
+        let body = match source {
             Some(t) => format!(
                 "SELECT *\nFROM {}.{}",
                 db::quote_ident(&self.current_schema),

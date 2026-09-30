@@ -5,6 +5,13 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+fn parse_key(key: &str) -> Option<Keystroke> {
+    let portable = key
+        .strip_prefix("cmd-")
+        .map(|rest| format!("secondary-{rest}"));
+    Keystroke::parse(portable.as_deref().unwrap_or(key)).ok()
+}
+
 /// One shortcut in keymap syntax (`cmd-shift-o`, `cmd-enter`, `escape`)
 /// as a row of caps. Chords are space separated.
 pub fn caps(keys: &str) -> AnyElement {
@@ -19,22 +26,19 @@ pub fn caps_sized(keys: &str, size: Pixels) -> AnyElement {
 /// Caps drawn in `color` (label + a faint border of it), for caps inside a
 /// sentence of that color.
 fn caps_styled(keys: &str, color: Option<Hsla>, size: Pixels) -> AnyElement {
-    let caps = keys
-        .split_whitespace()
-        .filter_map(|k| Keystroke::parse(k).ok())
-        .map(|k| {
-            let kbd = Kbd::new(k)
-                .outline()
-                .font_family(".SystemUIFont")
-                .text_size(size);
-            match color {
-                Some(c) => kbd
-                    .text_color(c)
-                    .border_color(c.opacity(0.4))
-                    .bg(gpui_kit::transparent_black()),
-                None => kbd,
-            }
-        });
+    let caps = keys.split_whitespace().filter_map(parse_key).map(|k| {
+        let kbd = Kbd::new(k)
+            .outline()
+            .font_family(".SystemUIFont")
+            .text_size(size);
+        match color {
+            Some(c) => kbd
+                .text_color(c)
+                .border_color(c.opacity(0.4))
+                .bg(gpui_kit::transparent_black()),
+            None => kbd,
+        }
+    });
     div()
         .flex()
         .flex_none()
@@ -73,5 +77,15 @@ fn rich_in(text: &str, color: Option<Hsla>) -> Div {
 
 /// For tooltips: `Tooltip::new(..).key_binding(kbd::tip("cmd-t"))`.
 pub fn tip(keys: &str) -> Option<Kbd> {
-    Keystroke::parse(keys).ok().map(Kbd::new)
+    parse_key(keys).map(Kbd::new)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn primary_shortcut_matches_platform() {
+        let key = super::parse_key("cmd-s").unwrap();
+        assert_eq!(key.modifiers.control, cfg!(not(target_os = "macos")));
+        assert_eq!(key.modifiers.platform, cfg!(target_os = "macos"));
+    }
 }

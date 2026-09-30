@@ -23,6 +23,11 @@ use gpui_kit::*;
 use serde_json::Value;
 
 /// Max rows fetched for one SELECT (100k-row acceptance query fits).
+/// "1 row" / "3 rows".
+pub fn n_rows(n: usize) -> String {
+    format!("{n} row{}", if n == 1 { "" } else { "s" })
+}
+
 pub const QUERY_ROW_LIMIT: i64 = 100_000;
 
 #[derive(Clone)]
@@ -156,6 +161,8 @@ pub struct QueryDelegate {
     history: crate::undo::History<ResultSnapshot>,
     /// Content-fitted column widths (set with the rows).
     widths: Vec<Pixels>,
+    /// What an empty result says ("No rows"; "No triggers" in that view).
+    pub empty_text: SharedString,
 }
 
 type ResultSnapshot = (
@@ -174,6 +181,7 @@ impl QueryDelegate {
             editing: None,
             history: Default::default(),
             widths: Vec::new(),
+            empty_text: "No rows".into(),
         }
     }
 
@@ -501,7 +509,7 @@ fn result_cell_menu(
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")
-                .icon(gpui_kit::assets::IconName::Sparkles)
+                .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
                     let cols: Vec<String> = d.columns.iter().map(|c| c.name.clone()).collect();
@@ -518,19 +526,17 @@ fn result_cell_menu(
         });
     if editable {
         let e = entity.clone();
-        menu = menu.separator().item(
-            PopupMenuItem::new(if deleted {
-                "Undo Delete Row"
-            } else {
-                "Delete Row"
-            })
-            .on_click(move |_, _, cx| {
-                e.update(cx, |st, cx| {
-                    st.delegate_mut().toggle_delete(row_ix);
-                    cx.notify();
-                });
-            }),
-        );
+        let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+            e.update(cx, |st, cx| {
+                st.delegate_mut().toggle_delete(row_ix);
+                cx.notify();
+            });
+        };
+        menu = menu.separator().item(if deleted {
+            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+        } else {
+            crate::theme::danger_item("Delete Row", toggle)
+        });
     }
     menu
 }
@@ -563,6 +569,8 @@ impl TableDelegate for QueryDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let col = &self.columns[col_ix];
         let mut c = Column::new(col.name.clone(), col.name.clone());
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         // Cells pad themselves (px_2): tints / editors / frames fill edge to edge.
         c = c.p_0();
         if col.right {
@@ -677,19 +685,7 @@ impl TableDelegate for QueryDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .text_color(cx.theme().muted_foreground)
-            .child(
-                div()
-                    .text_sm()
-                    .font_family(crate::settings::table_font())
-                    .child("No rows"),
-            )
-            .into_any_element()
+        crate::theme::empty_state(self.empty_text.clone(), cx)
     }
 
     fn cell_text(&self, row_ix: usize, col_ix: usize, _cx: &App) -> String {
@@ -925,6 +921,7 @@ mod live_edit_tests {
                 "tusk",
                 "tusk_scratch",
                 vec![
+                    "CREATE SCHEMA IF NOT EXISTS tusk_scratch",
                     "DROP TABLE IF EXISTS tusk_scratch.tusk_edit",
                     "CREATE TABLE tusk_scratch.tusk_edit (id int PRIMARY KEY, v text)",
                     "INSERT INTO tusk_scratch.tusk_edit VALUES (1, 'a'), (2, 'b')",

@@ -480,7 +480,7 @@ impl TuskApp {
         }
         vec![json!({
             "type": "resource",
-            "resource": { "uri": "tusk://context", "mimeType": "text/markdown", "text": text }
+            "resource": { "uri": crate::agent::CONTEXT_URI, "mimeType": "text/markdown", "text": text }
         })]
     }
 
@@ -824,13 +824,12 @@ impl TuskApp {
         let on = self.ai.open;
         div()
             .id("status-ai")
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .text_color(if on { accent } else { muted })
             .hover(|d| {
                 d.bg(muted.opacity(0.12))
@@ -945,7 +944,7 @@ impl TuskApp {
             div()
                 .flex_none()
                 .mr_1()
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child(s)
         });
@@ -1025,11 +1024,10 @@ impl TuskApp {
                     let when = s.updated.as_deref().map(relative_time).unwrap_or_default();
                     div()
                         .id(("ai-session", i))
-                        .cursor_pointer()
                         .mx_1()
                         .px_2()
                         .py_1()
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .flex()
                         .items_center()
                         .gap_2()
@@ -1043,7 +1041,13 @@ impl TuskApp {
                                 .text_color(fg)
                                 .child(s.title.clone()),
                         )
-                        .child(div().flex_none().text_xs().text_color(muted).child(when))
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_caption()
+                                .text_color(muted)
+                                .child(when),
+                        )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.ai.history_open = false;
                             if let Some(t) = &this.ai.thread {
@@ -1087,7 +1091,7 @@ impl TuskApp {
                             .id("ai-fail-detail")
                             .max_h(px(260.))
                             .overflow_y_scroll()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::table_font())
                             .text_color(muted)
                             .child(msg),
@@ -1138,7 +1142,7 @@ impl TuskApp {
                                         }
                                     })),
                             )
-                            .when(!desc.is_empty(), |d| d.child(div().text_xs().text_color(muted).child(desc)))
+                            .when(!desc.is_empty(), |d| d.child(div().text_caption().text_color(muted).child(desc)))
                     }))
                     .child(
                         Button::new("ai-auth-retry")
@@ -1202,11 +1206,10 @@ impl TuskApp {
                 .child(
                     div()
                         .id("ai-plan")
-                        .cursor_pointer()
                         .flex()
                         .items_center()
                         .gap_2()
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child(
                             Icon::new(if open {
@@ -1245,7 +1248,7 @@ impl TuskApp {
                             .items_start()
                             .gap_2()
                             .py(px(2.))
-                            .text_xs()
+                            .text_caption()
                             .child(Icon::new(icon).size(px(12.)).text_color(color))
                             .child(
                                 div()
@@ -1282,7 +1285,7 @@ impl TuskApp {
                 .max_h(px(240.))
                 .overflow_y_scroll()
                 .py_1()
-                .rounded(px(6.))
+                .rounded(crate::theme::RADIUS_MD)
                 .border_1()
                 .border_color(border)
                 .bg(t.popover)
@@ -1291,11 +1294,10 @@ impl TuskApp {
                 .children(rows.into_iter().enumerate().map(|(i, (name, desc))| {
                     div()
                         .id(("ai-suggest-row", i))
-                        .cursor_pointer()
                         .mx_1()
                         .px_2()
                         .py_1()
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .flex()
                         .gap_2()
                         .text_size(px(crate::settings::ui_text()))
@@ -1478,7 +1480,7 @@ impl TuskApp {
                 .flex()
                 .items_center()
                 .gap_2()
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child(
                     gpui_kit::component::shimmer::ShimmerText::new("Working…")
@@ -1500,7 +1502,7 @@ impl TuskApp {
                 .relative()
                 .flex_none()
                 .m_2()
-                .rounded(px(8.))
+                .rounded(crate::theme::RADIUS_LG)
                 .border_1()
                 .border_color(border)
                 .bg(t.colors.input.opacity(0.3))
@@ -1532,10 +1534,10 @@ impl TuskApp {
                                 .pl_2()
                                 .pr_1()
                                 .py(px(1.))
-                                .rounded(px(4.))
+                                .rounded(crate::theme::RADIUS_SM)
                                 .border_1()
                                 .border_color(border)
-                                .text_xs()
+                                .text_caption()
                                 .text_color(fg)
                                 .child(
                                     Icon::new(if a.lang == "json" {
@@ -1550,7 +1552,6 @@ impl TuskApp {
                                 .child(
                                     div()
                                         .id(("ai-att-x", i))
-                                        .cursor_pointer()
                                         .text_color(muted)
                                         .hover(|d| d.text_color(fg))
                                         .child(Icon::new(IconName::Close).size(px(10.)))
@@ -1730,7 +1731,7 @@ fn render_entry(
         Entry::User { text } => row
             .child(
                 div()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(muted.opacity(0.06))
@@ -1738,7 +1739,8 @@ fn render_entry(
                     .py_2()
                     .text_size(ui)
                     .text_color(fg)
-                    .child(text.clone()),
+                    // A resumed chat replays the prompt with Tusk's context.
+                    .child(crate::agent::strip_injected_context(text)),
             )
             .into_any_element(),
         Entry::Agent { md, .. } => row
@@ -1782,11 +1784,10 @@ fn render_entry(
             row.child(
                 div()
                     .id(("ai-thought", ix))
-                    .cursor_pointer()
                     .flex()
                     .items_center()
                     .gap_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .hover(|d| d.text_color(fg))
                     .child(
@@ -1815,7 +1816,7 @@ fn render_entry(
                         .pl_3()
                         .border_l_1()
                         .border_color(border)
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child(TextView::new(md).selectable(true).style(text_style(&t))),
                 )
@@ -1827,7 +1828,7 @@ fn render_entry(
                 div()
                     .flex()
                     .gap_2()
-                    .text_xs()
+                    .text_caption()
                     .text_color(if *error { t.red } else { muted })
                     .child(
                         Icon::new(if *error {
@@ -1871,7 +1872,7 @@ fn render_entry(
                     match c {
                         ToolContent::Text(md) => body.push(
                             div()
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted)
                                 .child(TextView::new(md).selectable(true))
                                 .into_any_element(),
@@ -1880,7 +1881,7 @@ fn render_entry(
                             let lines = diff_lines(old.as_deref().unwrap_or(""), new);
                             body.push(
                                 div()
-                                    .rounded(px(6.))
+                                    .rounded(crate::theme::RADIUS_MD)
                                     .border_1()
                                     .border_color(border)
                                     .overflow_hidden()
@@ -1888,7 +1889,7 @@ fn render_entry(
                                         div()
                                             .px_2()
                                             .py_1()
-                                            .text_xs()
+                                            .text_caption()
                                             .text_color(muted)
                                             .border_b_1()
                                             .border_color(border)
@@ -1904,7 +1905,7 @@ fn render_entry(
                                             .px_2()
                                             .bg(bgc)
                                             .text_color(fgc)
-                                            .text_xs()
+                                            .text_caption()
                                             .font_family(crate::settings::table_font())
                                             .child(format!("{k} {l}"))
                                     }))
@@ -1921,11 +1922,11 @@ fn render_entry(
                                 let exit = term.exit.lock().unwrap().clone();
                                 body.push(
                                     div()
-                                        .rounded(px(6.))
+                                        .rounded(crate::theme::RADIUS_MD)
                                         .border_1()
                                         .border_color(border)
                                         .p_2()
-                                        .text_xs()
+                                        .text_caption()
                                         .font_family(crate::settings::table_font())
                                         .child(
                                             div()
@@ -1976,7 +1977,7 @@ fn render_entry(
             }
             row.child(
                 div()
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .border_1()
                     .border_color(if tc.permission.is_some() {
                         t.yellow.opacity(0.6)
@@ -1986,13 +1987,12 @@ fn render_entry(
                     .child(
                         div()
                             .id(("ai-tool", ix))
-                            .cursor_pointer()
                             .flex()
                             .items_center()
                             .gap_2()
                             .px_2()
                             .py_1()
-                            .text_xs()
+                            .text_caption()
                             .text_color(muted)
                             .hover(|d| d.text_color(fg))
                             .child(
@@ -2058,11 +2058,11 @@ fn text_style(t: &Palette) -> gpui_kit::component::text::TextViewStyle {
 
 fn code_box(text: &str, t: &Palette) -> AnyElement {
     div()
-        .rounded(px(6.))
+        .rounded(crate::theme::RADIUS_MD)
         .bg(t.muted_foreground.opacity(0.08))
         .px_2()
         .py_1()
-        .text_xs()
+        .text_caption()
         .font_family(crate::settings::table_font())
         .text_color(t.foreground)
         .child(text.to_string())
@@ -2174,51 +2174,49 @@ impl Render for OptionPicker {
         let row_h = crate::settings::row_h();
         let n = self.matches.len();
         let this = cx.entity();
-        let list = uniform_list("ai-option-list", n, move |range, _, cx| {
-            let p = this.read(cx);
-            range
-                .map(|r| {
-                    let o = &p.options[p.matches[r]];
-                    let selected = o.value == p.current;
-                    let this = this.clone();
-                    div()
-                        .id(("ai-option", r))
-                        .cursor_pointer()
-                        .w_full()
-                        .h(px(row_h))
-                        .px_2()
-                        .mx_1()
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .text_size(px(crate::settings::ui_text()))
-                        .when(r == p.pick, |d| d.bg(t.tokens.table_active))
-                        .hover(|d| d.bg(muted.opacity(0.12)))
-                        .child(div().w(px(12.)).flex_none().when(selected, |d| {
-                            d.child(Icon::new(IconName::Check).size(px(12.)).text_color(fg))
-                        }))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_color(fg)
-                                .child(o.name.clone()),
-                        )
-                        .children(
-                            o.group
-                                .clone()
-                                .map(|g| div().flex_none().text_xs().text_color(muted).child(g)),
-                        )
-                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                            this.update(cx, |p, cx| p.confirm(Some(r), window, cx));
-                        })
-                })
-                .collect::<Vec<_>>()
-        })
-        .track_scroll(&self.scroll)
-        .h(px((n.clamp(1, 12)) as f32 * row_h));
+        let list =
+            uniform_list("ai-option-list", n, move |range, _, cx| {
+                let p = this.read(cx);
+                range
+                    .map(|r| {
+                        let o = &p.options[p.matches[r]];
+                        let selected = o.value == p.current;
+                        let this = this.clone();
+                        div()
+                            .id(("ai-option", r))
+                            .w_full()
+                            .h(px(row_h))
+                            .px_2()
+                            .mx_1()
+                            .rounded(crate::theme::RADIUS_SM)
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(crate::settings::ui_text()))
+                            .when(r == p.pick, |d| d.bg(t.tokens.table_active))
+                            .hover(|d| d.bg(muted.opacity(0.12)))
+                            .child(div().w(px(12.)).flex_none().when(selected, |d| {
+                                d.child(Icon::new(IconName::Check).size(px(12.)).text_color(fg))
+                            }))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(fg)
+                                    .child(o.name.clone()),
+                            )
+                            .children(o.group.clone().map(|g| {
+                                div().flex_none().text_caption().text_color(muted).child(g)
+                            }))
+                            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                                this.update(cx, |p, cx| p.confirm(Some(r), window, cx));
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .track_scroll(&self.scroll)
+            .h(px((n.clamp(1, 12)) as f32 * row_h));
         div()
             .w(px(320.))
             .flex()
@@ -2231,7 +2229,7 @@ impl Render for OptionPicker {
             .child(if n == 0 {
                 div()
                     .p_2()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("No match")
                     .into_any_element()

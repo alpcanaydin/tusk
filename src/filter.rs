@@ -254,7 +254,7 @@ impl FilterRow {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        let value = cx.new(|cx| InputState::new(window, cx).placeholder("EMPTY"));
+        let value = cx.new(|cx| InputState::new(window, cx).placeholder("Value"));
         let prefs = crate::settings::get();
         let mut names: Vec<String> = columns.to_vec();
         if prefs.filter_column_sort == "Alphabetical" {

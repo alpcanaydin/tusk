@@ -660,16 +660,16 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             ));
         }
     }
-    for mode in crate::settings::Appearance::ALL {
+    for mode in crate::settings::Appearance::available() {
         if mode == current_theme.appearance {
             continue;
         }
         dynamic.push((
             format!("theme: appearance {}", mode.label().to_lowercase()),
-            if mode == crate::settings::Appearance::Light {
-                IconName::Sun
-            } else {
-                IconName::Moon
+            match mode {
+                crate::settings::Appearance::Light => IconName::Sun,
+                crate::settings::Appearance::Omarchy => IconName::Palette,
+                _ => IconName::Moon,
             },
             std::rc::Rc::new(
                 move |_: &mut TuskApp, _: &mut Window, cx: &mut Context<TuskApp>| {
@@ -701,6 +701,11 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         Box::new(CheckForUpdates),
     );
     action("app: about tusk", IconName::Info, Box::new(ShowAbout));
+    action(
+        "app: release notes",
+        IconName::ExternalLink,
+        Box::new(ShowReleaseNotes),
+    );
     action("app: hide", IconName::EyeOff, Box::new(HideApp));
     action("app: quit", IconName::Power, Box::new(Quit));
     (items, runs)
@@ -808,7 +813,7 @@ impl TuskApp {
                     .w(px(560.))
                     // Clicks inside stay inside.
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(elevated)

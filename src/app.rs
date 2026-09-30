@@ -4,6 +4,7 @@
 //! - `AppState::Workspace`: sol sidebar (240px, 180..400 arasi suruklenebilir) +
 //!   ana alan (tab bar + icerik) + alt durum cubugu.
 
+use crate::theme::TextCaption as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::TitleBar;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -48,6 +49,8 @@ mod panels;
 mod rowdetail;
 #[path = "app_tools.rs"]
 mod tools;
+#[path = "app_tree.rs"]
+mod tree;
 #[path = "app_users.rs"]
 mod users_view;
 
@@ -231,6 +234,11 @@ pub struct TuskApp {
     pub palette: Option<PaletteOverlay>,
     /// The saved-connections manager (groups, tags, search) is open.
     pub conn_manager: bool,
+    /// Set on connect: the next render empties the connection search, which
+    /// the manager and the connections-tree sidebar share.
+    clear_conn_search: bool,
+    /// Set when the connection manager opens: the next render focuses its search.
+    pub(super) focus_conn_search: bool,
     /// Runs parallel to the currently rendered command items.
     pub palette_runs: Vec<crate::palette::RunFn>,
     /// Known tables for quick-open (filled in Phase 5).
@@ -244,6 +252,9 @@ pub struct TuskApp {
     objects: ObjectTree,
     objects_loading: bool,
     selected_object: Option<(TableKind, String)>,
+    /// The active tab's table when `selected_object` was last synced to it:
+    /// switching / closing tabs moves the sidebar highlight along.
+    synced_tab: Option<(TableKind, String)>,
     sidebar_panel: SidebarPanel,
     sidebar_open: bool,
     sidebar_focus: FocusHandle,
@@ -288,6 +299,9 @@ pub struct TuskApp {
     console_seen: u64,
     history_search: Entity<InputState>,
     console_scroll: panels::ConsoleScroll,
+    /// Editor settings the open SQL tabs were last given (line numbers,
+    /// soft wrap, tab size) — Settings changes apply to them live.
+    editor_prefs: (bool, bool, u32),
     /// Filtered Console / History lists, rebuilt only when the log or the
     /// filter changes (not on every frame).
     console_cache: std::cell::RefCell<Option<panels::ConsoleCache>>,
@@ -336,7 +350,11 @@ impl TuskApp {
         Self {
             screen: AppScreen::Connection,
             status_line: "Not connected".to_string(),
-            toasts: Vec::new(),
+            // A connections.json that couldn't be read was set aside at load.
+            toasts: db::take_load_notice()
+                .map(|m| (Some(false), m))
+                .into_iter()
+                .collect(),
             form,
             pool: None,
             tunnel: None,
@@ -347,6 +365,8 @@ impl TuskApp {
             focus: cx.focus_handle(),
             palette: None,
             conn_manager: false,
+            clear_conn_search: false,
+            focus_conn_search: false,
             palette_runs: Vec::new(),
             tables: Vec::new(),
             pending_table: None,
@@ -356,6 +376,7 @@ impl TuskApp {
             objects: ObjectTree::default(),
             objects_loading: false,
             selected_object: None,
+            synced_tab: None,
             sidebar_panel: SidebarPanel::Tables,
             sidebar_open: true,
             sidebar_focus: cx.focus_handle(),
@@ -382,6 +403,10 @@ impl TuskApp {
             console_seen: 0,
             history_search,
             console_scroll: Default::default(),
+            editor_prefs: {
+                let p = crate::settings::get();
+                (p.editor_line_numbers, p.editor_soft_wrap, p.editor_tab_size)
+            },
             console_cache: Default::default(),
             history_cache: Default::default(),
             problems: Vec::new(),
@@ -496,8 +521,8 @@ impl TuskApp {
             .active_conn
             .as_ref()
             .map(|(c, _)| match &c.ssh {
-                Some(ssh) => format!("{}:{} via ssh {}", c.host, c.port, ssh.host),
-                None => format!("{}:{}", c.host, c.port),
+                Some(ssh) => format!("{} via ssh {}", c.endpoint(), ssh.host),
+                None => c.endpoint(),
             })
             .unwrap_or_default();
         let saved = self.form.saved.clone();
@@ -526,7 +551,7 @@ impl TuskApp {
                             .text_color(fg)
                             .child(active.clone()),
                     )
-                    .child(div().text_xs().text_color(muted).child(endpoint))
+                    .child(div().text_caption().text_color(muted).child(endpoint))
                     .child(
                         Icon::new(IconName::ChevronDown)
                             .size(px(11.))
@@ -541,7 +566,9 @@ impl TuskApp {
                             .checked(conn.name == active)
                             .on_click(move |_, window, cx| {
                                 let view = cx.global::<TuskHandle>().0.clone();
-                                view.update(cx, |this, cx| this.switch_connection(ix, window, cx));
+                                view.update(cx, |this, cx| {
+                                    this.switch_connection_guarded(ix, window, cx)
+                                });
                             }),
                     );
                 }
@@ -609,14 +636,13 @@ impl TuskApp {
         };
         div()
             .id("status-update")
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1()
             .px_2()
             .h(px(20.))
-            .rounded(px(4.))
-            .text_xs()
+            .rounded(crate::theme::RADIUS_SM)
+            .text_caption()
             .font_family(crate::settings::ui_font())
             .font_weight(FontWeight::MEDIUM)
             .text_color(accent)
@@ -647,11 +673,11 @@ impl TuskApp {
         // Layout: [toggles · message] | centered pending changes | [spacer].
         let pending = self.pending_summary(cx).map(|p| {
             div()
-                .text_xs()
+                .text_caption()
                 .font_family(crate::settings::ui_font())
                 .text_color(rgb(crate::theme::EDITED))
                 .child(crate::kbd::rich_colored(
-                    &p,
+                    &format!("{p} — [cmd-s] to save"),
                     rgb(crate::theme::EDITED).into(),
                 ))
         });
@@ -676,7 +702,7 @@ impl TuskApp {
                     .children(problems)
                     .child(
                         div()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::ui_font())
                             .text_color(t.colors.muted_foreground)
                             .truncate()
@@ -700,14 +726,13 @@ impl TuskApp {
                             .child(
                                 div()
                                     .id("status-sql")
-                                    .cursor_pointer()
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .px_1()
                                     // Same box as the panel toggles on the left.
                                     .h(px(20.))
-                                    .rounded(px(4.))
+                                    .rounded(crate::theme::RADIUS_SM)
                                     .text_color(t.colors.muted_foreground)
                                     .hover(|this| {
                                         this.bg(t.colors.muted_foreground.opacity(0.12))
@@ -749,18 +774,27 @@ impl TuskApp {
         // bare line icons, muted; the open panel's icon is tinted blue.
         let active_tint = cx.theme().accent;
         let mut row = div().flex().items_center().gap_1();
+        // Only the object kinds the engine has (no Functions for SQLite…).
+        let caps = self.pool.as_ref().map(|p| p.caps());
         for panel in SidebarPanel::ALL {
+            let shown = match (panel, caps) {
+                (SidebarPanel::Views, Some(c)) => c.views,
+                (SidebarPanel::Functions, Some(c)) => c.functions,
+                _ => true,
+            };
+            if !shown {
+                continue;
+            }
             let active = self.sidebar_open && self.sidebar_panel == panel;
             row = row.child(
                 div()
                     .id(SharedString::from(format!("panel-{}", panel.title())))
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(20.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_color(if active { active_tint } else { muted })
                     .hover(|this| {
                         this.bg(muted.opacity(0.12)).text_color(if active {
@@ -853,7 +887,7 @@ impl TuskApp {
         match db::save_password(&conn.name, &password) {
             Ok(()) => {}
             Err(e) => {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
+                self.form.notice = Some((false, format!("{} error: {e}", db::CREDENTIAL_STORE)));
                 cx.notify();
                 return;
             }
@@ -862,20 +896,19 @@ impl TuskApp {
         // silently drop Keychain writes must not get a false "Saved").
         let keychain_warning = match db::load_password(&conn.name) {
             Ok(back) if back == password => None,
-            Ok(_) => Some("the Keychain gave back a different password".to_string()),
+            Ok(_) => Some(format!(
+                "the {} gave back a different password",
+                db::CREDENTIAL_STORE
+            )),
             Err(e) => Some(format!(
-                "the password can't be read back from the Keychain ({e})"
+                "the password can't be read back from the {} ({e})",
+                db::CREDENTIAL_STORE
             )),
         };
-        if let Some(ix) = self.form.saved.iter().position(|c| c.name == conn.name) {
-            self.form.saved[ix] = conn.clone();
-            self.form.selected = Some(ix);
-        } else {
-            self.form.saved.push(conn.clone());
-            self.form.selected = Some(self.form.saved.len() - 1);
-        }
-        match db::save_connections(&self.form.saved) {
-            Ok(()) => {
+        match db::upsert_connection(conn.clone(), None) {
+            Ok((list, ix)) => {
+                self.form.saved = list;
+                self.form.selected = Some(ix);
                 self.form.notice = Some(match keychain_warning {
                     Some(w) => (
                         false,
@@ -908,10 +941,14 @@ impl TuskApp {
                 match result {
                     Ok(c) => this.connected_with(c, &conn, &password, cx),
                     Err(e) => {
-                        // Outside the dialog (welcome list, ⌘1…) only a toast is seen.
+                        // Outside the dialog (welcome list, ⌘1…) only a toast is
+                        // seen: render turns the error notice into one.
                         log::warn!("connect {}: {e}", conn.name);
-                        this.toast(false, format!("{}: {e}", conn.name));
-                        this.form.notice = Some((false, e));
+                        this.form.notice = Some((false, format!("{}: {e}", conn.name)));
+                        // No / wrong saved password: open the form to type it.
+                        if Self::wants_password(&conn, &password, &e) {
+                            crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
+                        }
                     }
                 }
                 cx.notify();
@@ -927,6 +964,13 @@ impl TuskApp {
         let Some(pool) = self.pool.clone() else {
             return;
         };
+        // A panel this engine doesn't have (Functions on SQLite) → Tables.
+        let caps = pool.caps();
+        if (self.sidebar_panel == SidebarPanel::Views && !caps.views)
+            || (self.sidebar_panel == SidebarPanel::Functions && !caps.functions)
+        {
+            self.sidebar_panel = SidebarPanel::Tables;
+        }
         self.objects_loading = true;
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -1158,7 +1202,7 @@ impl TuskApp {
         self.open_grid_tab(table, window, cx);
     }
 
-    fn close_tab_at(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub(super) fn close_tab_at(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix >= self.tabs.len() {
             return;
         }
@@ -1193,6 +1237,51 @@ impl TuskApp {
             other => other,
         };
         cx.notify();
+    }
+
+    /// ⌘W: a tab with unsaved changes (or a New Table draft) asks first.
+    pub(super) fn close_tab_guarded(
+        &mut self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let n = self.tab_pending(ix, cx);
+        if n == 0 {
+            self.close_tab_at(ix, cx);
+            self.focus.focus(window, cx);
+            return;
+        }
+        let is_draft =
+            matches!(self.tabs.get(ix), Some(WorkspaceTab::Grid(g)) if g.draft.is_some());
+        let detail = if is_draft {
+            "The new table hasn't been created yet.".to_string()
+        } else {
+            format!(
+                "{n} unsaved change{} will be discarded.",
+                if n == 1 { "" } else { "s" }
+            )
+        };
+        let answer = crate::dialog_keys::confirm(
+            window,
+            PromptLevel::Warning,
+            "Close this tab?",
+            Some(&detail),
+            "Discard",
+            cx,
+        );
+        cx.spawn_in(window, async move |weak, cx| {
+            if !answer.await {
+                return;
+            }
+            let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
+                if ix < this.tabs.len() {
+                    this.close_tab_at(ix, cx);
+                    this.focus.focus(window, cx);
+                }
+            });
+        })
+        .detach();
     }
 
     fn refresh_active_tab(&mut self, cx: &mut Context<Self>) {
@@ -1233,12 +1322,26 @@ impl TuskApp {
             .filter(|t| matches!(t, WorkspaceTab::Sql(_)))
             .count()
             + 1;
+        // A plain ⌘T starts from a SELECT on the open table (or the
+        // schema's first one), selected so typing replaces it.
+        let starter = text.is_none();
         let initial = text.unwrap_or_else(|| {
-            crate::ddl::starter_query(
-                db::engine(),
-                &self.current_schema,
-                self.objects.tables.first().map(String::as_str),
-            )
+            let open = self.active_tab.and_then(|ix| match self.tabs.get(ix) {
+                Some(WorkspaceTab::Grid(g)) if g.draft.is_none() => {
+                    Some((g.table.schema.clone(), g.table.name.clone()))
+                }
+                _ => None,
+            });
+            match open {
+                Some((schema, table)) => {
+                    crate::ddl::starter_query(db::engine(), &schema, Some(table.as_str()))
+                }
+                None => crate::ddl::starter_query(
+                    db::engine(),
+                    &self.current_schema,
+                    self.objects.tables.first().map(String::as_str),
+                ),
+            }
         });
         let editor = cx.new(|cx| {
             gpui_kit::component::input::EditorState::new(window, cx)
@@ -1299,6 +1402,9 @@ impl TuskApp {
         self.tabs.push(WorkspaceTab::Sql(tab));
         self.activate_tab(self.tabs.len() - 1, cx);
         editor.read(cx).focus_handle(cx).focus(window, cx);
+        if starter {
+            editor.update(cx, |e, cx| e.select_all(window, cx));
+        }
         cx.notify();
     }
 
@@ -1397,9 +1503,13 @@ impl TuskApp {
                             rows: crate::sql::rows_to_vec(rows),
                             truncated,
                             message: Some(if truncated {
-                                format!("{n} rows (truncated at {})", crate::sql::QUERY_ROW_LIMIT)
+                                format!(
+                                    "{} (truncated at {})",
+                                    crate::sql::n_rows(n),
+                                    crate::sql::QUERY_ROW_LIMIT
+                                )
                             } else {
-                                format!("{n} rows")
+                                crate::sql::n_rows(n)
                             }),
                             error: None,
                             ms: started.elapsed().as_millis(),
@@ -1417,14 +1527,18 @@ impl TuskApp {
                                 }
                                 Err(_) => None,
                             };
-                        log.push(format!("{} — {n} rows", first_line(stmt)));
+                        log.push(format!("{} — {}", first_line(stmt), crate::sql::n_rows(n)));
                         sets.push(ResultSet { output, source });
                     }
                     db::StmtKind::Mutation | db::StmtKind::Other => {
                         match db::run_exec(&pool, stmt).await {
                             Ok(affected) => {
                                 hist(stmt, started, true);
-                                log.push(format!("{} — {affected} rows affected", first_line(stmt)))
+                                log.push(format!(
+                                    "{} — {} affected",
+                                    first_line(stmt),
+                                    crate::sql::n_rows(affected as usize)
+                                ))
                             }
                             Err(e) => {
                                 hist(stmt, started, false);
@@ -1584,28 +1698,50 @@ impl TuskApp {
             return;
         };
         let sql = Self::scope_sql(tab, scope, cx);
-        let risky: Vec<String> = db::split_statements(&sql)
-            .into_iter()
-            .filter(|s| db::is_destructive(s))
+        let prefs = crate::settings::get();
+        let stmts = db::split_statements(&sql);
+        let risky: Vec<&String> = stmts
+            .iter()
+            .filter(|s| prefs.confirm_destructive && db::is_destructive(s))
             .collect();
-        if risky.is_empty() || !crate::settings::get().confirm_destructive {
+        // "Confirm Before Saving" also covers writes run from the editor.
+        let writes: Vec<&String> = stmts
+            .iter()
+            .filter(|s| prefs.confirm_save && db::is_write(s))
+            .collect();
+        let (level, title, shown) = if !risky.is_empty() {
+            (PromptLevel::Warning, "Run a dangerous statement?", risky)
+        } else if !writes.is_empty() {
+            let title = if writes.len() == 1 {
+                "Run a statement that writes to the database?"
+            } else {
+                "Run statements that write to the database?"
+            };
+            (PromptLevel::Info, title, writes)
+        } else {
             self.run_sql_in_tab(ix, scope, cx);
             return;
-        }
-        let detail = risky
+        };
+        const MAX_SHOWN: usize = 8;
+        let mut detail = shown
             .iter()
+            .take(MAX_SHOWN)
             .map(|s| s.trim().lines().next().unwrap_or_default().to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            "Run a dangerous statement?",
+        if shown.len() > MAX_SHOWN {
+            detail.push_str(&format!("\n… and {} more", shown.len() - MAX_SHOWN));
+        }
+        let answer = crate::dialog_keys::confirm(
+            window,
+            level,
+            title,
             Some(&format!("{detail}\n\n(Safe mode — Settings ▸ Safe Mode)")),
-            &["Run", "Cancel"],
+            "Run",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await == Ok(0) {
+            if answer.await {
                 let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                     this.run_sql_in_tab(ix, scope, cx)
                 });
@@ -1715,7 +1851,7 @@ impl TuskApp {
                 .when(tab.last_sql.is_some() && !tab.running, |d| {
                     d.child(
                         div()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::ui_font())
                             .text_color(muted)
                             .child(extra),
@@ -1751,14 +1887,13 @@ impl TuskApp {
                                     .h(px(crate::settings::row_h() - 4.))
                                     .flex()
                                     .items_center()
-                                    .rounded(px(4.))
-                                    .text_xs()
+                                    .rounded(crate::theme::RADIUS_SM)
+                                    .text_caption()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(if active { foreground } else { muted })
                                     .when(active, |t| t.bg(muted.opacity(0.18)))
                                     .hover(|t| t.bg(muted.opacity(0.1)))
                                     .child(format!("Result {}", i + 1))
-                                    .cursor_pointer()
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         if let Some(ix) = this.active_tab {
                                             this.show_result(ix, i, cx);
@@ -1770,12 +1905,13 @@ impl TuskApp {
                         })
                         .child(
                             div()
-                                .text_xs()
+                                .text_caption()
                                 .font_family(crate::settings::ui_font())
                                 .text_color(foreground)
                                 .child({
                                     let n = tab.output.rows.len();
-                                    let mut s = format!("{n} rows · {} ms", tab.output.ms);
+                                    let mut s =
+                                        format!("{} · {} ms", crate::sql::n_rows(n), tab.output.ms);
                                     if tab.output.truncated {
                                         s.push_str(&format!(
                                             " · truncated at {}",
@@ -1794,7 +1930,14 @@ impl TuskApp {
                                 (Some(src), _) => (
                                     Some(IconName::Pencil),
                                     format!("{}.{}", src.schema, src.table),
-                                    "Editable — double-click a cell, cmd-s to save".to_string(),
+                                    format!(
+                                        "Editable — double-click a cell, {}-s to save",
+                                        if cfg!(target_os = "macos") {
+                                            "cmd"
+                                        } else {
+                                            "ctrl"
+                                        }
+                                    ),
                                 ),
                                 (None, Some(note)) => {
                                     (Some(IconName::Lock), "read-only".into(), note.clone())
@@ -1807,7 +1950,7 @@ impl TuskApp {
                                 .items_center()
                                 .gap_1()
                                 .px_1()
-                                .text_xs()
+                                .text_caption()
                                 .font_family(crate::settings::ui_font())
                                 .text_color(muted.opacity(0.7))
                                 .children(icon.map(|i| Icon::new(i).size(px(11.))))
@@ -1828,15 +1971,14 @@ impl TuskApp {
                                 .gap_1p5()
                                 .h(px(crate::settings::row_h()))
                                 .px_2()
-                                .rounded(px(6.))
+                                .rounded(crate::theme::RADIUS_MD)
                                 .border_1()
                                 .border_color(border)
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted)
                                 .hover(|this| this.bg(muted.opacity(0.1)).text_color(foreground))
                                 .child(Icon::new(IconName::Download).size(px(12.)))
                                 .child("Export")
-                                .cursor_pointer()
                                 .on_click(cx.listener(|this, _, _, cx| this.export_result(cx))),
                         ),
                 )
@@ -1911,7 +2053,7 @@ impl TuskApp {
                             .border_color(border)
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_caption()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(muted)
                                     .child(crate::kbd::rich_colored("[cmd-enter] run current (or selection) · [cmd-shift-enter] run all", muted)),
@@ -2105,12 +2247,65 @@ impl TuskApp {
     /// screen (returns false = keep the window); on the welcome screen, close.
     pub fn on_close_request(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.screen == AppScreen::Workspace {
-            Self::run_disconnect(self, window, cx);
+            // Asks first when unsaved changes / queries would be lost.
+            self.disconnect_guarded(window, cx);
             self.focus.focus(window, cx);
             false
         } else {
             true
         }
+    }
+
+    /// A failed connect that a password would fix: a server engine and no
+    /// saved password, or the server rejected it.
+    fn wants_password(conn: &SavedConnection, password: &str, err: &str) -> bool {
+        let lower = err.to_lowercase();
+        conn.engine.form() == crate::engine::Form::Server
+            && (password.is_empty()
+                || lower.contains("password")
+                || lower.contains("authentication"))
+    }
+
+    /// Forget the workspace of the current connection: tabs, split panes,
+    /// history, sidebar selection and pending sidebar edits.
+    /// Settings ▸ SQL Editor changed: give every open editor the new values.
+    fn sync_editor_prefs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let p = crate::settings::get();
+        let now = (p.editor_line_numbers, p.editor_soft_wrap, p.editor_tab_size);
+        if now == self.editor_prefs {
+            return;
+        }
+        self.editor_prefs = now;
+        for tab in &self.tabs {
+            if let WorkspaceTab::Sql(t) = tab {
+                t.editor.update(cx, |e, cx| {
+                    e.set_line_number(now.0, window, cx);
+                    e.set_soft_wrap(now.1, window, cx);
+                    e.set_tab_size(
+                        gpui_kit::component::input::TabSize {
+                            tab_size: now.2 as usize,
+                            hard_tabs: false,
+                        },
+                        cx,
+                    );
+                });
+            }
+        }
+    }
+
+    fn reset_workspace(&mut self) {
+        self.tabs.clear();
+        self.split = None;
+        self.split_focus = 0;
+        self.nav_back.clear();
+        self.nav_fwd.clear();
+        self.active_tab = None;
+        self.selected_object = None;
+        self.pending_drops.clear();
+        self.pending_renames.clear();
+        self.row_panel.detail = None;
+        // The console belongs to the connection it logged.
+        crate::console::clear();
     }
 
     pub fn run_disconnect(this: &mut TuskApp, _w: &mut Window, cx: &mut Context<TuskApp>) {
@@ -2123,10 +2318,7 @@ impl TuskApp {
         this.databases.clear();
         // Drop open tabs too, or the status bar keeps showing the last tab's
         // row count on the welcome screen.
-        this.tabs.clear();
-        this.nav_back.clear();
-        this.nav_fwd.clear();
-        this.active_tab = None;
+        this.reset_workspace();
         this.active_name.clear();
         this.server_label = None;
         this.screen = AppScreen::Connection;
@@ -2147,7 +2339,18 @@ impl TuskApp {
         password: &str,
         cx: &mut Context<Self>,
     ) {
-        let (name, host, port) = (conn.name.clone(), conn.host.clone(), conn.port);
+        let name = conn.name.clone();
+        self.clear_conn_search = true;
+        // Another connection (or database): the old tabs, split, selection
+        // and pending edits belong to the old one.
+        let same = self
+            .active_conn
+            .as_ref()
+            .is_some_and(|(c, _)| c.name == conn.name && c.database == conn.database);
+        if !same {
+            self.reset_workspace();
+        }
+        self.conn_manager = false;
         let db::Connected {
             pool,
             tunnel,
@@ -2176,7 +2379,17 @@ impl TuskApp {
         .detach();
         self.pool = Some(pool);
         self.active_name = name.clone();
-        self.server_label = Some(format!("{} · {name} @ {host}:{port}", conn.engine.label()));
+        // Connections tree: show the new connection by unfolding its group.
+        if let Some(folder) = conn.folder.as_deref()
+            && crate::settings::group_collapsed(folder)
+        {
+            crate::settings::toggle_group_collapsed(cx, folder);
+        }
+        self.server_label = Some(format!(
+            "{} · {name} @ {}",
+            conn.engine.label(),
+            conn.endpoint()
+        ));
         self.status_line.clear();
         self.screen = AppScreen::Workspace;
         self.load_sidebar_after_connect(cx);
@@ -2218,13 +2431,7 @@ impl TuskApp {
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match result {
                     Ok(c) => {
-                        this.tabs.clear();
-                        this.nav_back.clear();
-                        this.nav_fwd.clear();
-                        this.active_tab = None;
-                        this.pending_drops.clear();
-                        this.pending_renames.clear();
-                        this.selected_object = None;
+                        this.reset_workspace();
                         this.connected_with(c, &conn, &password, cx);
                     }
                     Err(e) => {
@@ -2268,7 +2475,7 @@ impl TuskApp {
                         this.connected_with(c, &conn, &pw, cx);
                     }
                     Err(e) => {
-                        this.toast(false, format!("{}: {e}", conn.name));
+                        // Render turns the error notice into a toast.
                         this.form.notice = Some((false, format!("{}: {e}", conn.name)));
                     }
                 }
@@ -2517,8 +2724,9 @@ impl TuskApp {
             cx.notify();
         } else if self.filter.read(cx).focus_handle(cx).is_focused(w) {
             self.close_sidebar_filter(w, cx);
-        } else {
-            self.cancel_editors(cx);
+        } else if self.cancel_editors(cx) {
+            // The editor held focus; without this ⌘S etc. go nowhere.
+            self.focus_active_table(w, cx);
         }
     }
     fn on_new_connection(&mut self, _: &NewConnection, w: &mut Window, cx: &mut Context<Self>) {
@@ -2616,7 +2824,6 @@ impl TuskApp {
     ) -> Stateful<Div> {
         div()
             .id(id.into())
-            .cursor_pointer()
             .flex()
             .items_center()
             .w_full()
@@ -2624,7 +2831,7 @@ impl TuskApp {
             .mt(px(1.))
             .pl(px(5.))
             .pr(px(6.))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 div()
@@ -2669,18 +2876,9 @@ impl TuskApp {
         let (muted, fg) = (cx.theme().muted_foreground, cx.theme().foreground);
         use crate::engine::Form;
         let where_ = match conn.engine.form() {
-            Form::File => conn
-                .path
-                .as_deref()
-                .and_then(|p| std::path::Path::new(p).file_name())
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            Form::UrlToken => conn.path.clone().unwrap_or_default(),
-            Form::CloudflareD1 | Form::Snowflake | Form::BigQuery | Form::DynamoDb => {
-                conn.options.values().next().cloned().unwrap_or_default()
-            }
             Form::Server if conn.database.is_empty() => conn.host.clone(),
             Form::Server => format!("{} · {}", conn.host, conn.database),
+            _ => conn.endpoint(),
         };
         let mut detail = format!("{} · {where_}", conn.engine.label());
         if conn.ssh.is_some() {
@@ -2702,7 +2900,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_1p5()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child(
                         gpui_kit::component::spinner::Spinner::new()
@@ -2793,7 +2991,7 @@ impl TuskApp {
                 "",
                 cx,
                 |_, _, _, cx| {
-                    crate::backup::BackupWindow::open(crate::backup::Mode::Backup, None, cx)
+                    crate::backup::BackupWindow::open(crate::backup::Mode::Backup, None, None, cx)
                 },
             ))
             .child(self.welcome_row(
@@ -2803,7 +3001,7 @@ impl TuskApp {
                 "",
                 cx,
                 |_, _, _, cx| {
-                    crate::backup::BackupWindow::open(crate::backup::Mode::Restore, None, cx)
+                    crate::backup::BackupWindow::open(crate::backup::Mode::Restore, None, None, cx)
                 },
             ));
         // Recent: the five last-used profiles (⌘1–⌘5 follow this order).
@@ -2867,6 +3065,7 @@ impl TuskApp {
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
         let selected = self.selected_object == Some((kind.clone(), name.to_string()));
+        let sel_bg = crate::theme::selection(cx.theme());
         let dropping = self.is_pending_drop(&kind, name);
         let renamed = self.pending_rename(&kind, name).cloned();
         let editing = self
@@ -2904,17 +3103,17 @@ impl TuskApp {
         };
         let (kind_c, name_c) = (kind.clone(), name.clone());
         let (kind_m, name_m) = (kind.clone(), name.clone());
+        let (kind_r, name_r) = (kind.clone(), name.clone());
         div()
             .id(SharedString::from(row_id))
-            .cursor_pointer()
             .flex()
             .flex_row()
             .items_center()
             .gap_1p5()
             .px_2()
             .h(px(crate::settings::row_h()))
-            .rounded(px(4.))
-            .when(selected, |this| this.bg(muted.opacity(0.18)))
+            .rounded(crate::theme::RADIUS_SM)
+            .when(selected, |this| this.bg(sel_bg))
             .when(renamed.is_some() && !dropping, |this| {
                 this.bg(rgb(crate::theme::EDITED).opacity(0.25))
             })
@@ -2928,6 +3127,15 @@ impl TuskApp {
                 this.sidebar_focus.focus(window, cx);
                 this.on_pick_object(kind_c.clone(), name_c.clone(), window, cx);
             }))
+            // Right-click selects the row first, so the menu's target (and
+            // Truncate / Delete) is the highlighted object.
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _, _, cx| {
+                    this.selected_object = Some((kind_r.clone(), name_r.clone()));
+                    cx.notify();
+                }),
+            )
             .context_menu(move |menu, window, cx| {
                 TuskApp::object_menu(kind_m.clone(), name_m.clone(), menu, window, cx)
             })
@@ -2979,7 +3187,14 @@ impl TuskApp {
             None
         };
         if let Some(msg) = empty_msg {
-            list = list.child(div().px_2().py_1().text_xs().text_color(muted).child(msg));
+            list = list.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_caption()
+                    .text_color(muted)
+                    .child(msg),
+            );
         }
         // sidebar folders first, then everything ungrouped. Members are
         // `kind:name` keys: look them up in one index of the visible objects
@@ -3031,13 +3246,12 @@ impl TuskApp {
                 list = list.child(
                     div()
                         .id(("draft-table", tab_ix))
-                        .cursor_pointer()
                         .flex()
                         .items_center()
                         .gap_1p5()
                         .px_2()
                         .h(px(crate::settings::row_h()))
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .bg(rgb(crate::theme::ADDED).opacity(if active { 0.35 } else { 0.25 }))
                         .child(TableKind::Table.icon())
                         .child(
@@ -3085,11 +3299,10 @@ impl TuskApp {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(4.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Close).size(px(12.)))
-                            .cursor_pointer()
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_sidebar_filter(window, cx)
                             })),
@@ -3106,7 +3319,7 @@ impl TuskApp {
                     .child(
                         div()
                             .flex_1()
-                            .text_xs()
+                            .text_caption()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(muted)
                             .child(format!(
@@ -3119,13 +3332,12 @@ impl TuskApp {
                     .child(
                         div()
                             .id("sidebar-filter-open")
-                            .cursor_pointer()
                             .w(px(20.))
                             .h(px(20.))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(4.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Search).size(px(13.)))
@@ -3140,6 +3352,9 @@ impl TuskApp {
                     )
             };
 
+        if crate::settings::connections_tree() {
+            return self.render_conn_tree(header.into_any_element(), list.into_any_element(), cx);
+        }
         div()
             .id("sidebar")
             .key_context("Sidebar")
@@ -3191,8 +3406,41 @@ impl TuskApp {
         {
             return;
         }
-        Self::run_disconnect(self, window, cx);
-        self.on_pick_saved(ix, true, window, cx);
+        // Connect first: the current workspace stays (tabs and all) until
+        // the new connection is up. A missing / wrong password opens the
+        // connection's form to enter it instead of leaving you disconnected.
+        self.conn_manager = false;
+        let password = crate::conn::ConnectionForm::password_or_keychain(&conn.name, String::new());
+        self.status_line = format!("Connecting to {}…", conn.name);
+        cx.notify();
+        cx.spawn_in(window, async move |weak, cx| {
+            let result = db::connect(conn.clone(), password.clone(), None).await;
+            let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
+                this.status_line.clear();
+                match result {
+                    Ok(c) => {
+                        this.form.selected = Some(ix);
+                        this.form.load(&conn, window, cx);
+                        this.connected_with(c, &conn, &password, cx);
+                    }
+                    Err(e) => {
+                        log::warn!("switch to {}: {e}", conn.name);
+                        if Self::wants_password(&conn, &password, &e) {
+                            this.toast(
+                                false,
+                                format!("{}: enter the password to connect.", conn.name),
+                            );
+                            crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
+                        } else {
+                            this.toast(false, format!("{}: {e}", conn.name));
+                        }
+                        this.focus.focus(window, cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn show_panel(&mut self, panel: SidebarPanel, cx: &mut Context<Self>) {
@@ -3229,8 +3477,7 @@ impl TuskApp {
                     muted.opacity(0.35)
                 })
                 .when(enabled, |this| {
-                    this.cursor_pointer()
-                        .hover(|this| this.bg(muted.opacity(0.1)))
+                    this.hover(|this| this.bg(muted.opacity(0.1)))
                 })
                 .child(Icon::new(icon).size(px(14.)))
         };
@@ -3285,7 +3532,6 @@ impl TuskApp {
             strip = strip.child(
                 div()
                     .id(format!("grid-tab-{ix}"))
-                    .cursor_pointer()
                     .group(group.clone())
                     .flex()
                     .flex_row()
@@ -3325,14 +3571,13 @@ impl TuskApp {
                     .child(
                         div()
                             .id(format!("close-tab-{ix}"))
-                            .cursor_pointer()
                             .relative()
                             .w(px(16.))
                             .h(px(16.))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(3.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.2)).text_color(foreground))
                             // Modified: a dot, swapped for × while hovering the tab.
@@ -3354,10 +3599,10 @@ impl TuskApp {
                             )
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 cx.stop_propagation();
-                                this.close_tab_at(ix, cx);
-                                // The closed tab may have held focus; without
-                                // it no TuskApp shortcut (⌘⇧P, ⌘T…) fires.
-                                this.focus.focus(w, cx);
+                                // Asks first when the tab has unsaved changes;
+                                // refocuses the app (the closed tab may have
+                                // held focus, and then no shortcut fires).
+                                this.close_tab_guarded(ix, w, cx);
                             })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| this.activate_tab(ix, cx))),
@@ -3368,13 +3613,12 @@ impl TuskApp {
             div().flex().items_center().pl_1().child(
                 div()
                     .id("tab-strip-new")
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(22.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_color(muted)
                     .opacity(0.)
                     .group_hover("tab-strip", |this| this.opacity(1.))
@@ -3436,8 +3680,16 @@ impl TuskApp {
         };
         let accent = cx.theme().accent;
         let border = cx.theme().border;
+        let (fg, muted) = (cx.theme().foreground, cx.theme().muted_foreground);
         let pane = |p: usize, tab: usize, this: &Self, cx: &mut Context<Self>| {
             let focused = this.split_focus == p;
+            // Each pane names its tab (the tab bar alone didn't say which
+            // tab sits in which pane); the focused one is underlined in accent.
+            let title = match this.tabs.get(tab) {
+                Some(WorkspaceTab::Grid(g)) => g.table.name.clone(),
+                Some(WorkspaceTab::Sql(t)) => t.title.to_string(),
+                None => String::new(),
+            };
             div()
                 .id(("split-pane", p))
                 .flex_1()
@@ -3446,12 +3698,20 @@ impl TuskApp {
                 .flex()
                 .flex_col()
                 .capture_any_mouse_down(cx.listener(move |this, _, _, cx| this.focus_pane(p, cx)))
-                // The focused pane's top edge carries the accent.
                 .child(
                     div()
-                        .h(px(2.))
                         .flex_none()
-                        .when(focused, |d| d.bg(accent.opacity(0.7))),
+                        .h(px(22.))
+                        .px_2()
+                        .flex()
+                        .items_center()
+                        .border_b_2()
+                        .border_color(if focused { accent.opacity(0.8) } else { border })
+                        .text_caption()
+                        .font_family(crate::settings::ui_font())
+                        .text_color(if focused { fg } else { muted })
+                        .truncate()
+                        .child(title),
                 )
                 .child(this.render_tab_area(Some(tab), cx))
         };
@@ -3515,34 +3775,32 @@ impl TuskApp {
                     .into_any_element()
             }
             Some((_, WorkspaceTab::Sql(s))) => self.render_sql_tab(s, cx).into_any_element(),
-            None => {
-                div()
-                    .flex_1()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_family(crate::settings::ui_font())
-                                    .text_color(muted)
-                                    .child("No table open"),
-                            )
-                            .child(div().text_xs().text_color(muted).child(
-                                crate::kbd::rich_colored(
-                                    "Click a table in the sidebar, or press [cmd-p] to quick-open.",
-                                    muted,
-                                ),
-                            )),
-                    )
-                    .into_any_element()
-            }
+            None => div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_family(crate::settings::ui_font())
+                                .text_color(muted)
+                                .child("No table open"),
+                        )
+                        .child(div().text_caption().text_color(muted).child(
+                            crate::kbd::rich_colored(
+                                "Click a table in the sidebar, or press [cmd-p] to quick-open.",
+                                muted,
+                            ),
+                        )),
+                )
+                .into_any_element(),
         }
     }
 
@@ -3606,16 +3864,61 @@ impl TuskApp {
 
 impl Render for TuskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A search typed in the connection manager must not keep filtering
+        // the connections tree after it connected.
+        if std::mem::take(&mut self.clear_conn_search)
+            && !self.conn_search.read(cx).value().is_empty()
+        {
+            self.conn_search
+                .update(cx, |s, cx| s.set_value("", window, cx));
+        }
+        if std::mem::take(&mut self.focus_conn_search) && self.conn_manager {
+            let handle = self.conn_search.read(cx).focus_handle(cx);
+            handle.focus(window, cx);
+        }
+        // The sidebar highlight follows the active tab (none when no table
+        // tab is active); a click or right-click in between still moves it.
+        let tab_key = self.active_tab.and_then(|ix| match self.tabs.get(ix) {
+            Some(WorkspaceTab::Grid(g)) if g.draft.is_none() => {
+                Some((g.table.kind.clone(), g.table.name.clone()))
+            }
+            _ => None,
+        });
+        if tab_key != self.synced_tab {
+            self.synced_tab = tab_key.clone();
+            self.selected_object = tab_key;
+        }
+        // Nothing focused (a failed connect, a closed panel or tab took the
+        // focused element away): take it back, or no shortcut (⇧⌘O, ⌘N…)
+        // fires until the next click.
+        if window.focused(cx).is_none() {
+            self.focus.focus(window, cx);
+        }
         // Welcome-screen failures (connect, import…) go out as toasts.
         if self.screen == AppScreen::Connection
             && let Some((false, msg)) = self.form.notice.take()
         {
             self.toast(false, msg);
         }
+        // A refused cell value (text in a number column) → toast.
+        let refused: Vec<String> = self
+            .tabs
+            .iter()
+            .filter_map(|t| match t {
+                WorkspaceTab::Grid(g) => g
+                    .state
+                    .update(cx, |s, _| s.delegate_mut().cell_error.take()),
+                _ => None,
+            })
+            .collect();
+        for why in refused {
+            self.toast(false, why);
+        }
         for (ok, msg) in std::mem::take(&mut self.toasts) {
             crate::toast::push(window, cx, ok, msg);
         }
         self.sync_row_detail(window, cx);
+        self.sync_editor_prefs(window, cx);
         // A tab opened from elsewhere lands in the focused pane.
         if let (Some((l, r)), Some(cur)) = (self.split, self.active_tab)
             && cur != l
@@ -3940,7 +4243,7 @@ impl Render for TuskApp {
             .on_action(cx.listener(|this, _: &ShowHistory, _, cx| {
                 this.toggle_bottom_panel(panels::BottomPanel::History, cx)
             }))
-            .on_action(cx.listener(|this, _: &Disconnect, w, cx| Self::run_disconnect(this, w, cx)))
+            .on_action(cx.listener(|this, _: &Disconnect, w, cx| this.disconnect_guarded(w, cx)))
             .on_action(cx.listener(|this, _: &ShowTablesPanel, _, cx| {
                 this.show_panel(SidebarPanel::Tables, cx)
             }))
@@ -3966,8 +4269,7 @@ impl Render for TuskApp {
             }))
             .on_action(cx.listener(|this, _: &CloseTab, w, cx| {
                 if let Some(ix) = this.active_tab {
-                    this.close_tab_at(ix, cx);
-                    this.focus.focus(w, cx);
+                    this.close_tab_guarded(ix, w, cx);
                 }
             }))
             .size_full()

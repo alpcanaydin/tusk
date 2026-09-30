@@ -17,15 +17,18 @@ use super::*;
 use crate::dialog::ConnDialog;
 
 impl TuskApp {
-    /// Saved-profile indexes, most recently used first (never-used last).
+    /// Indexes of the profiles actually connected to, most recent first
+    /// (imported or never-used profiles aren't "recent").
     pub(super) fn recent_indexes(&self) -> Vec<usize> {
-        let mut ix: Vec<usize> = (0..self.form.saved.len()).collect();
+        let mut ix: Vec<usize> = (0..self.form.saved.len())
+            .filter(|&i| self.form.saved[i].last_used.is_some())
+            .collect();
         ix.sort_by_key(|&i| std::cmp::Reverse(self.form.saved[i].last_used.unwrap_or(0)));
         ix
     }
 
     /// All group names: explicit (groups.json) ∪ referenced by profiles.
-    fn folders(&self) -> Vec<String> {
+    pub(super) fn folders(&self) -> Vec<String> {
         let mut f: Vec<String> = self.groups.clone();
         f.extend(self.form.saved.iter().filter_map(|c| c.folder.clone()));
         f.sort_by_key(|s| s.to_lowercase());
@@ -111,7 +114,7 @@ impl TuskApp {
     }
 
     /// Delete a group; its profiles move to the top level (nothing is lost).
-    fn delete_group(&mut self, name: String, cx: &mut Context<Self>) {
+    pub(super) fn delete_group(&mut self, name: String, cx: &mut Context<Self>) {
         if self.conn_pick == FolderPick::Group(name.clone()) {
             self.conn_pick = FolderPick::All;
         }
@@ -129,15 +132,16 @@ impl TuskApp {
         let Some(name) = self.form.saved.get(ix).map(|c| c.name.clone()) else {
             return;
         };
-        let answer = window.prompt(
-            PromptLevel::Warning,
+        let answer = crate::dialog_keys::confirm(
+            window,
+            PromptLevel::Critical,
             &format!("Delete “{name}”?"),
-            Some("The saved profile and its Keychain passwords are removed."),
-            &["Delete", "Cancel"],
+            Some("The saved profile and its stored passwords are removed."),
+            "Delete",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
@@ -151,7 +155,7 @@ impl TuskApp {
         .detach();
     }
 
-    fn matches_search(&self, ix: usize, q: &str) -> bool {
+    pub(super) fn matches_search(&self, ix: usize, q: &str) -> bool {
         if q.is_empty() {
             return true;
         }
@@ -177,14 +181,16 @@ impl TuskApp {
         };
         let t = cx.theme();
         let (muted, fg) = (t.muted_foreground, t.foreground);
-        let mut detail = format!("{} · {}", conn.host, conn.database);
+        let mut detail = match conn.engine.form() {
+            crate::engine::Form::Server => format!("{} · {}", conn.host, conn.database),
+            _ => conn.endpoint(),
+        };
         if let Some(s) = &conn.ssh {
             detail.push_str(&format!(" · ssh {}", s.host));
         }
         let folders = self.folders();
         div()
             .id(id.into())
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_2()
@@ -194,7 +200,7 @@ impl TuskApp {
             .pl(px(5.))
             .pr(px(6.))
             .when(indent, |this| this.pl(px(22.)))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 Icon::new(IconName::Database)
@@ -211,7 +217,7 @@ impl TuskApp {
             .children(conn.tag.map(|tag| {
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(rgb(tag.color()))
                     .child(tag.label())
             }))
@@ -220,7 +226,7 @@ impl TuskApp {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::ui_font())
                     .text_color(muted.opacity(0.55))
                     .child(detail),
@@ -230,78 +236,88 @@ impl TuskApp {
                 this.on_pick_saved(ix, true, window, cx);
             }))
             .context_menu(move |menu, window, cx| {
-                let call = |f: fn(&mut TuskApp, usize, &mut Window, &mut Context<TuskApp>)| {
-                    move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| f(this, ix, window, cx));
-                    }
-                };
-                let folders = folders.clone();
-                let move_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
-                    m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
-                    }));
-                    for f in &folders {
-                        let go = f.clone();
-                        m = m.item(PopupMenuItem::new(f.clone()).on_click(move |_, _, cx| {
-                            let view = cx.global::<TuskHandle>().0.clone();
-                            view.update(cx, |this, cx| {
-                                this.move_to_folder(ix, Some(go.clone()), cx)
-                            });
-                        }));
-                    }
-                    m
-                });
-                let new_menu = PopupMenu::build(window, cx, |m, _, _| {
-                    m.item(PopupMenuItem::new("Connection…").on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(NewConnection), cx);
-                    }))
-                    .item(PopupMenuItem::new("Group").on_click(|_, window, cx| {
-                        let view = cx.global::<TuskHandle>().0.clone();
-                        view.update(cx, |this, cx| this.new_group(window, cx));
-                    }))
-                });
-                menu.item(
-                    PopupMenuItem::new("Connect")
-                        .on_click(call(|this, ix, w, cx| this.on_pick_saved(ix, true, w, cx))),
-                )
-                .separator()
-                .item(PopupMenuItem::submenu("New", new_menu))
-                .item(
-                    PopupMenuItem::new("Edit…").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix).cloned() {
-                            ConnDialog::open_edit(c, false, cx);
-                        }
-                    })),
-                )
-                .item(
-                    PopupMenuItem::new("Duplicate").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix).cloned() {
-                            ConnDialog::open_edit(c, true, cx);
-                        }
-                    })),
-                )
-                .separator()
-                .item(
-                    PopupMenuItem::new("Copy as URL").on_click(call(|this, ix, _w, cx| {
-                        if let Some(c) = this.form.saved.get(ix) {
-                            cx.write_to_clipboard(ClipboardItem::new_string(c.url()));
-                        }
-                    })),
-                )
-                .item(PopupMenuItem::submenu("Move to Group", move_menu))
-                .separator()
-                .item(
-                    PopupMenuItem::new("Delete…")
-                        .on_click(call(|this, ix, w, cx| this.delete_connection(ix, w, cx))),
-                )
+                Self::connection_menu(ix, folders.clone(), menu, window, cx)
             })
             .into_any_element()
     }
 
+    /// Right-click menu of a saved connection (welcome list, connection
+    /// manager, connections-tree sidebar).
+    pub(super) fn connection_menu(
+        ix: usize,
+        folders: Vec<String>,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> PopupMenu {
+        let call = |f: fn(&mut TuskApp, usize, &mut Window, &mut Context<TuskApp>)| {
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| f(this, ix, window, cx));
+            }
+        };
+        let move_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
+            m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
+            }));
+            for f in &folders {
+                let go = f.clone();
+                m = m.item(PopupMenuItem::new(f.clone()).on_click(move |_, _, cx| {
+                    let view = cx.global::<TuskHandle>().0.clone();
+                    view.update(cx, |this, cx| this.move_to_folder(ix, Some(go.clone()), cx));
+                }));
+            }
+            m
+        });
+        let new_menu = PopupMenu::build(window, cx, |m, _, _| {
+            m.item(PopupMenuItem::new("Connection…").on_click(|_, window, cx| {
+                window.dispatch_action(Box::new(NewConnection), cx);
+            }))
+            .item(PopupMenuItem::new("Group").on_click(|_, window, cx| {
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |this, cx| this.new_group(window, cx));
+            }))
+        });
+        menu.item(
+            PopupMenuItem::new("Connect")
+                .on_click(call(|this, ix, w, cx| this.open_saved(ix, w, cx))),
+        )
+        .separator()
+        .item(PopupMenuItem::submenu("New", new_menu))
+        .item(
+            PopupMenuItem::new("Edit…").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix).cloned() {
+                    ConnDialog::open_edit(c, false, cx);
+                }
+            })),
+        )
+        .item(
+            PopupMenuItem::new("Duplicate").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix).cloned() {
+                    ConnDialog::open_edit(c, true, cx);
+                }
+            })),
+        )
+        .separator()
+        .item(
+            PopupMenuItem::new("Copy as URL").on_click(call(|this, ix, _w, cx| {
+                if let Some(c) = this.form.saved.get(ix) {
+                    cx.write_to_clipboard(ClipboardItem::new_string(c.url()));
+                }
+            })),
+        )
+        .item(PopupMenuItem::submenu("Move to Group", move_menu))
+        .separator()
+        .item(crate::theme::danger_item(
+            "Delete…",
+            call(|this, ix, w, cx| this.delete_connection(ix, w, cx)),
+        ))
+    }
+
     pub(super) fn toggle_conn_manager(&mut self, cx: &mut Context<Self>) {
         self.conn_manager = !self.conn_manager;
+        self.focus_conn_search = self.conn_manager;
         cx.notify();
     }
 
@@ -330,9 +346,17 @@ impl TuskApp {
         count: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        // A search looks through every folder (`pick_matches`), so the rail
+        // shows "All Connections" as the active scope while it's on.
+        let searching = !self.conn_search.read(cx).value().trim().is_empty();
         let t = cx.theme();
         let (muted, fg, accent) = (t.muted_foreground, t.foreground, t.accent);
-        let active = self.conn_pick == pick;
+        let sel_bg = crate::theme::selection(t);
+        let active = if searching {
+            pick == FolderPick::All
+        } else {
+            self.conn_pick == pick
+        };
         let group = match &pick {
             FolderPick::Group(g) => Some(g.clone()),
             _ => None,
@@ -366,8 +390,8 @@ impl TuskApp {
             .gap_2()
             .h(px(26.))
             .px_2()
-            .rounded(px(5.))
-            .when(active, |this| this.bg(accent.opacity(0.14)))
+            .rounded(crate::theme::RADIUS_SM)
+            .when(active, |this| this.bg(sel_bg))
             .when(!active, |this| {
                 this.hover(|this| this.bg(muted.opacity(0.08)))
             })
@@ -380,7 +404,7 @@ impl TuskApp {
             .child(
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted.opacity(0.6))
                     .child(count.to_string()),
             )
@@ -407,12 +431,13 @@ impl TuskApp {
                     });
                 }),
             )
-            .item(
-                PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+            .item(crate::theme::danger_item(
+                "Delete Group",
+                move |_, _, cx| {
                     let view = cx.global::<TuskHandle>().0.clone();
                     view.update(cx, |this, cx| this.delete_group(d.clone(), cx));
-                }),
-            )
+                },
+            ))
         })
         .into_any_element()
     }
@@ -423,7 +448,7 @@ impl TuskApp {
     pub(super) fn render_conn_manager(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
         let (border, bg, fg, muted) = (t.border, t.popover, t.foreground, t.muted_foreground);
-        let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
+        let backdrop = crate::theme::backdrop(t);
         let q = self.conn_search.read(cx).value().trim().to_lowercase();
 
         let new_button = Button::new("conn-new")
@@ -498,7 +523,7 @@ impl TuskApp {
                     .px_2()
                     .pt_3()
                     .pb_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted.opacity(0.7))
                     .child("GROUPS"),
             );
@@ -571,7 +596,7 @@ impl TuskApp {
             .px_4()
             .border_t_1()
             .border_color(border)
-            .text_xs()
+            .text_caption()
             .text_color(muted.opacity(0.7))
             .child("click to connect · right-click for more")
             .child("esc");
@@ -585,7 +610,6 @@ impl TuskApp {
             .justify_center()
             .items_start()
             .pt(px(72.))
-            .cursor_pointer()
             .on_click(cx.listener(|this, _, _, cx| {
                 this.conn_manager = false;
                 cx.notify();
@@ -596,14 +620,13 @@ impl TuskApp {
                     .w(px(680.))
                     .flex()
                     .flex_col()
-                    .rounded(px(10.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)
                     .shadow_lg()
                     .overflow_hidden()
                     // Clicks inside the card don't close it.
-                    .cursor_pointer()
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(header)
                     .child(search)

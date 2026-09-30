@@ -27,16 +27,24 @@ pub enum Appearance {
     System,
     Light,
     Dark,
+    /// Follow the Omarchy desktop's active theme (colors and light / dark).
+    Omarchy,
 }
 
 impl Appearance {
-    pub const ALL: [Appearance; 3] = [Appearance::System, Appearance::Light, Appearance::Dark];
+    pub const ALL: [Appearance; 4] = [
+        Appearance::System,
+        Appearance::Light,
+        Appearance::Dark,
+        Appearance::Omarchy,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Appearance::System => "System",
             Appearance::Light => "Light",
             Appearance::Dark => "Dark",
+            Appearance::Omarchy => crate::omarchy::NAME,
         }
     }
 
@@ -45,6 +53,25 @@ impl Appearance {
             .into_iter()
             .find(|a| a.label() == s)
             .unwrap_or_default()
+    }
+
+    /// Modes offered in the pickers: "Omarchy" only where Omarchy's theme
+    /// exists (or it is the current choice).
+    pub fn available() -> Vec<Appearance> {
+        let current = get().appearance;
+        Self::ALL
+            .into_iter()
+            .filter(|a| *a != Appearance::Omarchy || *a == current || crate::omarchy::detected())
+            .collect()
+    }
+
+    /// Default mode: follow Omarchy's theme when it is there.
+    fn initial() -> Self {
+        if crate::omarchy::detected() {
+            Appearance::Omarchy
+        } else {
+            Appearance::System
+        }
     }
 }
 
@@ -70,6 +97,8 @@ pub struct Prefs {
     pub reopen_last: bool,
     /// `statement_timeout` for new connections, seconds (0 = none).
     pub query_timeout_secs: u32,
+    /// Linux renderer device ID (four hexadecimal digits); empty = automatic.
+    pub gpu_device: String,
     // ---- SQL editor ----
     pub editor_line_numbers: bool,
     pub editor_soft_wrap: bool,
@@ -82,10 +111,16 @@ pub struct Prefs {
     // ---- safe mode ----
     /// Ask before DROP / TRUNCATE / ALTER and UPDATE / DELETE without WHERE.
     pub confirm_destructive: bool,
-    /// Ask before ⌘S writes pending changes.
+    /// Ask before ⌘S writes pending changes, and before the SQL editor runs
+    /// a statement that writes (INSERT / UPDATE / DELETE / DDL).
     pub confirm_save: bool,
     /// Accent (primary) color name, see [`ACCENTS`]; "Theme" = the theme's own.
     pub accent: String,
+    // ---- sidebar ----
+    /// What the left sidebar lists: see [`SIDEBAR_LAYOUTS`].
+    pub sidebar_layout: String,
+    /// Connection groups folded in the "Connections tree" sidebar.
+    pub sidebar_collapsed_groups: Vec<String>,
     // ---- filter bar defaults (its ☰ menu) ----
     /// Column picker order: "Table order" | "Alphabetical".
     pub filter_column_sort: String,
@@ -112,6 +147,9 @@ pub struct Prefs {
 pub const FILTER_COLUMN_SORTS: [&str; 2] = ["Table order", "Alphabetical"];
 pub const FILTER_DEFAULT_COLUMNS: [&str; 3] = ["First column", "Primary key", "Raw SQL"];
 pub const TABLE_SORTS: [&str; 3] = ["Primary key ascending", "Primary key descending", "None"];
+/// Sidebar layouts: the connected database's objects only, or every saved
+/// connection (grouped) with the connected one's objects nested under it.
+pub const SIDEBAR_LAYOUTS: [&str; 2] = ["Objects", "Connections tree"];
 
 /// Accent choices (dark, light variant).
 pub const ACCENTS: &[(&str, u32, u32)] = &[
@@ -130,7 +168,7 @@ pub const TABLE_SIZE_RANGE: (f32, f32) = (9., 24.);
 impl Default for Prefs {
     fn default() -> Self {
         Self {
-            appearance: Appearance::System,
+            appearance: Appearance::initial(),
             light_theme: themes::DEFAULT_LIGHT.to_string(),
             dark_theme: themes::DEFAULT_DARK.to_string(),
             legacy_theme: None,
@@ -140,6 +178,7 @@ impl Default for Prefs {
             table_font_size: 13.,
             reopen_last: true,
             query_timeout_secs: 0,
+            gpu_device: String::new(),
             editor_line_numbers: true,
             editor_soft_wrap: false,
             editor_tab_size: 4,
@@ -149,6 +188,8 @@ impl Default for Prefs {
             confirm_destructive: true,
             confirm_save: false,
             accent: "Teal".to_string(),
+            sidebar_layout: SIDEBAR_LAYOUTS[0].into(),
+            sidebar_collapsed_groups: Vec::new(),
             filter_column_sort: FILTER_COLUMN_SORTS[0].into(),
             filter_default_column: FILTER_DEFAULT_COLUMNS[0].into(),
             filter_default_operator: "=".into(),
@@ -190,8 +231,14 @@ impl Prefs {
         if !ACCENTS.iter().any(|(n, _, _)| *n == self.accent) {
             self.accent = d.accent.clone();
         }
+        if !SIDEBAR_LAYOUTS.contains(&self.sidebar_layout.as_str()) {
+            self.sidebar_layout = d.sidebar_layout.clone();
+        }
         self.editor_tab_size = self.editor_tab_size.clamp(1, 8);
         self.query_timeout_secs = self.query_timeout_secs.min(86_400);
+        if self.gpu_device.len() != 4 || !self.gpu_device.bytes().all(|c| c.is_ascii_hexdigit()) {
+            self.gpu_device.clear();
+        }
         if self.null_text.trim().is_empty() {
             self.null_text = d.null_text.clone();
         }
@@ -200,6 +247,36 @@ impl Prefs {
             .round()
             .clamp(TABLE_SIZE_RANGE.0, TABLE_SIZE_RANGE.1);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Prefs, SIDEBAR_LAYOUTS};
+
+    #[test]
+    fn gpu_preference_accepts_only_pci_device_ids() {
+        let mut prefs = Prefs {
+            gpu_device: "2520".into(),
+            ..Prefs::default()
+        };
+        assert_eq!(prefs.clone().sanitized().gpu_device, "2520");
+        prefs.gpu_device = "not-a-device".into();
+        assert!(prefs.sanitized().gpu_device.is_empty());
+    }
+
+    #[test]
+    fn sidebar_layout_defaults_to_objects_and_rejects_unknown() {
+        assert_eq!(Prefs::default().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(r#"{"sidebar_layout": "Sideways"}"#).unwrap();
+        assert_eq!(p.sanitized().sidebar_layout, SIDEBAR_LAYOUTS[0]);
+        let p: Prefs = serde_json::from_str(
+            r#"{"sidebar_layout": "Connections tree", "sidebar_collapsed_groups": ["Acme"]}"#,
+        )
+        .unwrap();
+        let p = p.sanitized();
+        assert_eq!(p.sidebar_layout, SIDEBAR_LAYOUTS[1]);
+        assert_eq!(p.sidebar_collapsed_groups, ["Acme"]);
     }
 }
 
@@ -255,6 +332,50 @@ pub fn get() -> std::sync::Arc<Prefs> {
     PREFS.read().map(|p| p.clone()).unwrap_or_default()
 }
 
+#[cfg(target_os = "linux")]
+pub fn apply_gpu_preference() {
+    let device = &get().gpu_device;
+    if !device.is_empty() {
+        // Called before GPUI starts and before any threads can read the environment.
+        unsafe { std::env::set_var("ZED_DEVICE_ID", device) };
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn gpu_options() -> Vec<(SharedString, SharedString)> {
+    let mut options = vec![("".into(), "Automatic".into())];
+    let Ok(entries) = std::fs::read_dir("/sys/class/drm") else {
+        return options;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("renderD") {
+            continue;
+        }
+        let Ok(id) = std::fs::read_to_string(entry.path().join("device/device")) else {
+            continue;
+        };
+        let id = id.trim().trim_start_matches("0x");
+        if id.len() != 4 || !id.bytes().all(|c| c.is_ascii_hexdigit()) {
+            continue;
+        }
+        let vendor =
+            std::fs::read_to_string(entry.path().join("device/vendor")).unwrap_or_default();
+        let vendor = match vendor.trim() {
+            "0x8086" => "Intel",
+            "0x10de" => "NVIDIA",
+            "0x1002" => "AMD",
+            _ => "GPU",
+        };
+        let id = id.to_ascii_lowercase();
+        if options.iter().any(|(value, _)| value.as_ref() == id) {
+            continue;
+        }
+        options.push((id.clone().into(), format!("{vendor} GPU (0x{id})").into()));
+    }
+    options[1..].sort_by(|a, b| a.1.cmp(&b.1));
+    options
+}
+
 /// Change a setting: save, re-apply the theme and redraw every window.
 pub fn update(cx: &mut App, f: impl FnOnce(&mut Prefs)) {
     let mut p = (*get()).clone();
@@ -279,20 +400,27 @@ pub fn update(cx: &mut App, f: impl FnOnce(&mut Prefs)) {
 
 /// Is the light theme in effect right now (setting + macOS appearance)?
 pub fn is_light(cx: &App) -> bool {
+    let system = || {
+        matches!(
+            cx.window_appearance(),
+            WindowAppearance::Light | WindowAppearance::VibrantLight
+        )
+    };
     match get().appearance {
         Appearance::Light => true,
         Appearance::Dark => false,
-        Appearance::System => matches!(
-            cx.window_appearance(),
-            WindowAppearance::Light | WindowAppearance::VibrantLight
-        ),
+        Appearance::System => system(),
+        // Without a readable Omarchy theme, behave like "System".
+        Appearance::Omarchy => crate::omarchy::palette().map_or_else(system, |p| p.light),
     }
 }
 
 /// The theme in effect right now.
 pub fn active_theme(cx: &App) -> String {
     let p = get();
-    if is_light(cx) {
+    if p.appearance == Appearance::Omarchy && crate::omarchy::palette().is_some() {
+        crate::omarchy::NAME.to_string()
+    } else if is_light(cx) {
         p.light_theme.clone()
     } else {
         p.dark_theme.clone()
@@ -311,7 +439,7 @@ pub fn choose_theme(cx: &mut App, name: &str) {
         } else {
             p.dark_theme = name.to_string();
         }
-        if light != showing_light {
+        if light != showing_light || p.appearance == Appearance::Omarchy {
             p.appearance = if light {
                 Appearance::Light
             } else {
@@ -356,6 +484,28 @@ pub fn table_text() -> f32 {
     with(|p| p.table_font_size)
 }
 
+/// The sidebar lists every saved connection (grouped), not just the
+/// connected database's objects.
+pub fn connections_tree() -> bool {
+    with(|p| p.sidebar_layout == SIDEBAR_LAYOUTS[1])
+}
+
+/// Is this connection group folded in the connections-tree sidebar?
+pub fn group_collapsed(name: &str) -> bool {
+    with(|p| p.sidebar_collapsed_groups.iter().any(|g| g == name))
+}
+
+/// Fold / unfold a connection group in the connections-tree sidebar.
+pub fn toggle_group_collapsed(cx: &mut App, name: &str) {
+    update(cx, |p| {
+        if let Some(i) = p.sidebar_collapsed_groups.iter().position(|g| g == name) {
+            p.sidebar_collapsed_groups.remove(i);
+        } else {
+            p.sidebar_collapsed_groups.push(name.to_string());
+        }
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Settings window
 // ---------------------------------------------------------------------------
@@ -391,6 +541,7 @@ impl SettingsWindow {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(560.), px(360.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             |window, cx| {
@@ -486,7 +637,7 @@ impl SettingsWindow {
                 .map(|n| (SharedString::from(n), SharedString::from(n)))
                 .collect()
         };
-        let modes: Vec<(SharedString, SharedString)> = Appearance::ALL
+        let modes: Vec<(SharedString, SharedString)> = Appearance::available()
             .into_iter()
             .map(|a| (SharedString::from(a.label()), SharedString::from(a.label())))
             .collect();
@@ -516,7 +667,7 @@ impl SettingsWindow {
                         )
                         .default_value(SharedString::from(d.appearance.label())),
                     )
-                    .description("System follows macOS light / dark appearance."),
+                    .description("System follows the desktop light / dark appearance."),
                 )
                 .item(
                     SettingItem::new(
@@ -581,6 +732,27 @@ impl SettingsWindow {
                         )
                         .description("Scales the whole interface."),
                     ),
+            )
+            .group(
+                SettingGroup::new().title("Layout").item(
+                    SettingItem::new(
+                        "Sidebar Layout",
+                        SettingField::dropdown(
+                            SIDEBAR_LAYOUTS
+                                .iter()
+                                .map(|n| (SharedString::from(*n), SharedString::from(*n)))
+                                .collect(),
+                            |_| get().sidebar_layout.clone().into(),
+                            |v: SharedString, cx| update(cx, |p| p.sidebar_layout = v.to_string()),
+                        )
+                        .default_value(SharedString::from(d.sidebar_layout.clone())),
+                    )
+                    .description(
+                        "Objects lists the connected database only. Connections tree lists \
+                         every saved connection by group, with the connected one's objects \
+                         nested under it.",
+                    ),
+                ),
             );
         let data = SettingPage::new("Data Grid").icon(IconName::Table2).group(
             SettingGroup::new()
@@ -617,35 +789,49 @@ impl SettingsWindow {
             )
             .description(desc)
         };
-        let general = SettingPage::new("General").icon(IconName::Settings2).group(
-            SettingGroup::new()
-                .title("Startup & Connections")
-                .item(switch(
-                    "Reopen Last Connection",
-                    "Connect to the last used database when the app starts.",
-                    |p| p.reopen_last,
-                    |p, v| p.reopen_last = v,
-                    d.reopen_last,
-                ))
-                .item(
-                    SettingItem::new(
-                        "Query Timeout",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.,
-                                max: 86_400.,
-                                step: 30.,
-                            },
-                            |_| get().query_timeout_secs as f64,
-                            |v, cx| update(cx, |p| p.query_timeout_secs = v as u32),
-                        )
-                        .default_value(d.query_timeout_secs as f64),
+        let general_group = SettingGroup::new()
+            .title("Startup & Connections")
+            .item(switch(
+                "Reopen Last Connection",
+                "Connect to the last used database when the app starts.",
+                |p| p.reopen_last,
+                |p, v| p.reopen_last = v,
+                d.reopen_last,
+            ))
+            .item(
+                SettingItem::new(
+                    "Query Timeout",
+                    SettingField::number_input(
+                        NumberFieldOptions {
+                            min: 0.,
+                            max: 86_400.,
+                            step: 30.,
+                        },
+                        |_| get().query_timeout_secs as f64,
+                        |v, cx| update(cx, |p| p.query_timeout_secs = v as u32),
                     )
-                    .description(
-                        "Seconds before a statement is cancelled (0 = never). New connections.",
-                    ),
+                    .default_value(d.query_timeout_secs as f64),
+                )
+                .description(
+                    "Seconds before a statement is cancelled (0 = never). New connections.",
                 ),
+            );
+        #[cfg(target_os = "linux")]
+        let general_group = general_group.item(
+            SettingItem::new(
+                "Graphics Device",
+                SettingField::dropdown(
+                    gpu_options(),
+                    |_| get().gpu_device.clone().into(),
+                    |v: SharedString, cx| update(cx, |p| p.gpu_device = v.to_string()),
+                )
+                .default_value(SharedString::default()),
+            )
+            .description("GPU used for rendering. Restart Tusk to apply."),
         );
+        let general = SettingPage::new("General")
+            .icon(IconName::Settings2)
+            .group(general_group);
         let editor = SettingPage::new("SQL Editor")
             .icon(IconName::SquareTerminal)
             .group(
@@ -689,9 +875,9 @@ impl SettingsWindow {
                         d.editor_uppercase_keywords,
                     )),
             );
-        // Untitled: stays under "Table Font" instead of adding a sidebar entry.
         let data = data.group(
             SettingGroup::new()
+                .title("Display")
                 .item(switch(
                     "Alternating Row Colors",
                     "Stripe every other row.",
@@ -714,23 +900,23 @@ impl SettingsWindow {
         let safety = SettingPage::new("Safe Mode")
             .icon(IconName::ShieldCheck)
             .group(
-                SettingGroup::new()
-                    .title("Confirmations")
-                    .item(switch(
-                        "Confirm Dangerous Queries",
-                        "Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.",
-                        |p| p.confirm_destructive,
-                        |p, v| p.confirm_destructive = v,
-                        d.confirm_destructive,
-                    ))
-                    .item(switch(
-                        "Confirm Before Saving",
-                        "Ask before ⌘S writes pending changes to the database.",
-                        |p| p.confirm_save,
-                        |p, v| p.confirm_save = v,
-                        d.confirm_save,
-                    )),
-            );
+            SettingGroup::new()
+                .title("Confirmations")
+                .item(switch(
+                    "Confirm Dangerous Queries",
+                    "Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.",
+                    |p| p.confirm_destructive,
+                    |p, v| p.confirm_destructive = v,
+                    d.confirm_destructive,
+                ))
+                .item(switch(
+                    "Confirm Before Saving",
+                    "Ask before saving pending changes, or before a query writes to the database.",
+                    |p| p.confirm_save,
+                    |p, v| p.confirm_save = v,
+                    d.confirm_save,
+                )),
+        );
         vec![general, appearance, interface, editor, data, safety]
     }
 }
@@ -759,6 +945,8 @@ impl Render for SettingsWindow {
         let t = cx.theme();
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
             .size_full()
             .flex()
             .flex_col()

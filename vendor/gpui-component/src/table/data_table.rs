@@ -13,6 +13,19 @@ use gpui::{
 use gpui_base::TestSupportExt as _;
 
 const CONTEXT: &'static str = "DataTable";
+
+// Tusk patch: rectangular cell ranges (Shift+arrows, ⌘A).
+gpui::actions!(
+    table,
+    [
+        ExtendSelectionUp,
+        ExtendSelectionDown,
+        ExtendSelectionLeft,
+        ExtendSelectionRight,
+        SelectAllCells
+    ]
+);
+
 pub(super) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
@@ -26,6 +39,11 @@ pub(super) fn init(cx: &mut App) {
         KeyBinding::new("pagedown", SelectPageDown, Some(CONTEXT)),
         KeyBinding::new("tab", SelectNextColumn, Some(CONTEXT)),
         KeyBinding::new("shift-tab", SelectPrevColumn, Some(CONTEXT)),
+        KeyBinding::new("shift-up", ExtendSelectionUp, Some(CONTEXT)),
+        KeyBinding::new("shift-down", ExtendSelectionDown, Some(CONTEXT)),
+        KeyBinding::new("shift-left", ExtendSelectionLeft, Some(CONTEXT)),
+        KeyBinding::new("shift-right", ExtendSelectionRight, Some(CONTEXT)),
+        KeyBinding::new("secondary-a", SelectAllCells, Some(CONTEXT)),
     ]);
 }
 
@@ -164,6 +182,11 @@ where
             .on_action(window.listener_for(&self.state, TableState::action_select_last_column))
             .on_action(window.listener_for(&self.state, TableState::action_select_page_up))
             .on_action(window.listener_for(&self.state, TableState::action_select_page_down))
+            .on_action(window.listener_for(&self.state, TableState::action_extend_up))
+            .on_action(window.listener_for(&self.state, TableState::action_extend_down))
+            .on_action(window.listener_for(&self.state, TableState::action_extend_left))
+            .on_action(window.listener_for(&self.state, TableState::action_extend_right))
+            .on_action(window.listener_for(&self.state, TableState::action_select_all_cells))
             .bg(cx.theme().tokens.table)
             .when(bordered, |this| {
                 this.rounded(cx.theme().radius)

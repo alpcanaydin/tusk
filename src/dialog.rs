@@ -2,10 +2,11 @@
 //! opened by cmd-n / "New Connection". Owns its own form state; on a
 //! successful connect it hands the pool to the main view and closes itself.
 
+use crate::theme::TextCaption as _;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
@@ -35,6 +36,8 @@ pub struct ConnDialog {
     choosing: bool,
     /// Highlighted engine in the grid.
     picked: crate::engine::Engine,
+    /// "Import from URL": the URL field, shown once the button is pressed.
+    url: Option<Entity<gpui_kit::component::input::InputState>>,
     _subs: Vec<Subscription>,
 }
 
@@ -144,6 +147,7 @@ impl ConnDialog {
             group_select,
             choosing,
             picked,
+            url: None,
             _subs: vec![sub, ssl_sub, group_sub],
         }
     }
@@ -304,6 +308,7 @@ impl ConnDialog {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(600.), px(200.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             |window, cx| {
@@ -367,99 +372,110 @@ impl ConnDialog {
         .detach();
     }
 
-    fn on_save(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((conn, password)) = self.read_or_notice(cx) else {
-            return;
-        };
+    /// A new profile (or a rename) may not take an existing profile's name:
+    /// saving would silently replace that profile.
+    fn name_taken_notice(&mut self, name: &str, cx: &mut Context<Self>) -> bool {
+        if !db::connection_name_taken(name, self.form.editing.as_deref()) {
+            return false;
+        }
+        self.form.notice = Some((
+            false,
+            format!("A connection named “{name}” already exists. Pick another name."),
+        ));
+        cx.notify();
+        true
+    }
+
+    /// Write the profile to `connections.json` and its secrets to the
+    /// Keychain (Save, and Connect — a profile you connected to is kept).
+    /// Ok carries a Keychain warning, if any; Err the message to show.
+    fn persist(
+        &mut self,
+        conn: &db::SavedConnection,
+        password: &str,
+        ssh_secret: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<String>, String> {
         // Verify the write by reading back: some environments (e.g. unsigned
         // dev builds) silently drop Keychain writes, and a false "Saved"
         // leaves the user locked out on restart with no explanation.
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
-            if let Err(e) = db::save_password(&conn.name, &password) {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
-                cx.notify();
-                return;
-            }
+            db::save_password(&conn.name, password)
+                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
             match db::load_password(&conn.name) {
                 Ok(back) if back == password => {}
                 Ok(_) => {
-                    keychain_warning =
-                        Some("the Keychain gave back a different password".to_string());
+                    keychain_warning = Some(format!(
+                        "the {} gave back a different password",
+                        db::CREDENTIAL_STORE
+                    ));
                 }
                 Err(e) => {
                     keychain_warning = Some(format!(
-                        "the password can't be read back from the Keychain ({e})"
+                        "the password can't be read back from the {} ({e})",
+                        db::CREDENTIAL_STORE
                     ));
                 }
             }
         }
-        let ssh_secret = self.form.ssh_secret_text(cx);
-        if conn.ssh.is_some()
-            && !ssh_secret.is_empty()
-            && let Err(e) = db::save_ssh_secret(&conn.name, &ssh_secret)
-        {
-            {
-                self.form.notice = Some((false, format!("Keychain error: {e}")));
-                cx.notify();
-                return;
-            }
+        if conn.ssh.is_some() && !ssh_secret.is_empty() {
+            db::save_ssh_secret(&conn.name, ssh_secret)
+                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
         }
         // Editing an existing profile: replace it in place (a rename moves
-        // its Keychain secrets along); otherwise add or overwrite by name.
+        // its Keychain secrets along); otherwise add or update by name.
         let original = self.form.editing.clone();
-        let slot = original
-            .as_ref()
-            .and_then(|old| self.form.saved.iter().position(|c| c.name == *old))
-            .or_else(|| self.form.saved.iter().position(|c| c.name == conn.name));
-        if let Some(old) = original.filter(|old| *old != conn.name) {
+        if let Some(old) = original.as_ref().filter(|old| **old != conn.name) {
             if password.is_empty()
-                && let Ok(pw) = db::load_password(&old)
+                && let Ok(pw) = db::load_password(old)
             {
                 let _ = db::save_password(&conn.name, &pw);
             }
             if ssh_secret.is_empty()
-                && let Some(sec) = db::load_ssh_secret(&old)
+                && let Some(sec) = db::load_ssh_secret(old)
             {
                 let _ = db::save_ssh_secret(&conn.name, &sec);
             }
-            db::delete_secrets(&old);
+            db::delete_secrets(old);
         }
-        match slot {
-            Some(ix) => {
-                self.form.saved[ix] = conn.clone();
-                self.form.selected = Some(ix);
-            }
-            None => {
-                self.form.saved.push(conn.clone());
-                self.form.selected = Some(self.form.saved.len() - 1);
-            }
-        }
+        let (list, ix) = db::upsert_connection(conn.clone(), original.as_deref())
+            .map_err(|e| format!("Save failed: {e:#}"))?;
+        self.form.saved = list;
+        self.form.selected = Some(ix);
         self.form.editing = Some(conn.name.clone());
-        match db::save_connections(&self.form.saved) {
-            Ok(()) => {
-                // The welcome screen lists saved connections — show it now,
-                // not only after a restart.
-                let main = cx.global::<TuskHandle>().0.clone();
-                main.update(cx, |app, cx| app.reload_saved_connections(cx));
-                self.form.notice = Some(match keychain_warning {
-                    Some(w) => (
-                        false,
-                        format!(
-                            "Saved “{}” — but {w}; it won't survive a restart.",
-                            conn.name
-                        ),
-                    ),
-                    None => (true, format!("Saved “{}”.", conn.name)),
-                });
-                // Saved cleanly: done, close the window. A Keychain warning
-                // keeps it open so the message can be read.
-                if self.form.notice.as_ref().is_some_and(|(ok, _)| *ok) {
-                    window.remove_window();
-                    return;
-                }
+        // The welcome screen lists saved connections — show it now, not only
+        // after a restart.
+        let main = cx.global::<TuskHandle>().0.clone();
+        main.update(cx, |app, cx| app.reload_saved_connections(cx));
+        Ok(keychain_warning)
+    }
+
+    fn on_save(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((conn, password)) = self.read_or_notice(cx) else {
+            return;
+        };
+        if self.name_taken_notice(&conn.name, cx) {
+            return;
+        }
+        let ssh_secret = self.form.ssh_secret_text(cx);
+        match self.persist(&conn, &password, &ssh_secret, cx) {
+            // Saved cleanly: done, close the window.
+            Ok(None) => {
+                window.remove_window();
+                return;
             }
-            Err(e) => self.form.notice = Some((false, format!("Save failed: {e:#}"))),
+            // A Keychain warning keeps it open so the message can be read.
+            Ok(Some(w)) => {
+                self.form.notice = Some((
+                    false,
+                    format!(
+                        "Saved “{}” — but {w}; it won't survive a restart.",
+                        conn.name
+                    ),
+                ));
+            }
+            Err(e) => self.form.notice = Some((false, e)),
         }
         cx.notify();
     }
@@ -468,19 +484,33 @@ impl ConnDialog {
         let Some((conn, password)) = self.read_or_notice(cx) else {
             return;
         };
+        if self.name_taken_notice(&conn.name, cx) {
+            return;
+        }
         let ssh_secret = self.form.ssh_secret_text(cx);
         self.form.busy = true;
         self.form.notice = Some((true, format!("Connecting to {}…", conn.name)));
         cx.notify();
         let dialog_window = window.window_handle();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            let result = db::connect(conn.clone(), password.clone(), Some(ssh_secret)).await;
+            let result =
+                db::connect(conn.clone(), password.clone(), Some(ssh_secret.clone())).await;
             let main = cx.update(|cx| cx.global::<TuskHandle>().0.clone());
             let _ = weak.update(cx, |this: &mut ConnDialog, cx| {
                 this.form.busy = false;
                 match result {
                     Ok(c) => {
+                        // Connected: keep the profile (before `connected_with`,
+                        // which stamps it as recently used).
+                        let saved = this.persist(&conn, &password, &ssh_secret, cx);
                         main.update(cx, |app, cx| {
+                            match saved {
+                                Ok(None) => {}
+                                Ok(Some(w)) => {
+                                    app.toast(false, format!("Saved “{}” — but {w}.", conn.name))
+                                }
+                                Err(e) => app.toast(false, e),
+                            }
                             app.connected_with(c, &conn, &password, cx);
                         });
                         cx.notify();
@@ -509,48 +539,29 @@ impl ConnDialog {
         let border = cx.theme().border;
         let busy = self.form.busy;
 
-        // Result toast: floats at the top under the title bar (click to
-        // dismiss), so it never shifts layout or the content-fit window height.
-        let elevated = cx.theme().colors.muted;
+        // Result / progress line: inline, right above the buttons, so it
+        // never covers a field (click to dismiss). The window grows to fit.
         let notice = self.form.notice.clone().map(|(ok, text)| {
-            let (fg, bd) = if ok {
-                (ok_green, ok_green)
+            let fg = if busy {
+                muted
+            } else if ok {
+                ok_green
             } else {
-                (err_red, err_red)
+                err_red
             };
             div()
-                .absolute()
-                .top(px(44.))
-                .left(px(0.))
-                .right(px(0.))
-                .flex()
-                .flex_row()
-                .justify_center()
-                .child(
-                    div()
-                        .id("dlg-notice")
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(bd.opacity(0.5))
-                        .shadow_md()
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.form.notice = None;
-                            cx.notify();
-                        }))
-                        .bg(elevated)
-                        .px_4()
-                        .py_2()
-                        // Long server errors must wrap inside the dialog.
-                        .max_w(px(520.))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_family(crate::settings::ui_font())
-                                .text_color(fg)
-                                .child(text),
-                        ),
-                )
+                .id("dlg-notice")
+                .px_1()
+                .text_sm()
+                .font_family(crate::settings::ui_font())
+                .text_color(fg)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if !this.form.busy {
+                        this.form.notice = None;
+                        cx.notify();
+                    }
+                }))
+                .child(text)
         });
 
         // ---- connection form: cards of label/field rows ----
@@ -589,7 +600,7 @@ impl ConnDialog {
                 .flex_col()
                 .px_3()
                 .py_1p5()
-                .rounded(px(10.))
+                .rounded(crate::theme::RADIUS_LG)
                 .bg(card_bg)
                 .border_1()
                 .border_color(border)
@@ -605,7 +616,7 @@ impl ConnDialog {
                     .id(("dlg-color", i))
                     .h(px(22.))
                     .w(px(if selected { 44. } else { 22. }))
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .bg(rgb(*c))
                     .when(selected, |this| {
                         this.border_2().border_color(foreground.opacity(0.6))
@@ -645,7 +656,7 @@ impl ConnDialog {
         use crate::engine::{Engine, Form};
         let engine = self.form.engine;
         let keychain = Checkbox::new("dlg-save-pw")
-            .label("Store in keychain")
+            .label(format!("Store in {}", db::CREDENTIAL_STORE))
             .checked(self.form.save_password)
             .on_click(cx.listener(|this, checked: &bool, _, cx| {
                 this.form.save_password = *checked;
@@ -739,7 +750,7 @@ impl ConnDialog {
                     div()
                         .pl(px(LABEL_W + 8.))
                         .pb_1()
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child("A file that doesn't exist yet is created.")
                         .into_any_element(),
@@ -872,7 +883,7 @@ impl ConnDialog {
                 div()
                     .pl(px(LABEL_W + 8.))
                     .pb_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("Leave the key empty to use ~/.ssh/id_ed25519 or id_rsa.")
                     .into_any_element(),
@@ -913,7 +924,11 @@ impl ConnDialog {
             .child(div().flex_1())
             .child(footer_btn("dlg-save", "Save").on_click(cx.listener(Self::on_save)))
             .child(footer_btn("dlg-test", "Test").on_click(cx.listener(Self::on_test)))
-            .child(footer_btn("dlg-connect", "Connect").on_click(cx.listener(Self::on_connect)));
+            .child(
+                footer_btn("dlg-connect", "Connect")
+                    .primary()
+                    .on_click(cx.listener(Self::on_connect)),
+            );
 
         let title = if self.choosing {
             "Create a new connection".to_string()
@@ -981,16 +996,19 @@ impl ConnDialog {
                             .pt_3()
                             .pb_4()
                             .child(measure)
-                            .when(self.choosing, |d| d.child(self.render_engine_grid(cx)))
-                            .when(!self.choosing, |d| {
-                                d.child(identity)
-                                    .child(server)
-                                    .children(ssh_card.filter(|_| can_ssh))
-                                    .child(footer)
+                            .map(|d| {
+                                if self.choosing {
+                                    d.child(self.render_engine_grid(cx)).children(notice)
+                                } else {
+                                    d.child(identity)
+                                        .child(server)
+                                        .children(ssh_card.filter(|_| can_ssh))
+                                        .children(notice)
+                                        .child(footer)
+                                }
                             }),
                     ),
             )
-            .children(notice)
     }
 }
 
@@ -1009,7 +1027,6 @@ impl ConnDialog {
             let on = e == self.picked;
             div()
                 .id(("engine", e as usize))
-                .cursor_pointer()
                 .w(px(128.))
                 .h(px(96.))
                 .flex()
@@ -1017,7 +1034,7 @@ impl ConnDialog {
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .rounded(px(8.))
+                .rounded(crate::theme::RADIUS_LG)
                 .border_1()
                 .border_color(if on {
                     t.accent
@@ -1029,7 +1046,7 @@ impl ConnDialog {
                 .child(crate::icons::engine_badge(e, 40.))
                 .child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .text_color(fg)
                         .text_center()
                         .child(e.label()),
@@ -1052,23 +1069,49 @@ impl ConnDialog {
                     .flex_wrap()
                     .gap_1()
                     .p_2()
-                    .rounded(px(10.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .children(tiles),
             )
+            .children(self.url.as_ref().map(|url| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().child(Input::new(url)))
+                    .child(
+                        Button::new("dlg-url-import")
+                            .label("Import")
+                            .primary()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
+                            ),
+                    )
+                    .child(
+                        Button::new("dlg-url-close")
+                            .icon(gpui_kit::assets::IconName::Close)
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.url = None;
+                                cx.notify();
+                            })),
+                    )
+            }))
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(
-                        Button::new("dlg-import-url")
-                            .label("Import from URL")
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
-                            ),
-                    )
+                    .when(self.url.is_none(), |d| {
+                        d.child(
+                            Button::new("dlg-import-url")
+                                .label("Import from URL")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_url_field(window, cx)
+                                })),
+                        )
+                    })
                     .child(div().flex_1())
                     .child(
                         Button::new("dlg-cancel")
@@ -1079,6 +1122,8 @@ impl ConnDialog {
                     .child(
                         Button::new("dlg-create")
                             .label("Create")
+                            // Import is the default while the URL field is open.
+                            .when(self.url.is_none(), |b| b.primary())
                             .w(px(84.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let e = this.picked;
@@ -1089,21 +1134,62 @@ impl ConnDialog {
             .into_any_element()
     }
 
-    /// "Import from URL": a connection URL on the clipboard fills the form
+    /// Return: Create on the engine grid, Connect on the form.
+    fn on_default(
+        &mut self,
+        _: &crate::dialog_keys::DialogConfirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.form.busy {
+            return;
+        }
+        if self.choosing && self.url.is_some() {
+            self.import_url(window, cx);
+        } else if self.choosing {
+            let e = self.picked;
+            self.choose_engine(e, window, cx);
+        } else {
+            self.on_connect(&ClickEvent::default(), window, cx);
+        }
+    }
+
+    /// "Import from URL": show the URL field (pre-filled when the clipboard
+    /// holds a connection URL). Import then fills the form from it
     /// (`postgresql://user@host:5432/db`, `mysql://…`, `redis://…`, …).
-    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = cx
+    fn show_url_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let clip = cx
             .read_from_clipboard()
             .and_then(|c| c.text())
+            .map(|t| t.trim().to_string())
+            .filter(|t| crate::engine::parse_url(t).is_some())
+            .unwrap_or_default();
+        let input = cx.new(|cx| {
+            let mut st = gpui_kit::component::input::InputState::new(window, cx)
+                .placeholder("postgresql://user@host:5432/database");
+            st.set_value(clip, window, cx);
+            st
+        });
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        self.url = Some(input);
+        cx.notify();
+    }
+
+    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self
+            .url
+            .as_ref()
+            .map(|u| u.read(cx).value().to_string())
             .unwrap_or_default();
         let Some(parsed) = crate::engine::parse_url(text.trim()) else {
             self.form.notice = Some((
                 false,
-                "Copy a connection URL (like mysql://user@host/db) first.".into(),
+                "Enter a connection URL like mysql://user@host/db.".into(),
             ));
             cx.notify();
             return;
         };
+        self.url = None;
         self.choose_engine(parsed.engine, window, cx);
         let set = |e: &Entity<gpui_kit::component::input::InputState>,
                    v: String,
@@ -1126,8 +1212,28 @@ impl ConnDialog {
         if let Some(d) = parsed.database {
             set(&self.form.database, d, window, cx);
         }
-        if let Some(p) = parsed.path {
+        let file = parsed.path.as_deref().map(|p| {
+            std::path::Path::new(p)
+                .file_name()
+                .map_or_else(|| p.to_string(), |f| f.to_string_lossy().into_owned())
+        });
+        if let Some(p) = parsed.path.clone() {
             set(&self.form.path, p, window, cx);
+        }
+        // A name to start from ("tusk_dev @ 127.0.0.1", or the file name).
+        if self.form.name.read(cx).value().trim().is_empty() {
+            let host = self.form.host.read(cx).value().to_string();
+            let db = self.form.database.read(cx).value().to_string();
+            let name = match (file, db.is_empty(), host.is_empty()) {
+                (Some(f), _, _) => f,
+                (None, false, false) => format!("{db} @ {host}"),
+                (None, true, false) => host,
+                (None, false, true) => db,
+                (None, true, true) => String::new(),
+            };
+            if !name.is_empty() {
+                set(&self.form.name, name, window, cx);
+            }
         }
         cx.notify();
     }
@@ -1135,13 +1241,11 @@ impl ConnDialog {
 
 impl Render for ConnDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Finished results go out as toasts; progress stays inline.
-        if !self.form.busy
-            && let Some((ok, msg)) = self.form.notice.take()
-        {
-            crate::toast::push_top(window, cx, Some(ok), msg);
-        }
         div()
+            .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(cx.listener(Self::on_default))
             .size_full()
             .relative()
             .child(self.render_inner(window, cx))

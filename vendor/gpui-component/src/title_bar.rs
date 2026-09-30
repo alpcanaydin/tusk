@@ -81,6 +81,8 @@ impl TitleBar {
     pub fn window_options() -> WindowOptions {
         WindowOptions {
             titlebar: Some(Self::title_bar_options()),
+            // Match assets/linux/tusk.desktop so Wayland and Xwayland can find its icon.
+            app_id: cfg!(target_os = "linux").then(|| "tusk".to_string()),
             // The title bar draws itself and moves the window via `start_window_move`,
             // so AppKit must not treat it as a system window-move region. Otherwise macOS
             // handles title bar double clicks on its own (in addition to `on_double_click`

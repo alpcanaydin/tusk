@@ -1,5 +1,5 @@
 //! PostgreSQL connection layer: saved-connection persistence (JSON, no passwords),
-//! macOS Keychain via `keyring`, tokio runtime bridge for sqlx, connect/test helpers.
+//! System credential store via `keyring`, tokio runtime bridge for sqlx, connect/test helpers.
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -141,6 +141,26 @@ impl SavedConnection {
             .and_then(|i| STATUS_COLORS.get(i).copied())
     }
 
+    /// Where the connection points, for the title bar and connection lists:
+    /// the file name for file databases (never a meaningless `host:0`), the
+    /// URL / account for token and cloud engines, `host:port` for servers.
+    pub fn endpoint(&self) -> String {
+        use crate::engine::Form;
+        match self.engine.form() {
+            Form::File => self
+                .path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Form::UrlToken => self.path.clone().unwrap_or_default(),
+            Form::CloudflareD1 | Form::Snowflake | Form::BigQuery | Form::DynamoDb => {
+                self.options.values().next().cloned().unwrap_or_default()
+            }
+            Form::Server => format!("{}:{}", self.host, self.port),
+        }
+    }
+
     /// `postgresql://user@host:port/db` (no password) for "Copy as URL".
     pub fn url(&self) -> String {
         use crate::engine::Form;
@@ -249,25 +269,112 @@ pub(crate) fn app_dir() -> PathBuf {
 }
 
 pub fn load_connections() -> Vec<SavedConnection> {
-    let path = connections_path();
-    let text = match std::fs::read_to_string(&path) {
+    load_connections_from(&connections_path())
+}
+
+/// Set when `connections.json` couldn't be read and was moved aside; the
+/// app shows it once.
+static LOAD_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The "connections.json couldn't be read" message, once.
+pub fn take_load_notice() -> Option<String> {
+    LOAD_NOTICE.lock().ok()?.take()
+}
+
+fn load_connections_from(path: &std::path::Path) -> Vec<SavedConnection> {
+    let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(_) => return vec![dev_default()],
+        // First run: no connections yet (no sample profile to trip over).
+        Err(_) => return Vec::new(),
     };
     match serde_json::from_str::<Vec<SavedConnection>>(&text) {
-        Ok(list) if !list.is_empty() => list,
-        _ => vec![dev_default()],
+        Ok(list) => list,
+        Err(e) => {
+            // Unreadable (another build's format, a hand edit…): keep the
+            // file under another name, or the next save would wipe the
+            // user's connections with the default list.
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let backup = path.with_file_name(format!("{name}.bak-{secs}"));
+            let msg = match std::fs::rename(path, &backup) {
+                Ok(()) => format!(
+                    "Couldn't read {name} ({e}). It was kept as {}.",
+                    backup.display()
+                ),
+                Err(err) => format!("Couldn't read {name} ({e}) or set it aside ({err})."),
+            };
+            log::warn!("{msg}");
+            if let Ok(mut n) = LOAD_NOTICE.lock() {
+                *n = Some(msg);
+            }
+            Vec::new()
+        }
     }
 }
 
 pub fn save_connections(list: &[SavedConnection]) -> anyhow::Result<()> {
-    let path = connections_path();
+    write_atomic(&connections_path(), &serde_json::to_string_pretty(list)?)
+}
+
+/// Write through a temp file + rename, so a crash mid-write never leaves a
+/// cut-off file behind.
+fn write_atomic(path: &std::path::Path, text: &str) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = serde_json::to_string_pretty(list)?;
-    std::fs::write(path, text)?;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+/// Put `conn` into `list`: in place of `replacing` (the profile being
+/// edited, maybe renamed) or of one with the same name, else at the end.
+/// Returns its index.
+fn upsert(
+    list: &mut Vec<SavedConnection>,
+    conn: SavedConnection,
+    replacing: Option<&str>,
+) -> usize {
+    let slot = replacing
+        .and_then(|old| list.iter().position(|c| c.name == old))
+        .or_else(|| list.iter().position(|c| c.name == conn.name));
+    match slot {
+        Some(ix) => {
+            list[ix] = conn;
+            ix
+        }
+        None => {
+            list.push(conn);
+            list.len() - 1
+        }
+    }
+}
+
+/// Save one profile into the list as it is on disk *now* — writing back a
+/// list read earlier would undo changes made since (imports, last-used
+/// stamps, other windows). Returns the new list and the profile's index.
+pub fn upsert_connection(
+    conn: SavedConnection,
+    replacing: Option<&str>,
+) -> anyhow::Result<(Vec<SavedConnection>, usize)> {
+    let mut list = load_connections();
+    let ix = upsert(&mut list, conn, replacing);
+    save_connections(&list)?;
+    Ok((list, ix))
+}
+
+/// Whether a saved profile other than `except` is called `name`.
+pub fn connection_name_taken(name: &str, except: Option<&str>) -> bool {
+    load_connections()
+        .iter()
+        .any(|c| c.name == name && Some(c.name.as_str()) != except)
 }
 
 /// Connection-list groups (folders), incl. empty ones created with
@@ -284,12 +391,7 @@ pub fn load_groups() -> Vec<String> {
 }
 
 pub fn save_groups(groups: &[String]) -> anyhow::Result<()> {
-    let path = groups_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(groups)?)?;
-    Ok(())
+    write_atomic(&groups_path(), &serde_json::to_string_pretty(groups)?)
 }
 
 /// The profile Tusk was last connected to (no password) — reopened on launch.
@@ -298,12 +400,8 @@ fn last_connection_path() -> PathBuf {
 }
 
 pub fn remember_last_connection(conn: &SavedConnection) {
-    let path = last_connection_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     if let Ok(text) = serde_json::to_string_pretty(conn) {
-        let _ = std::fs::write(path, text);
+        let _ = write_atomic(&last_connection_path(), &text);
     }
 }
 
@@ -320,6 +418,15 @@ pub fn forget_last_connection() {
 }
 
 // ---- Keychain (passwords never touch the JSON file) ----
+
+/// What the OS calls its credential store, for labels and errors.
+pub const CREDENTIAL_STORE: &str = if cfg!(target_os = "macos") {
+    "Keychain"
+} else if cfg!(windows) {
+    "Credential Manager"
+} else {
+    "system keyring"
+};
 
 const KEYCHAIN_SERVICE: &str = "tusk-postgres";
 /// Keychain services under the app's previous name, Veri: read once and
@@ -648,6 +755,32 @@ pub fn is_destructive(stmt: &str) -> bool {
         "UPDATE" | "DELETE" => !up.split_whitespace().any(|w| w == "WHERE"),
         _ => false,
     }
+}
+
+/// Safe mode ("Confirm Before Saving"): statements that change data or schema
+/// — anything but a read, a transaction boundary or a session setting.
+pub fn is_write(stmt: &str) -> bool {
+    if classify_statement(stmt) == StmtKind::Query {
+        return false;
+    }
+    let first = strip_leading_comments(stmt)
+        .split(|c: char| c.is_whitespace() || c == ';')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    !matches!(
+        first.as_str(),
+        "" | "BEGIN"
+            | "START"
+            | "COMMIT"
+            | "END"
+            | "ROLLBACK"
+            | "SAVEPOINT"
+            | "RELEASE"
+            | "SET"
+            | "RESET"
+            | "USE"
+    )
 }
 
 /// The statement under the cursor: the one whose
@@ -1649,7 +1782,7 @@ pub async fn fetch_objects(db: &Db, schema: &str) -> DbResult<ObjectTree> {
 
 #[cfg(test)]
 mod statement_tests {
-    use super::{is_destructive, statement_at};
+    use super::{is_destructive, is_write, statement_at};
 
     #[test]
     fn safe_mode_flags_only_irreversible_statements() {
@@ -1660,6 +1793,18 @@ mod statement_tests {
         assert!(!is_destructive("UPDATE t SET a = 1 WHERE id = 2"));
         assert!(!is_destructive("delete from t where id=1"));
         assert!(!is_destructive("SELECT * FROM drops"));
+    }
+
+    #[test]
+    fn safe_mode_save_confirm_flags_writes() {
+        assert!(is_write("INSERT INTO t VALUES (1)"));
+        assert!(is_write("-- fix\nUPDATE t SET a = 1 WHERE id = 2"));
+        assert!(is_write("/* x */ create table t (id int)"));
+        assert!(is_write("DROP TABLE t"));
+        assert!(!is_write("SELECT * FROM inserts"));
+        assert!(!is_write("with x as (select 1) select * from x"));
+        assert!(!is_write("BEGIN;"));
+        assert!(!is_write("set search_path = app"));
     }
 
     #[test]
@@ -1684,6 +1829,76 @@ mod statement_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fresh scratch folder under the system temp dir.
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tusk-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn named(name: &str) -> SavedConnection {
+        SavedConnection {
+            name: name.to_string(),
+            ..dev_default()
+        }
+    }
+
+    #[test]
+    fn write_atomic_replaces_and_leaves_no_temp_file() {
+        let dir = scratch("atomic");
+        let path = dir.join("connections.json");
+        write_atomic(&path, "first").unwrap();
+        write_atomic(&path, "second").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second");
+        assert!(!dir.join("connections.json.tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_connections_file_is_kept_aside() {
+        let dir = scratch("parse");
+        let path = dir.join("connections.json");
+        std::fs::write(&path, "[{\"engine\": \"from-the-future\"").unwrap();
+        let list = load_connections_from(&path);
+        assert!(list.is_empty());
+        // The original moved to a backup, so a later save can't clobber it.
+        assert!(!path.exists());
+        let backups: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("connections.json.bak-")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert!(
+            std::fs::read_to_string(backups[0].path())
+                .unwrap()
+                .contains("from-the-future")
+        );
+        assert!(take_load_notice().is_some_and(|m| m.contains("connections.json")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn upsert_adds_replaces_and_renames() {
+        let mut list = vec![named("a"), named("b")];
+        // New name: appended.
+        assert_eq!(upsert(&mut list, named("c"), None), 2);
+        // Same name: replaced in place.
+        let mut b = named("b");
+        b.port = 1;
+        assert_eq!(upsert(&mut list, b, None), 1);
+        assert_eq!(list[1].port, 1);
+        // Edited profile renamed: replaces the old slot, no duplicate.
+        assert_eq!(upsert(&mut list, named("a2"), Some("a")), 0);
+        let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["a2", "b", "c"]);
+    }
 
     fn dev_opts() -> PgConnectOptions {
         connect_options(
@@ -1907,14 +2122,22 @@ mod tests {
         assert!(audit.functions.contains(&"log_action".to_string()));
     }
 
-    /// Real macOS Keychain round trip (keyring's `apple-native` store — without
-    /// that feature keyring silently falls back to an in-memory mock).
+    /// Real credential-store round trip. Linux needs a running Secret Service;
+    /// opt in for local testing, since headless CI has no session bus.
     #[test]
-    fn keychain_password_roundtrip() {
+    fn credential_store_roundtrip() {
+        if cfg!(target_os = "linux") && std::env::var_os("TUSK_TEST_KEYRING").is_none() {
+            eprintln!("skip: set TUSK_TEST_KEYRING=1 with a Secret Service session");
+            return;
+        }
         let name = format!("tusk-test-{}", std::process::id());
         save_password(&name, "s3cret-ü").expect("save");
         assert_eq!(load_password(&name).expect("load"), "s3cret-ü");
-        keyring_entry(&name).unwrap().delete_credential().ok();
+        keyring_entry(&name)
+            .unwrap()
+            .delete_credential()
+            .expect("delete");
+        assert!(load_password(&name).is_err());
     }
 
     /// End-to-end SSH tunnel: jump host = the `tusk-ssh-test` container
@@ -1955,6 +2178,19 @@ mod tests {
             .expect_err("bad ssh password");
         assert!(err.contains("SSH authentication"), "{err}");
         let _ = std::fs::remove_file(kh);
+    }
+
+    #[test]
+    fn endpoint_names_the_file_not_host_zero() {
+        let pg = dev_default();
+        assert_eq!(pg.endpoint(), "127.0.0.1:55432");
+        let lite = SavedConnection {
+            engine: crate::engine::Engine::Sqlite,
+            path: Some("/tmp/demo/shop.sqlite".into()),
+            port: 0,
+            ..dev_default()
+        };
+        assert_eq!(lite.endpoint(), "shop.sqlite");
     }
 
     #[test]

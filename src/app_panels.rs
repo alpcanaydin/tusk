@@ -210,7 +210,7 @@ impl TuskApp {
             return div()
                 .px_3()
                 .py_2()
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child(if needle.is_empty() {
                     "Queries you run on this connection appear here."
@@ -243,7 +243,6 @@ impl TuskApp {
                     );
                     div()
                         .id(("history-row", i))
-                        .cursor_pointer()
                         .group("history-row")
                         .w_full()
                         .flex()
@@ -288,14 +287,13 @@ impl TuskApp {
                         .child(
                             div()
                                 .id(("history-run", i))
-                                .cursor_pointer()
                                 .flex_none()
                                 .w(px(20.))
                                 .h(px(20.))
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(4.))
+                                .rounded(crate::theme::RADIUS_SM)
                                 .text_color(muted)
                                 .invisible()
                                 .group_hover("history-row", |d| d.visible())
@@ -350,12 +348,13 @@ impl TuskApp {
             cx.write_to_clipboard(ClipboardItem::new_string(s3.clone()));
         }))
         .separator()
-        .item(
-            PopupMenuItem::new("Remove from History").on_click(move |_, _, cx| {
+        .item(crate::theme::danger_item(
+            "Remove from History",
+            move |_, _, cx| {
                 console::remove_history(at, &s4);
                 with_app(cx, |_, cx| cx.notify());
-            }),
-        )
+            },
+        ))
     }
 
     // ---------- Bottom panel ----------
@@ -376,16 +375,18 @@ impl TuskApp {
                 .flex()
                 .items_center()
                 .gap_1p5()
-                .rounded(px(4.))
-                .text_xs()
+                .rounded(crate::theme::RADIUS_SM)
+                .text_caption()
                 .text_color(if on { fg } else { muted })
                 .when(on, |d| d.bg(muted.opacity(0.14)))
                 .hover(|d| d.text_color(fg))
                 .child(which.icon().size(px(12.)))
                 .child(label)
-                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.bottom_panel = Some(which);
+                    if which == BottomPanel::Console {
+                        this.console_scroll.scroll_to_bottom();
+                    }
                     cx.notify();
                 }))
         };
@@ -399,13 +400,12 @@ impl TuskApp {
                         .h(px(24.))
                         .flex()
                         .items_center()
-                        .rounded(px(4.))
-                        .text_xs()
+                        .rounded(crate::theme::RADIUS_SM)
+                        .text_caption()
                         .text_color(if on { fg } else { muted })
                         .when(on, |d| d.bg(muted.opacity(0.12)))
                         .hover(|d| d.text_color(fg))
                         .child(label)
-                        .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.console_filter = f;
                             this.console_scroll.scroll_to_bottom();
@@ -449,9 +449,23 @@ impl TuskApp {
                         .label("Clear")
                         .small()
                         .outline()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            console::clear_history(&this.history_connection());
-                            cx.notify();
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let conn = this.history_connection();
+                            let answer = crate::dialog_keys::confirm(
+                                window,
+                                PromptLevel::Warning,
+                                "Clear the query history?",
+                                Some(&format!("Every query run on “{conn}” is removed.")),
+                                "Clear",
+                                cx,
+                            );
+                            cx.spawn(async move |weak, cx: &mut AsyncApp| {
+                                if answer.await {
+                                    console::clear_history(&conn);
+                                    let _ = weak.update(cx, |_: &mut TuskApp, cx| cx.notify());
+                                }
+                            })
+                            .detach();
                         })),
                 )
                 .into_any_element(),
@@ -480,11 +494,10 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_color(muted)
                     .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
                     .child(Icon::new(IconName::Close).size(px(12.)))
-                    .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.close_bottom_panel(cx))),
             );
         let body = match panel {
@@ -584,7 +597,7 @@ impl TuskApp {
             return div()
                 .px_3()
                 .py_2()
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child("Every statement Tusk sends shows up here.")
                 .into_any_element();
@@ -726,7 +739,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .text_xs()
+                    .text_caption()
                     .text_color(fg)
                     .child(DbIcon::Sql.icon().size(px(12.)))
                     .child(s.title.clone())
@@ -738,14 +751,13 @@ impl TuskApp {
                 col = col.child(
                     div()
                         .id(SharedString::from(format!("problem-{tab_ix}-{i}")))
-                        .cursor_pointer()
                         .flex()
                         .items_start()
                         .gap_2()
                         .pl(px(30.))
                         .pr_3()
                         .py(px(3.))
-                        .text_xs()
+                        .text_caption()
                         .hover(|d| d.bg(muted.opacity(0.08)))
                         .child(
                             Icon::new(if error {
@@ -783,7 +795,7 @@ impl TuskApp {
                 div()
                     .px_3()
                     .py_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("No problems in the open queries."),
             );
@@ -835,14 +847,13 @@ impl TuskApp {
         };
         div()
             .id("status-problems")
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_2()
             .px_1p5()
             .h(px(20.))
-            .rounded(px(4.))
-            .text_xs()
+            .rounded(crate::theme::RADIUS_SM)
+            .text_caption()
             .text_color(if on { fg } else { muted })
             .when(on, |d| d.bg(muted.opacity(0.12)))
             .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
@@ -884,13 +895,12 @@ impl TuskApp {
         let on = self.bottom_panel == Some(panel);
         div()
             .id(id)
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .text_color(if on { accent } else { muted })
             .hover(|d| {
                 d.bg(muted.opacity(0.12))

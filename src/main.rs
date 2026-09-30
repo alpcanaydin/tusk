@@ -1,8 +1,13 @@
+// A GUI app on Windows: no console window behind it (release builds only, so
+// `cargo run` still shows logs). `--mcp-bridge` keeps working over its pipes.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use gpui_kit::assets::AllAssets;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 
+mod about;
 mod acp;
 mod acp_registry;
 mod actions;
@@ -19,6 +24,7 @@ mod copy_as;
 mod db;
 mod ddl;
 mod dialog;
+mod dialog_keys;
 mod dock;
 mod drivers;
 mod engine;
@@ -33,6 +39,7 @@ mod mcp_bridge;
 mod menus;
 mod migrate;
 mod objects;
+mod omarchy;
 mod palette;
 mod settings;
 mod sql;
@@ -43,6 +50,7 @@ mod themes;
 mod toast;
 mod undo;
 mod updater;
+mod whats_new;
 mod widths;
 
 /// Handle of the main (connection / workspace) window, for dock reopen.
@@ -58,6 +66,8 @@ fn main() {
         }
         return;
     }
+    #[cfg(target_os = "linux")]
+    settings::apply_gpu_preference();
     let app = gpui_kit::application().with_assets(AllAssets);
     // Dock click / relaunch while running: bring the main window back, or
     // reopen it on the welcome screen if it was closed.
@@ -75,6 +85,7 @@ fn main() {
     app.run(move |cx: &mut App| {
         gpui_kit::init(cx);
         actions::bind_keys(cx);
+        dialog_keys::bind_keys(cx);
         updater::init(cx);
         menus::install(cx);
 
@@ -82,6 +93,7 @@ fn main() {
             eprintln!("font load error: {e:#}");
         }
         theme::apply(cx);
+        omarchy::watch(cx);
         dock::set_icon();
         open_main_window(cx, true);
         // Automated UI checks run the app without taking focus.
@@ -129,10 +141,14 @@ fn open_main_window(cx: &mut App, auto_connect: bool) {
             // Red traffic light in a workspace = leave it: the
             // window stays and shows the welcome screen. On the welcome screen
             // it closes (the dock icon reopens it).
-            // Mode "System": re-theme when macOS switches light / dark.
+            // Mode "System" (or "Omarchy" without a readable theme):
+            // re-theme when the OS switches light / dark.
             window
                 .observe_window_appearance(|_, cx| {
-                    if settings::get().appearance == settings::Appearance::System {
+                    let mode = settings::get().appearance;
+                    if mode == settings::Appearance::System
+                        || (mode == settings::Appearance::Omarchy && omarchy::palette().is_none())
+                    {
                         theme::apply(cx);
                         cx.refresh_windows();
                     }
@@ -145,6 +161,7 @@ fn open_main_window(cx: &mut App, auto_connect: bool) {
             if auto_connect {
                 // ⌘Q and relaunch lands straight back in the last connection.
                 view.update(cx, |app, cx| app.auto_connect(cx));
+                whats_new::announce(window, cx);
             }
             cx.new(|cx| Root::new(view, window, cx))
         },

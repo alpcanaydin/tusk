@@ -87,7 +87,21 @@ pub struct ToolRequest {
     pub reply: oneshot::Sender<Result<String, String>>,
 }
 
-/// The app side: a Unix socket the bridges connect to.
+/// The bridge's end of the connection to the app: a Unix socket, or on
+/// Windows a loopback TCP port (the per-launch token keeps others out).
+#[cfg(unix)]
+type Stream = std::os::unix::net::UnixStream;
+#[cfg(windows)]
+type Stream = std::net::TcpStream;
+
+fn connect(socket: &Path) -> std::io::Result<Stream> {
+    #[cfg(unix)]
+    return Stream::connect(socket);
+    #[cfg(windows)]
+    return Stream::connect(socket.to_string_lossy().as_ref());
+}
+
+/// The app side: a Unix socket (loopback TCP on Windows) the bridges connect to.
 pub struct Host {
     pub socket: PathBuf,
     /// Per-launch secret the bridge must send with every call.
@@ -101,6 +115,7 @@ fn random_token() -> String {
     if std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut b))
         .is_err()
+        && rsa::rand_core::RngCore::try_fill_bytes(&mut rsa::rand_core::OsRng, &mut b).is_err()
     {
         // Fall back to time + pid (still unguessable enough for a 0600 socket).
         let n = std::time::SystemTime::now()
@@ -124,10 +139,21 @@ impl Host {
             use std::os::unix::fs::PermissionsExt as _;
             std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
         }
-        let socket = dir.join(format!("mcp-{}.sock", std::process::id()));
-        let _ = std::fs::remove_file(&socket);
         let _rt = crate::db::runtime().enter();
-        let listener = tokio::net::UnixListener::bind(&socket)?;
+        #[cfg(unix)]
+        let (socket, listener) = {
+            let socket = dir.join(format!("mcp-{}.sock", std::process::id()));
+            let _ = std::fs::remove_file(&socket);
+            let listener = tokio::net::UnixListener::bind(&socket)?;
+            (socket, listener)
+        };
+        #[cfg(windows)]
+        let (socket, listener) = {
+            let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
+            listener.set_nonblocking(true)?;
+            let socket = PathBuf::from(listener.local_addr()?.to_string());
+            (socket, tokio::net::TcpListener::from_std(listener)?)
+        };
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -196,10 +222,7 @@ pub fn run(socket: &Path) {
     let token = std::env::var(TOKEN_ENV).unwrap_or_default();
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
-    let mut conn: Option<(
-        std::os::unix::net::UnixStream,
-        BufReader<std::os::unix::net::UnixStream>,
-    )> = None;
+    let mut conn: Option<(Stream, BufReader<Stream>)> = None;
     let mut next = 0u64;
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
@@ -244,10 +267,7 @@ pub fn run(socket: &Path) {
 }
 
 fn call(
-    conn: &mut Option<(
-        std::os::unix::net::UnixStream,
-        BufReader<std::os::unix::net::UnixStream>,
-    )>,
+    conn: &mut Option<(Stream, BufReader<Stream>)>,
     socket: &Path,
     token: &str,
     id: u64,
@@ -257,7 +277,7 @@ fn call(
     // One reconnect: the app may have restarted its host.
     for _ in 0..2 {
         if conn.is_none() {
-            match std::os::unix::net::UnixStream::connect(socket) {
+            match connect(socket) {
                 Ok(s) => match s.try_clone() {
                     Ok(r) => *conn = Some((s, BufReader::new(r))),
                     Err(e) => return (false, e.to_string()),
@@ -291,6 +311,25 @@ fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Bridge → app round trip over the real transport (Unix socket, or
+    /// loopback TCP on Windows), plus the token check.
+    #[test]
+    fn bridge_reaches_host_and_checks_token() {
+        let (host, mut rx) = Host::start().unwrap();
+        crate::db::runtime().spawn(async move {
+            while let Some(req) = rx.recv().await {
+                let _ = req.reply.send(Ok(format!("hi {}", req.name)));
+            }
+        });
+        let mut conn = None;
+        let (ok, text) = call(&mut conn, &host.socket, &host.token, 1, "ping", json!({}));
+        assert!(ok, "{text}");
+        assert_eq!(text, "hi ping");
+        let mut conn = None;
+        let (ok, _) = call(&mut conn, &host.socket, "wrong", 2, "ping", json!({}));
+        assert!(!ok, "a wrong token must be refused");
+    }
 
     #[test]
     fn tool_list_is_well_formed() {

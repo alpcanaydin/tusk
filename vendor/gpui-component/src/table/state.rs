@@ -15,7 +15,7 @@ use crate::{
 use gpui::{
     AppContext, Axis, Bounds, ClickEvent, Context, Div, DragMoveEvent, ElementId, EventEmitter,
     FocusHandle, Focusable, InteractiveElement, IntoElement, ListSizingBehavior, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, Point, Render, ScrollStrategy, SharedString, Stateful,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollStrategy, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Task, UniformListScrollHandle, Window, div,
     prelude::FluentBuilder, px, uniform_list,
 };
@@ -243,6 +243,14 @@ pub struct TableState<D: TableDelegate> {
     right_clicked_cell: Option<(usize, usize)>,
     selected_col: Option<usize>,
     selected_cell: Option<(usize, usize)>,
+    /// Tusk patch: the fixed corner of a rectangular cell range; the other
+    /// corner is `selected_cell`. `None` (or equal to it) = a single cell.
+    range_anchor: Option<(usize, usize)>,
+    /// Tusk patch: a left-button press on a cell, so moving over other
+    /// cells with the button held extends the range from it.
+    drag_select_from: Option<(usize, usize)>,
+    /// Set once that drag reached another cell (its closing click keeps the range).
+    drag_moved: bool,
 
     /// The column index that is being resized.
     resizing_col: Option<usize>,
@@ -279,6 +287,9 @@ where
             right_clicked_cell: None,
             selected_col: None,
             selected_cell: None,
+            range_anchor: None,
+            drag_select_from: None,
+            drag_moved: false,
             resizing_col: None,
             col_drag_gap: None,
             bounds: Bounds::default(),
@@ -469,6 +480,7 @@ where
         cx.stop_propagation();
         self.selection_mode = SelectionMode::Row;
         self.right_clicked_row = None;
+        self.range_anchor = None;
         self.selected_row = Some(row_ix);
         if let Some(row_ix) = self.selected_row {
             self.vertical_scroll_handle.scroll_to_item(
@@ -548,6 +560,7 @@ where
     pub fn set_selected_cell(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
         self.selection_mode = SelectionMode::Cell;
         self.selected_cell = Some((row_ix, col_ix));
+        self.range_anchor = None;
 
         // Scroll to the cell
         self.vertical_scroll_handle
@@ -564,8 +577,128 @@ where
         self.selected_row = None;
         self.selected_col = None;
         self.selected_cell = None;
+        self.range_anchor = None;
         cx.emit(TableEvent::ClearSelection);
         cx.notify();
+    }
+
+    /// Tusk patch: the selected rectangle of cells as
+    /// `((top, left), (bottom, right))`, inclusive. `None` unless more than
+    /// one cell is selected (a single cell is [`Self::selected_cell`]).
+    pub fn selected_range(&self) -> Option<((usize, usize), (usize, usize))> {
+        let (a, f) = (self.range_anchor?, self.selected_cell?);
+        if !self.selection_mode.is_cell() || a == f {
+            return None;
+        }
+        Some(((a.0.min(f.0), a.1.min(f.1)), (a.0.max(f.0), a.1.max(f.1))))
+    }
+
+    fn in_selected_range(&self, row_ix: usize, col_ix: usize) -> bool {
+        self.selected_range()
+            .is_some_and(|((r0, c0), (r1, c1))| {
+                (r0..=r1).contains(&row_ix) && (c0..=c1).contains(&col_ix)
+            })
+    }
+
+    /// Tusk patch: move the selection's moving corner to `(row, col)`,
+    /// keeping (or starting) the anchor at the current cell: Shift+click,
+    /// Shift+arrows and dragging over cells.
+    pub fn extend_selection_to(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        if self.range_anchor.is_none() || !self.selection_mode.is_cell() {
+            self.range_anchor = self
+                .selected_cell
+                .filter(|_| self.selection_mode.is_cell())
+                .or(Some((row_ix, col_ix)));
+        }
+        self.selection_mode = SelectionMode::Cell;
+        self.selected_cell = Some((row_ix, col_ix));
+        self.vertical_scroll_handle
+            .scroll_to_item(row_ix, ScrollStrategy::Nearest);
+        self.scroll_to_col(col_ix, cx);
+        cx.emit(TableEvent::SelectCell(row_ix, col_ix));
+        cx.notify();
+    }
+
+    /// Tusk patch: select every loaded cell (⌘A).
+    pub fn select_all_cells(&mut self, cx: &mut Context<Self>) {
+        let rows = self.delegate.rows_count(cx);
+        let cols = self.delegate.columns_count(cx);
+        if rows == 0 || cols == 0 {
+            return;
+        }
+        self.selection_mode = SelectionMode::Cell;
+        self.range_anchor = Some((0, 0));
+        self.selected_cell = Some((rows - 1, cols - 1));
+        cx.notify();
+    }
+
+    fn extend_by(&mut self, dr: isize, dc: isize, cx: &mut Context<Self>) {
+        let rows = self.delegate.rows_count(cx);
+        let cols = self.delegate.columns_count(cx);
+        if rows == 0 || cols == 0 {
+            return;
+        }
+        let (r, c) = self
+            .selected_cell
+            .filter(|_| self.selection_mode.is_cell())
+            .unwrap_or((0, 0));
+        let r = (r as isize + dr).clamp(0, rows as isize - 1) as usize;
+        let c = (c as isize + dc).clamp(0, cols as isize - 1) as usize;
+        self.extend_selection_to(r, c, cx);
+    }
+
+    pub(super) fn action_extend_up(&mut self, _: &ExtendSelectionUp, _: &mut Window, cx: &mut Context<Self>) {
+        self.extend_by(-1, 0, cx);
+    }
+    pub(super) fn action_extend_down(&mut self, _: &ExtendSelectionDown, _: &mut Window, cx: &mut Context<Self>) {
+        self.extend_by(1, 0, cx);
+    }
+    pub(super) fn action_extend_left(&mut self, _: &ExtendSelectionLeft, _: &mut Window, cx: &mut Context<Self>) {
+        self.extend_by(0, -1, cx);
+    }
+    pub(super) fn action_extend_right(&mut self, _: &ExtendSelectionRight, _: &mut Window, cx: &mut Context<Self>) {
+        self.extend_by(0, 1, cx);
+    }
+    pub(super) fn action_select_all_cells(&mut self, _: &SelectAllCells, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.cell_selectable {
+            cx.propagate();
+            return;
+        }
+        self.select_all_cells(cx);
+    }
+
+    fn on_cell_mouse_down(&mut self, row_ix: usize, col_ix: usize) {
+        self.drag_select_from = Some((row_ix, col_ix));
+        self.drag_moved = false;
+    }
+
+    fn on_cell_mouse_move(
+        &mut self,
+        e: &MouseMoveEvent,
+        row_ix: usize,
+        col_ix: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(from) = self.drag_select_from else {
+            return;
+        };
+        if e.pressed_button != Some(MouseButton::Left) {
+            self.drag_select_from = None;
+            return;
+        }
+        if self.selected_cell == Some((row_ix, col_ix)) && self.range_anchor.is_some() {
+            return;
+        }
+        if from == (row_ix, col_ix) && self.range_anchor.is_none() {
+            return;
+        }
+        if self.range_anchor.is_none() || self.range_anchor != Some(from) {
+            self.selection_mode = SelectionMode::Cell;
+            self.selected_cell = Some(from);
+            self.range_anchor = Some(from);
+        }
+        self.drag_moved = true;
+        self.extend_selection_to(row_ix, col_ix, cx);
     }
 
     /// Returns the visible range of the rows and columns.
@@ -741,9 +874,21 @@ where
         }
 
         cx.stop_propagation();
+        // Tusk patch: a right-click selects the cell first (as Finder and
+        // TablePlus do), so the menu's row actions visibly target the
+        // clicked row. No scrolling: the cell is already under the pointer.
+        if !(self.selection_mode.is_cell() && self.selected_cell == Some((row_ix, col_ix)))
+            && !self.in_selected_range(row_ix, col_ix)
+        {
+            self.selection_mode = SelectionMode::Cell;
+            self.selected_cell = Some((row_ix, col_ix));
+            self.range_anchor = None;
+            cx.emit(TableEvent::SelectCell(row_ix, col_ix));
+        }
         self.right_clicked_cell = Some((row_ix, col_ix));
         self.right_clicked_row = None;
         cx.emit(TableEvent::RightClickedCell(row_ix, col_ix));
+        cx.notify();
     }
 
     fn on_row_left_click(
@@ -796,6 +941,17 @@ where
         }
 
         cx.stop_propagation();
+        self.drag_select_from = None;
+
+        // Tusk patch: Shift+click extends a cell range from the current cell.
+        if e.modifiers().shift && self.selection_mode.is_cell() && self.selected_cell.is_some() {
+            self.extend_selection_to(row_ix, col_ix, cx);
+            return;
+        }
+        // The click that ends a drag over several cells keeps the range.
+        if std::mem::take(&mut self.drag_moved) {
+            return;
+        }
 
         let is_double_click = e.click_count() == 2;
 
@@ -825,6 +981,12 @@ where
     }
 
     pub(super) fn action_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        // Tusk patch: Esc first collapses a range to its moving cell.
+        if self.selected_range().is_some() {
+            self.range_anchor = None;
+            cx.notify();
+            return;
+        }
         if self.has_selection() {
             self.clear_selection(cx);
             return;
@@ -1559,10 +1721,12 @@ where
             return None;
         };
 
+        // Tusk patch: only the sorted column shows an indicator (as on macOS);
+        // clicking any header sorts it.
         let (icon, is_on) = match sort {
             ColumnSort::Ascending => (IconName::SortAscending, true),
             ColumnSort::Descending => (IconName::SortDescending, true),
-            ColumnSort::Default => (IconName::ChevronsUpDown, false),
+            ColumnSort::Default => return None,
         };
 
         Some(
@@ -2025,6 +2189,7 @@ where
                                         && self.selection_mode.is_cell();
                                     let is_cell_right_clicked =
                                         self.right_clicked_cell == Some((row_ix, col_ix));
+                                    let in_range = self.in_selected_range(row_ix, col_ix);
 
                                     items.push(
                                         self.render_col_wrap(Some(row_ix), col_ix, window, cx)
@@ -2081,6 +2246,34 @@ where
                                                             )
                                                         },
                                                     )
+                                                    // Tusk patch: cells inside a selected range get a tint.
+                                                    .when(in_range, |this| {
+                                                        this.child(
+                                                            div()
+                                                                .absolute()
+                                                                .inset_0()
+                                                                .bg(cx.theme().table_active_border.opacity(0.14)),
+                                                        )
+                                                    })
+                                                    .when(self.cell_selectable, |this| {
+                                                        this.on_mouse_down(
+                                                            MouseButton::Left,
+                                                            cx.listener(move |table, _: &MouseDownEvent, _, _| {
+                                                                table.on_cell_mouse_down(row_ix, col_ix);
+                                                            }),
+                                                        )
+                                                        .on_mouse_move(cx.listener(
+                                                            move |table, e: &MouseMoveEvent, _, cx| {
+                                                                table.on_cell_mouse_move(e, row_ix, col_ix, cx);
+                                                            },
+                                                        ))
+                                                        .on_mouse_up(
+                                                            MouseButton::Left,
+                                                            cx.listener(|table, _: &MouseUpEvent, _, _| {
+                                                                table.drag_select_from = None;
+                                                            }),
+                                                        )
+                                                    })
                                                     .when(self.cell_selectable, |this| {
                                                         this.on_click(cx.listener(
                                                             move |table, e, window, cx| {
@@ -2153,6 +2346,7 @@ where
                                                 && table.selection_mode.is_cell();
                                             let is_cell_right_clicked =
                                                 table.right_clicked_cell == Some((row_ix, col_ix));
+                                            let in_range = table.in_selected_range(row_ix, col_ix);
 
                                             let el = table
                                                 .render_col_wrap(Some(row_ix), col_ix, window, cx)
@@ -2219,7 +2413,35 @@ where
                                                                 )
                                                             },
                                                         )
-                                                        .when(table.cell_selectable, |this| {
+                                                        // Tusk patch: cells inside a selected range get a tint.
+                                                    .when(in_range, |this| {
+                                                        this.child(
+                                                            div()
+                                                                .absolute()
+                                                                .inset_0()
+                                                                .bg(cx.theme().table_active_border.opacity(0.14)),
+                                                        )
+                                                    })
+                                                    .when(table.cell_selectable, |this| {
+                                                        this.on_mouse_down(
+                                                            MouseButton::Left,
+                                                            cx.listener(move |table, _: &MouseDownEvent, _, _| {
+                                                                table.on_cell_mouse_down(row_ix, col_ix);
+                                                            }),
+                                                        )
+                                                        .on_mouse_move(cx.listener(
+                                                            move |table, e: &MouseMoveEvent, _, cx| {
+                                                                table.on_cell_mouse_move(e, row_ix, col_ix, cx);
+                                                            },
+                                                        ))
+                                                        .on_mouse_up(
+                                                            MouseButton::Left,
+                                                            cx.listener(|table, _: &MouseUpEvent, _, _| {
+                                                                table.drag_select_from = None;
+                                                            }),
+                                                        )
+                                                    })
+                                                    .when(table.cell_selectable, |this| {
                                                             this.on_click(cx.listener(
                                                                 move |table, e, window, cx| {
                                                                     cx.stop_propagation();

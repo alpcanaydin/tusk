@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tusk
+Comment=Database client
+Exec=tusk
+Icon=tusk
+StartupWMClass=tusk
+Categories=Development;Database;
+Terminal=false

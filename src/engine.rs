@@ -430,6 +430,21 @@ impl Engine {
         }
     }
 
+    /// Type of New Table's starting `id` primary key: the engine's
+    /// auto-numbering integer where a type alone gives one.
+    pub fn new_table_id_type(self) -> &'static str {
+        match self {
+            Engine::Postgres | Engine::Greenplum | Engine::Cockroach => "serial",
+            // `INTEGER PRIMARY KEY` is SQLite's rowid alias (auto-numbered).
+            Engine::Sqlite | Engine::LibSql | Engine::CloudflareD1 => "INTEGER",
+            Engine::DuckDb | Engine::Redshift | Engine::Snowflake | Engine::Vertica => "INTEGER",
+            Engine::BigQuery => "INT64",
+            Engine::ClickHouse => "UInt64",
+            Engine::Oracle => "NUMBER",
+            _ => "int",
+        }
+    }
+
     /// URL scheme for "Copy as URL".
     pub fn scheme(self) -> &'static str {
         match self {

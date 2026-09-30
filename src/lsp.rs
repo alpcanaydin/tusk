@@ -218,7 +218,7 @@ fn find_binary(binary: &str) -> Option<PathBuf> {
     dirs.push("/opt/homebrew/bin".into());
     dirs.push("/usr/local/bin".into());
     dirs.into_iter()
-        .map(|d| d.join(binary))
+        .map(|d| d.join(format!("{binary}{}", std::env::consts::EXE_SUFFIX)))
         .find(|p| p.is_file())
 }
 
@@ -237,7 +237,12 @@ impl LspClient {
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<DiagnosticsEvent>)> {
         let name = spec.binary;
         let bin = find_binary(name).ok_or_else(|| {
-            anyhow!("{name} not found (bundled with Tusk.app; for dev builds run scripts/bundle-*.sh target/debug/pgls)")
+            let env = if name == "sqls" {
+                "TUSK_SQLS"
+            } else {
+                "TUSK_PGLS"
+            };
+            anyhow!("{name} not found; install it on PATH or set {env}")
         })?;
         let root = dirs::cache_dir()
             .unwrap_or_else(std::env::temp_dir)
@@ -550,7 +555,14 @@ fn decorate(item: &mut lsp_types::CompletionItem, prefix: &str) {
         && let Some(d) = &item.label_details
     {
         let kind = d.detail.as_deref().unwrap_or("").trim();
-        let detail = match d.description.as_deref() {
+        // An empty description ("Keyword" with no schema) mustn't leave a
+        // dangling "Keyword ·".
+        let detail = match d
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(desc) if !kind.is_empty() => format!("{kind} · {desc}"),
             Some(desc) => desc.to_string(),
             None => kind.to_string(),
@@ -611,6 +623,47 @@ impl CompletionProvider for SqlDocument {
 #[cfg(test)]
 mod tests {
     use super::{decorate, frame, is_trigger_char, word_prefix};
+
+    /// An accepted completion replaces only the word being typed (the kit
+    /// used to reuse the first completion's start, so Enter replaced the
+    /// line from there), and that word is the prefix the menu matched.
+    /// Snippet completions insert plain text with the caret on the first
+    /// tab stop (raw `${1:}` used to land in the editor).
+    #[test]
+    fn snippets_expand_to_plain_text() {
+        use gpui_kit::base::input::expand_snippet;
+        let (t, r) = expand_snippet("pg_catalog.network_supeq(${1:}, ${2:})");
+        assert_eq!(t, "pg_catalog.network_supeq(, )");
+        assert_eq!(r, Some(25..25));
+        let (t, r) = expand_snippet("coalesce(${1:value}, ${2:default})$0");
+        assert_eq!(t, "coalesce(value, default)");
+        assert_eq!(r, Some(9..14));
+        let (t, r) = expand_snippet("now()$0");
+        assert_eq!((t.as_str(), r), ("now()", Some(5..5)));
+        assert_eq!(expand_snippet("a \\$1 ${1|x,y|}").0, "a $1 x");
+        assert_eq!(expand_snippet("plain").1, None);
+    }
+
+    #[test]
+    fn completion_replaces_only_the_typed_word() {
+        use gpui_kit::base::input::completion_word_start;
+        for (text, word) in [
+            ("select * from pro|", "pro"),
+            ("select na| from products", "na"),
+            ("sel|", "sel"),
+            ("select * from public.|", ""),
+            ("select * from public.us|", "us"),
+            ("select |", ""),
+            ("where çağrı_id|", "çağrı_id"),
+        ] {
+            let offset = text.find('|').unwrap();
+            let text = text.replace('|', "");
+            let rope = gpui_kit::base::input::Rope::from_str(&text);
+            let start = completion_word_start(&rope, offset);
+            assert_eq!(&text[start..offset], word, "{text:?}");
+            assert_eq!(word_prefix(&text, offset), word, "{text:?}");
+        }
+    }
 
     /// sqls against the local containers: table names complete from each
     /// live catalog (dev builds bundle it with scripts/bundle-sqls.sh

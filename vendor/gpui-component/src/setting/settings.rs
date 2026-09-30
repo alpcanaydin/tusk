@@ -155,8 +155,15 @@ impl Settings {
                 SidebarMenu::new().children(filter.visible_pages().map(|page_ix| {
                     let page = &self.pages[page_ix];
                     let groups = &filter.groups[page_ix];
+                    // Tusk patch: only titled groups get a sidebar entry, so
+                    // a page expands when it has two or more of them (one
+                    // entry would just repeat the page).
+                    let titled = groups
+                        .iter()
+                        .filter(|&&ix| page.groups[ix].title.is_some())
+                        .count();
                     let is_page_active = selected_index.page_ix == page_ix
-                        && (selected_index.group_ix.is_none() || groups.len() == 1);
+                        && (selected_index.group_ix.is_none() || titled < 2);
                     SidebarMenuItem::new(page.title.clone())
                         .click_to_open(true)
                         .when_some(page.icon.clone(), |this, icon| this.icon(icon))
@@ -175,7 +182,7 @@ impl Settings {
                                 })
                             }
                         })
-                        .when(groups.len() > 1, |this| {
+                        .when(titled > 1, |this| {
                             this.children(
                                 groups
                                     .iter()

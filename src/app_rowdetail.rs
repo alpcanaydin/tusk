@@ -546,13 +546,12 @@ impl TuskApp {
         let icon_btn = |id: &'static str, icon: IconName, tip: &'static str| {
             div()
                 .id(id)
-                .cursor_pointer()
                 .w(px(22.))
                 .h(px(22.))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(4.))
+                .rounded(crate::theme::RADIUS_SM)
                 .text_color(muted)
                 .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
                 .child(Icon::new(icon).size(px(13.)))
@@ -611,7 +610,7 @@ impl TuskApp {
         let body: AnyElement = match &self.row_panel.detail {
             None => div()
                 .p_4()
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child("Select a row in the data grid to see it here.")
                 .into_any_element(),
@@ -687,7 +686,7 @@ impl TuskApp {
                             }
                             FieldInput::Json(e) => div()
                                 .h(px(if self.row_panel.wide { 320. } else { 200. }))
-                                .rounded(px(6.))
+                                .rounded(crate::theme::RADIUS_MD)
                                 .border_1()
                                 .border_color(if f.error.is_some() { t.red } else { border })
                                 .overflow_hidden()
@@ -718,7 +717,7 @@ impl TuskApp {
                                             .flex_1()
                                             .min_w_0()
                                             .truncate()
-                                            .text_xs()
+                                            .text_caption()
                                             .text_color(muted.opacity(0.7))
                                             .child(f.ty.clone()),
                                     )
@@ -726,10 +725,9 @@ impl TuskApp {
                                         d.child(
                                             div()
                                                 .id(("json-format", col))
-                                                .cursor_pointer()
                                                 .px_1p5()
-                                                .rounded(px(4.))
-                                                .text_xs()
+                                                .rounded(crate::theme::RADIUS_SM)
+                                                .text_caption()
                                                 .text_color(muted)
                                                 .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
                                                 .child("Format")
@@ -741,10 +739,9 @@ impl TuskApp {
                                     .child(
                                         div()
                                             .id(("field-null", col))
-                                            .cursor_pointer()
                                             .px_1p5()
-                                            .rounded(px(4.))
-                                            .text_xs()
+                                            .rounded(crate::theme::RADIUS_SM)
+                                            .text_caption()
                                             .text_color(if is_null { fg } else { muted })
                                             .when(is_null, |d| d.bg(muted.opacity(0.18)))
                                             .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
@@ -756,7 +753,7 @@ impl TuskApp {
                             )
                             .child(editor)
                             .children(f.error.clone().map(|e| {
-                                div().text_xs().text_color(t.red).child(e)
+                                div().text_caption().text_color(t.red).child(e)
                             }))
                     }))
                     .into_any_element()
@@ -802,13 +799,12 @@ impl TuskApp {
         let on = self.row_panel.open;
         div()
             .id("status-row-detail")
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .text_color(if on { accent } else { muted })
             .hover(|d| {
                 d.bg(muted.opacity(0.12))

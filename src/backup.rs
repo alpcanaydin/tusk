@@ -4,11 +4,12 @@
 //! one. SSH profiles go through their tunnel; the password travels in
 //! `PGPASSWORD`, never on the command line.
 
+use crate::theme::TextCaption as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -79,6 +80,12 @@ fn tool_dirs() -> Vec<PathBuf> {
             "/Applications/Postgres.app/Contents/Versions/{v}/bin"
         )));
     }
+    // Windows: the EDB installer's `C:\Program Files\PostgreSQL\<v>\bin`.
+    if let Some(pf) = std::env::var_os("ProgramFiles") {
+        for v in ["18", "17", "16", "15", "14", "13", "12"] {
+            dirs.push(PathBuf::from(&pf).join("PostgreSQL").join(v).join("bin"));
+        }
+    }
     for d in [
         "/opt/homebrew/opt/libpq/bin",
         "/opt/homebrew/bin",
@@ -113,7 +120,7 @@ pub fn parse_version(out: &str) -> Option<(String, u32)> {
 pub fn installed_tools() -> Vec<Tools> {
     let mut out: Vec<Tools> = Vec::new();
     for dir in tool_dirs() {
-        let dump = dir.join("pg_dump");
+        let dump = dir.join(format!("pg_dump{}", std::env::consts::EXE_SUFFIX));
         if !dump.is_file() {
             continue;
         }
@@ -161,7 +168,7 @@ fn run_tool(
     db: &str,
     args: &[String],
 ) -> Result<String, String> {
-    let path = dir.join(tool);
+    let path = dir.join(format!("{tool}{}", std::env::consts::EXE_SUFFIX));
     if !path.is_file() {
         return Err(format!("{tool} not found in {}", dir.display()));
     }
@@ -205,7 +212,7 @@ pub fn run_sql_file(ep: &Endpoint, db: &str, file: &Path) -> Result<String, Stri
     let tools = installed_tools();
     let t = pick_tools(&tools, None)
         .and_then(|i| tools.get(i))
-        .ok_or("psql not found (bundled with Tusk.app, or install libpq)")?;
+        .ok_or("psql not found; install PostgreSQL client tools or set TUSK_PG_BIN")?;
     let args: Vec<String> = [
         "-X",
         "-q",
@@ -245,16 +252,19 @@ pub fn backup_file_name(
     name.replace('/', "-")
 }
 
+/// `gzip -f`: `path` → `path.gz`, the original removed.
 fn gzip_file(path: &Path) -> Result<PathBuf, String> {
-    let out = Command::new("/usr/bin/gzip")
-        .arg("-f")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("gzip: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
-    Ok(PathBuf::from(format!("{}.gz", path.display())))
+    let gz = PathBuf::from(format!("{}.gz", path.display()));
+    let run = || -> std::io::Result<()> {
+        let mut input = std::fs::File::open(path)?;
+        let out = std::fs::File::create(&gz)?;
+        let mut enc = flate2::write::GzEncoder::new(out, flate2::Compression::default());
+        std::io::copy(&mut input, &mut enc)?;
+        enc.finish()?;
+        std::fs::remove_file(path)
+    };
+    run().map_err(|e| format!("gzip: {e}"))?;
+    Ok(gz)
 }
 
 /// A `.gz` backup unpacked to a temp file, for restoring.
@@ -264,15 +274,12 @@ fn gunzip_to_temp(path: &Path) -> Result<PathBuf, String> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "restore".into());
     let out_path = std::env::temp_dir().join(format!("tusk-{}-{stem}", std::process::id()));
-    let out = Command::new("/usr/bin/gzip")
-        .arg("-dc")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("gzip: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
-    std::fs::write(&out_path, out.stdout).map_err(|e| e.to_string())?;
+    let run = || -> std::io::Result<()> {
+        let mut dec = flate2::read::MultiGzDecoder::new(std::fs::File::open(path)?);
+        let mut out = std::fs::File::create(&out_path)?;
+        std::io::copy(&mut dec, &mut out).map(|_| ())
+    };
+    run().map_err(|e| format!("gzip: {e}"))?;
     Ok(out_path)
 }
 
@@ -328,13 +335,36 @@ pub struct BackupWindow {
     options: Vec<String>,
     gzip: bool,
     busy: bool,
+    /// A save / open panel or a confirmation is up: Return must answer
+    /// it, not start another run from the window's own Return binding.
+    modal: bool,
     notice: Option<(bool, String)>,
+    /// The last backup's file, for "Show in Finder" (see ExportWindow).
+    saved: Option<PathBuf>,
+    /// Passwords typed this session, by connection name — the workspace's
+    /// own and any entered below. In memory only.
+    passwords: std::collections::HashMap<String, String>,
+    /// The picked connection needs a password (none stored, or refused).
+    needs_password: bool,
+    password: Entity<InputState>,
+    /// Keep an entered password in the credential store (off by default).
+    store_password: bool,
     _subs: Vec<Subscription>,
 }
 
+/// The folder the last backup went to (the save panel opens there next).
+static LAST_BACKUP_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
 impl BackupWindow {
     /// `preselect`: open with this connection (and database) picked.
-    pub fn open(mode: Mode, preselect: Option<(String, String)>, cx: &mut App) {
+    /// `session`: the password the workspace connected with, for the
+    /// preselected connection (it may not be in the credential store).
+    pub fn open(
+        mode: Mode,
+        preselect: Option<(String, String)>,
+        session: Option<String>,
+        cx: &mut App,
+    ) {
         if let Some(handle) = cx.default_global::<OpenBackup>().0 {
             let _ = cx.update_window(handle, |_, window, _| window.remove_window());
         }
@@ -344,10 +374,11 @@ impl BackupWindow {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(660.), px(380.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             move |window, cx| {
-                let view = cx.new(|cx| Self::new(mode, preselect, window, cx));
+                let view = cx.new(|cx| Self::new(mode, preselect, session, window, cx));
                 view.read(cx).focus.clone().focus(window, cx);
                 cx.new(|cx| Root::new(view, window, cx))
             },
@@ -361,6 +392,7 @@ impl BackupWindow {
     fn new(
         mode: Mode,
         preselect: Option<(String, String)>,
+        session: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -375,7 +407,12 @@ impl BackupWindow {
             st.set_value("{database}_{date}".to_string(), window, cx);
             st
         });
-        let subs = [&conn_search, &db_search]
+        let password = cx.new(|cx| {
+            InputState::new(window, cx)
+                .masked(true)
+                .placeholder("Password")
+        });
+        let mut subs: Vec<Subscription> = [&conn_search, &db_search]
             .into_iter()
             .map(|s| {
                 cx.subscribe(s, |_, _, ev: &InputEvent, cx| {
@@ -385,11 +422,24 @@ impl BackupWindow {
                 })
             })
             .collect();
+        subs.push(cx.subscribe(&password, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. }) {
+                this.submit_password(cx);
+            }
+        }));
+        let mut passwords = std::collections::HashMap::new();
+        if let (Some((name, _)), Some(pw)) = (&preselect, session) {
+            passwords.insert(name.clone(), pw);
+        }
         let tools = installed_tools();
         let mut this = BackupWindow {
             focus: cx.focus_handle(),
             mode,
-            conns: db::load_connections(),
+            // pg_dump / pg_restore only speak Postgres: no SQLite etc. here.
+            conns: db::load_connections()
+                .into_iter()
+                .filter(|c| c.engine.caps().backup)
+                .collect(),
             conn_search,
             db_search,
             file_name,
@@ -407,7 +457,13 @@ impl BackupWindow {
             }],
             gzip: false,
             busy: false,
+            modal: false,
             notice: None,
+            saved: None,
+            passwords,
+            needs_password: false,
+            password,
+            store_password: false,
             _subs: subs,
         };
         if let Some((conn, database)) = preselect
@@ -431,9 +487,24 @@ impl BackupWindow {
         self.endpoint = None;
         self.loading = true;
         self.notice = None;
+        self.saved = None;
+        self.needs_password = false;
         cx.notify();
+        let typed = self.passwords.get(&conn.name).cloned();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            let password = db::load_password(&conn.name).unwrap_or_default();
+            let stored = match typed {
+                Some(pw) => Some(pw),
+                None => {
+                    cx.background_executor()
+                        .spawn({
+                            let name = conn.name.clone();
+                            async move { db::load_password(&name).ok() }
+                        })
+                        .await
+                }
+            };
+            let missing = stored.as_deref().is_none_or(str::is_empty);
+            let password = stored.unwrap_or_default();
             let result = async {
                 let connected = db::connect(conn.clone(), password.clone(), None).await?;
                 let dbs = db::fetch_databases(&connected.pool).await?;
@@ -465,7 +536,13 @@ impl BackupWindow {
                         this.databases = dbs;
                         this.tool_ix = pick_tools(&this.tools, version);
                     }
-                    Err(e) => this.notice = Some((false, e)),
+                    Err(e) => {
+                        // No password to try, or it was refused: ask here.
+                        if missing || e.to_lowercase().contains("password") {
+                            this.needs_password = true;
+                        }
+                        this.notice = Some((false, e));
+                    }
                 }
                 cx.notify();
             });
@@ -473,8 +550,29 @@ impl BackupWindow {
         .detach();
     }
 
+    /// The password typed for the picked connection: try it (and store it
+    /// only when asked to).
+    fn submit_password(&mut self, cx: &mut Context<Self>) {
+        let Some(ix) = self.selected else { return };
+        let Some(name) = self.conns.get(ix).map(|c| c.name.clone()) else {
+            return;
+        };
+        let pw = self.password.read(cx).value().to_string();
+        if pw.is_empty() {
+            return;
+        }
+        if self.store_password
+            && let Err(e) = db::save_password(&name, &pw)
+        {
+            self.notice = Some((false, format!("{} error: {e}", db::CREDENTIAL_STORE)));
+        }
+        self.passwords.insert(name, pw);
+        let database = self.selected_db.clone();
+        self.pick_connection(ix, database, cx);
+    }
+
     fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy {
+        if self.busy || self.modal {
             return;
         }
         let (Some(ix), Some(database), Some(ep)) = (
@@ -506,12 +604,24 @@ impl BackupWindow {
                     self.gzip,
                 );
                 let gzip = self.gzip;
-                let dir = dirs::home_dir().unwrap_or_default().join("Downloads");
+                let dir = LAST_BACKUP_DIR
+                    .lock()
+                    .ok()
+                    .and_then(|d| d.clone())
+                    .filter(|d| d.is_dir())
+                    .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"));
                 let rx = cx.prompt_for_new_path(&dir, Some(&name));
+                self.modal = true;
                 cx.spawn(async move |weak, cx: &mut AsyncApp| {
-                    let Ok(Ok(Some(path))) = rx.await else { return };
+                    let picked = rx.await;
+                    let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+                    let Ok(Ok(Some(path))) = picked else { return };
+                    if let (Some(parent), Ok(mut last)) = (path.parent(), LAST_BACKUP_DIR.lock()) {
+                        *last = Some(parent.to_path_buf());
+                    }
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
+                        this.saved = None;
                         this.notice = Some((true, format!("Backing up {database}…")));
                         cx.notify();
                     });
@@ -535,8 +645,9 @@ impl BackupWindow {
                         this.busy = false;
                         this.notice = Some(match result {
                             Ok(file) => {
-                                cx.reveal_path(&file);
-                                (true, format!("Backup saved to {}", file.display()))
+                                let msg = format!("Backup saved to {}", file.display());
+                                this.saved = Some(file);
+                                (true, msg)
                             }
                             Err(e) => (false, e),
                         });
@@ -553,29 +664,35 @@ impl BackupWindow {
                     prompt: Some("Restore".into()),
                 });
                 let handle = window.window_handle();
+                self.modal = true;
                 cx.spawn(async move |weak, cx: &mut AsyncApp| {
-                    let Ok(Ok(Some(paths))) = rx.await else {
+                    let file = match rx.await {
+                        Ok(Ok(Some(paths))) => paths.into_iter().next(),
+                        _ => None,
+                    };
+                    let confirmed = match &file {
+                        // Return = Restore: the user just picked the file.
+                        Some(file) => match handle.update(cx, |_, window, cx| {
+                            window.prompt(
+                                PromptLevel::Warning,
+                                &format!("Restore into “{database}”?"),
+                                Some(&format!("{}\n\n{}", file.display(), options.join(" "))),
+                                &["Restore", "Cancel"],
+                                cx,
+                            )
+                        }) {
+                            Ok(answer) => answer.await == Ok(0),
+                            Err(_) => false,
+                        },
+                        None => false,
+                    };
+                    let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+                    let (true, Some(file)) = (confirmed, file) else {
                         return;
                     };
-                    let Some(file) = paths.into_iter().next() else {
-                        return;
-                    };
-                    let Ok(answer) = handle.update(cx, |_, window, cx| {
-                        window.prompt(
-                            PromptLevel::Warning,
-                            &format!("Restore into “{database}”?"),
-                            Some(&format!("{}\n\n{}", file.display(), options.join(" "))),
-                            &["Restore", "Cancel"],
-                            cx,
-                        )
-                    }) else {
-                        return;
-                    };
-                    if answer.await != Ok(0) {
-                        return;
-                    }
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
+                        this.saved = None;
                         this.notice = Some((true, format!("Restoring into {database}…")));
                         cx.notify();
                     });
@@ -627,7 +744,16 @@ impl BackupWindow {
         let Some(pool) = self.connected.as_ref().map(|c| c.pool.clone()) else {
             return;
         };
-        let mut name = "restored".to_string();
+        if self.modal {
+            return;
+        }
+        // The name typed in the database search, else restored, restored_2…
+        let typed = self.db_search.read(cx).value().trim().to_string();
+        let mut name = if typed.is_empty() || self.databases.contains(&typed) {
+            "restored".to_string()
+        } else {
+            typed
+        };
         let mut n = 2;
         while self.databases.contains(&name) {
             name = format!("restored_{n}");
@@ -636,12 +762,15 @@ impl BackupWindow {
         let answer = window.prompt(
             PromptLevel::Info,
             &format!("Create database “{name}”?"),
-            None,
+            Some("To use another name, type it in the database search first."),
             &["Create", "Cancel"],
             cx,
         );
+        self.modal = true;
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            let answer = answer.await;
+            let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+            if answer != Ok(0) {
                 return;
             }
             let sql = format!("CREATE DATABASE {}", db::quote_ident(&name));
@@ -663,7 +792,8 @@ impl BackupWindow {
 
     fn connection_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         let q = self.conn_search.read(cx).value().to_lowercase();
         let mut folders: Vec<Option<String>> = Vec::new();
         for c in &self.conns {
@@ -695,7 +825,7 @@ impl BackupWindow {
                         .px_2()
                         .pt_1()
                         .h(px(24.))
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child(Icon::new(IconName::Folder).size(px(12.)))
                         .child(f.clone()),
@@ -713,9 +843,9 @@ impl BackupWindow {
                         .gap_2()
                         .px_2()
                         .h(px(26.))
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .when(folder.is_some(), |this| this.pl(px(22.)))
-                        .when(active, |this| this.bg(accent.opacity(0.18)))
+                        .when(active, |this| this.bg(sel_bg))
                         .when(!active, |this| {
                             this.hover(|this| this.bg(muted.opacity(0.08)))
                         })
@@ -732,9 +862,9 @@ impl BackupWindow {
                                 .flex_1()
                                 .min_w_0()
                                 .truncate()
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted.opacity(0.6))
-                                .child(format!("{} · {}", c.host, c.database)),
+                                .child(format!("{} · {}", c.endpoint(), c.database)),
                         )
                         .on_click(
                             cx.listener(move |this, _, _, cx| this.pick_connection(ix, None, cx)),
@@ -747,13 +877,57 @@ impl BackupWindow {
 
     fn database_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         if self.loading {
             return div()
                 .p_3()
                 .text_sm()
                 .text_color(muted)
                 .child("Connecting…")
+                .into_any_element();
+        }
+        if self.needs_password {
+            let name = self
+                .selected
+                .and_then(|ix| self.conns.get(ix))
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            return div()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(fg)
+                        .child(format!("Password for “{name}”")),
+                )
+                .child(Input::new(&self.password).small())
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            Checkbox::new("bk-store-pw")
+                                .label(format!("Store in {}", db::CREDENTIAL_STORE))
+                                .checked(self.store_password)
+                                .on_click(cx.listener(|this, v: &bool, _, cx| {
+                                    this.store_password = *v;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(div().flex_1())
+                        .child(
+                            Button::new("bk-pw-connect")
+                                .label("Connect")
+                                .small()
+                                .primary()
+                                .on_click(cx.listener(|this, _, _, cx| this.submit_password(cx))),
+                        ),
+                )
                 .into_any_element();
         }
         let q = self.db_search.read(cx).value().to_lowercase();
@@ -773,8 +947,8 @@ impl BackupWindow {
                     .gap_2()
                     .px_2()
                     .h(px(26.))
-                    .rounded(px(4.))
-                    .when(active, |this| this.bg(accent.opacity(0.18)))
+                    .rounded(crate::theme::RADIUS_SM)
+                    .when(active, |this| this.bg(sel_bg))
                     .when(!active, |this| {
                         this.hover(|this| this.bg(muted.opacity(0.08)))
                     })
@@ -784,7 +958,6 @@ impl BackupWindow {
                             .text_color(muted),
                     )
                     .child(div().text_sm().text_color(fg).child(d.clone()))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected_db = Some(name.clone());
                         cx.notify();
@@ -854,19 +1027,22 @@ impl BackupWindow {
                 for &o in all {
                     let v = view.clone();
                     menu = menu.item(
-                        PopupMenuItem::new(o)
-                            .checked(picked.iter().any(|p| p == o))
-                            .on_click(move |_, _, cx| {
-                                v.update(cx, |this, cx| {
-                                    match this.options.iter().position(|x| x == o) {
-                                        Some(p) => {
-                                            this.options.remove(p);
-                                        }
-                                        None => this.options.push(o.to_string()),
+                        // Literal flags: no `--` → `—` ligature.
+                        PopupMenuItem::element(move |_, _| {
+                            div().font_features(crate::theme::no_ligatures()).child(o)
+                        })
+                        .checked(picked.iter().any(|p| p == o))
+                        .on_click(move |_, _, cx| {
+                            v.update(cx, |this, cx| {
+                                match this.options.iter().position(|x| x == o) {
+                                    Some(p) => {
+                                        this.options.remove(p);
                                     }
-                                    cx.notify();
-                                });
-                            }),
+                                    None => this.options.push(o.to_string()),
+                                }
+                                cx.notify();
+                            });
+                        }),
                     );
                 }
                 menu
@@ -889,14 +1065,14 @@ impl BackupWindow {
                     .gap_1()
                     .px_1p5()
                     .h(px(20.))
-                    .rounded(px(3.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .bg(accent.opacity(0.22))
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::table_font())
+                    .font_features(crate::theme::no_ligatures())
                     .text_color(fg)
                     .child(o.clone())
                     .child(Icon::new(IconName::X).size(px(10.)).text_color(muted))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if i < this.options.len() {
                             this.options.remove(i);
@@ -917,7 +1093,7 @@ impl BackupWindow {
                 div()
                     .flex_1()
                     .min_h(px(120.))
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .border_1()
                     .border_color(border)
                     .bg(card)
@@ -951,7 +1127,7 @@ impl BackupWindow {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .rounded(px(6.))
+                        .rounded(crate::theme::RADIUS_MD)
                         .border_1()
                         .border_color(border)
                         .bg(card)
@@ -1022,11 +1198,17 @@ impl BackupWindow {
                             .id("bk-notice")
                             .max_h(px(60.))
                             .overflow_y_scroll()
-                            .text_xs()
+                            .text_caption()
                             .text_color(if ok { ok_c } else { err_c })
                             .child(msg)
                     })),
             )
+            .children(self.saved.clone().map(|path| {
+                Button::new("bk-reveal")
+                    .label(crate::theme::REVEAL_LABEL)
+                    .small()
+                    .on_click(move |_, _, cx| cx.reveal_path(&path))
+            }))
             .when(backup, |this| {
                 this.child(
                     Checkbox::new("bk-gzip")
@@ -1055,7 +1237,7 @@ impl BackupWindow {
                         "Start restore…"
                     })
                     .small()
-                    .outline()
+                    .primary()
                     .disabled(self.busy || self.selected_db.is_none())
                     .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
             );
@@ -1081,6 +1263,16 @@ impl BackupWindow {
         };
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(
+                cx.listener(|this, _: &crate::dialog_keys::DialogConfirm, window, cx| {
+                    // Return does what the (enabled) Start button does.
+                    if this.selected_db.is_some() {
+                        this.start(window, cx);
+                    }
+                }),
+            )
             .size_full()
             .flex()
             .flex_col()
@@ -1123,8 +1315,23 @@ impl BackupWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{Tools, backup_file_name, parse_version, pick_tools, psql_args};
+    use super::{
+        Tools, backup_file_name, gunzip_to_temp, gzip_file, parse_version, pick_tools, psql_args,
+    };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn gzip_round_trip() {
+        let src = std::env::temp_dir().join(format!("tusk-gz-test-{}.sql", std::process::id()));
+        let body = "SELECT 1;\n".repeat(1000);
+        std::fs::write(&src, &body).unwrap();
+        let gz = gzip_file(&src).unwrap();
+        assert!(!src.exists(), "gzip -f removes the original");
+        let back = gunzip_to_temp(&gz).unwrap();
+        assert_eq!(std::fs::read_to_string(&back).unwrap(), body);
+        let _ = std::fs::remove_file(gz);
+        let _ = std::fs::remove_file(back);
+    }
 
     #[test]
     fn versions_names_and_args() {
@@ -1246,12 +1453,6 @@ mod live_tests {
 
 impl Render for BackupWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Finished results go out as toasts; progress stays inline.
-        if !self.busy
-            && let Some((ok, msg)) = self.notice.take()
-        {
-            crate::toast::push_top(window, cx, Some(ok), msg);
-        }
         div()
             .size_full()
             .relative()

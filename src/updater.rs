@@ -31,6 +31,7 @@ pub fn init(cx: &mut App) {
             enabled: true,
             ready: Some(v),
         });
+        #[cfg(target_os = "macos")]
         return;
     }
     #[cfg(target_os = "macos")]

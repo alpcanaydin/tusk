@@ -22,8 +22,10 @@ pub mod palette {
     pub const TOOLBAR: u32 = 0x00000A;
     pub const ELEVATED: u32 = 0x111111;
     pub const BORDER: u32 = 0x222222;
-    pub const FOREGROUND: u32 = 0xBFBFBF; // terminal.foreground
-    pub const HINT: u32 = 0xC8C8C8; // hint / secondary text
+    // Primary text brighter than secondary, so the hierarchy reads (the
+    // terminal foreground #BFBFBF sat below the old #C8C8C8 hint).
+    pub const FOREGROUND: u32 = 0xE0E0E0;
+    pub const HINT: u32 = 0x8E8E93; // secondary text (macOS secondaryLabel)
     // UI accent: the table-icon blue (user choice 2026-09-23, was the old
     // orange #FF9040). Syntax `type` stays orange — it comes from the theme.
     pub const ACCENT: u32 = 0x4A90F0; // scrollbar thumb, caret, primary
@@ -100,11 +102,17 @@ pub fn apply(cx: &mut App) {
     let light = crate::settings::is_light(cx);
     let name = crate::settings::active_theme(cx);
     // Light mode always has a palette (Tusk Light is the default one).
-    let pal = crate::themes::find(&name).or_else(|| {
-        light
-            .then(|| crate::themes::find(crate::themes::DEFAULT_LIGHT))
-            .flatten()
-    });
+    let pal = crate::themes::find(&name)
+        .or_else(|| {
+            (name == crate::omarchy::NAME)
+                .then(crate::omarchy::palette)
+                .flatten()
+        })
+        .or_else(|| {
+            light
+                .then(|| crate::themes::find(crate::themes::DEFAULT_LIGHT))
+                .flatten()
+        });
     let config: Rc<ThemeConfig> =
         match pal.map(|p| serde_json::from_value::<ThemeConfig>(crate::themes::config_json(p))) {
             Some(Ok(c)) => Rc::new(c),
@@ -171,10 +179,12 @@ pub fn apply(cx: &mut App) {
         theme.notification.placement = gpui_kit::Anchor::BottomRight;
         theme.notification.margins.bottom = px(40.);
         theme.notification.margins.right = px(12.);
-        // Settings ▸ Appearance ▸ Accent Color.
+        // Settings ▸ Appearance ▸ Accent Color. Omarchy themes bring their
+        // own accent, which matches the rest of the desktop.
         if let Some(&(_, dark_c, light_c)) = crate::settings::ACCENTS
             .iter()
             .find(|(n, _, _)| *n == prefs.accent && *n != "Theme")
+            .filter(|_| name != crate::omarchy::NAME)
         {
             let c: Hsla = rgb(if light { light_c } else { dark_c }).into();
             let colors = &mut theme.colors;
@@ -266,4 +276,96 @@ fn apply_tusk_dark(theme: &mut Theme) {
     // Rules as translucent white: #1D on black, still a lighter line over
     // tinted (selected / pending) rows.
     theme.colors.table_row_border = Hsla::from(rgb(0xFFFFFF)).opacity(0.11);
+}
+
+/// Secondary text (captions, hints, metadata): 0.8125 rem — 11.4 px at the
+/// default 14 px UI size. The kit's `text_xs` (0.75 rem, 10.5 px) reads too
+/// small in the thin UI font.
+pub trait TextCaption: Styled + Sized {
+    fn text_caption(self) -> Self {
+        self.text_size(rems(0.8125))
+    }
+}
+
+impl<T: Styled> TextCaption for T {}
+
+/// Corner radii: controls and chips, cards and rows, sheets and panels.
+pub const RADIUS_SM: Pixels = px(4.);
+pub const RADIUS_MD: Pixels = px(6.);
+pub const RADIUS_LG: Pixels = px(10.);
+
+/// The scrim behind in-window sheets. A black tint does nothing on the black
+/// dark themes, so dark mode fades what's behind toward the page color.
+pub fn backdrop(t: &gpui_kit::component::theme::Theme) -> Hsla {
+    if t.is_dark() {
+        t.background.opacity(0.85)
+    } else {
+        gpui_kit::black().opacity(0.2)
+    }
+}
+
+/// A destructive context-menu item: red label, listed last.
+pub fn danger_item(
+    label: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> gpui_kit::component::menu::PopupMenuItem {
+    use gpui_kit::component::theme::ActiveTheme as _;
+    gpui_kit::component::menu::PopupMenuItem::element(move |_, cx| {
+        div().text_color(cx.theme().red).child(label)
+    })
+    .on_click(on_click)
+}
+
+/// The selected row of a list (sidebar objects, connections, pickers).
+pub fn selection(t: &gpui_kit::component::theme::Theme) -> Hsla {
+    t.accent.opacity(0.18)
+}
+
+/// A table's "nothing here" state: one muted line, centered. Every grid-like
+/// view says what is missing ("No indexes", "No triggers"…) the same way.
+pub fn empty_state(text: impl Into<SharedString>, cx: &App) -> AnyElement {
+    use gpui_kit::component::theme::ActiveTheme as _;
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_color(cx.theme().muted_foreground)
+        .child(
+            div()
+                .text_sm()
+                .font_family(crate::settings::table_font())
+                .child(text.into()),
+        )
+        .into_any_element()
+}
+
+/// The button that reveals a written file in the platform's file manager.
+pub const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
+    "Show in Finder"
+} else if cfg!(windows) {
+    "Show in Explorer"
+} else {
+    "Show in Folder"
+};
+
+/// Font features for literal text such as CLI flags: the UI font's
+/// ligatures would draw `--format` as `—format`.
+pub fn no_ligatures() -> FontFeatures {
+    FontFeatures(std::sync::Arc::new(vec![
+        ("calt".into(), 0),
+        ("liga".into(), 0),
+        ("dlig".into(), 0),
+    ]))
+}
+
+/// Secondary windows (connection dialog, settings, export, backup, about).
+/// On Linux they're parented to the main window, so tiling compositors
+/// (Hyprland, Sway…) float them instead of tiling them beside it.
+pub fn secondary_window_kind() -> gpui_kit::WindowKind {
+    if cfg!(target_os = "linux") {
+        gpui_kit::WindowKind::Floating
+    } else {
+        gpui_kit::WindowKind::Normal
+    }
 }

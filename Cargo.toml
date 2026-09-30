@@ -12,7 +12,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sqlx = { version = "0.8", features = ["postgres", "mysql", "sqlite", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "sync"] }
-keyring = { version = "3", features = ["apple-native"] }
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
@@ -25,6 +24,7 @@ duckdb = { version = "1", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 hmac = "0.12"
 sha2 = "0.10"
+flate2 = "1"
 hex = "0.4"
 base64 = "0.22"
 jsonwebtoken = "9"
@@ -48,9 +48,19 @@ serde_norway = "0.9"
 gpui-component = { path = "vendor/gpui-component" }
 # Inline Markdown code at the text size (see vendor/gpui-base, "Tusk patch").
 gpui-base = { path = "vendor/gpui-base" }
+# Don't swap a closing window's content view back to its original class under
+# AppKit's KVO; it aborted on macOS 14 (see vendor/accesskit_macos, "Tusk patch").
+accesskit_macos = { path = "vendor/accesskit_macos" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
 objc2 = "0.6"
 block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSProcessInfo", "NSString", "NSObject"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }

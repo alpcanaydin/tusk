@@ -562,6 +562,13 @@ impl IndexDelegate {
 }
 
 impl TableDelegate for IndexDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No indexes", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         FIELDS.len()
     }
@@ -573,6 +580,8 @@ impl TableDelegate for IndexDelegate {
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
         let (name, width) = FIELDS[col_ix];
         let mut c = Column::new(name, name).p_0();
+        // Fixed column order: this delegate keeps its data by position.
+        c.movable = false;
         c.width = px(width);
         c.resizable = true;
         c
@@ -734,7 +743,7 @@ impl TableDelegate for IndexDelegate {
                     .map(|this| {
                         if empty {
                             this.italic()
-                                .text_color(t.colors.muted_foreground.opacity(0.5))
+                                .text_color(t.colors.muted_foreground)
                                 .child(placeholder)
                         } else {
                             this.text_color(t.colors.foreground).child(text)

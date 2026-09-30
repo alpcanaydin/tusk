@@ -592,6 +592,13 @@ impl Render for Root {
             .relative()
             .size_full()
             .font_family(cx.theme().font_family.clone())
+            // Tusk patch: no ligatures in any window, so "--" (SQL comments,
+            // CLI flags) never renders as an em dash.
+            .font_features(gpui::FontFeatures(std::sync::Arc::new(vec![
+                ("calt".into(), 0),
+                ("liga".into(), 0),
+                ("dlig".into(), 0),
+            ])))
             .bg(cx.theme().tokens.background)
             .text_color(cx.theme().foreground)
             .refine_style(&self.style)
