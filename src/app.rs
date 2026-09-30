@@ -1588,22 +1588,43 @@ impl TuskApp {
             return;
         };
         let sql = Self::scope_sql(tab, scope, cx);
-        let risky: Vec<String> = db::split_statements(&sql)
-            .into_iter()
-            .filter(|s| db::is_destructive(s))
+        let prefs = crate::settings::get();
+        let stmts = db::split_statements(&sql);
+        let risky: Vec<&String> = stmts
+            .iter()
+            .filter(|s| prefs.confirm_destructive && db::is_destructive(s))
             .collect();
-        if risky.is_empty() || !crate::settings::get().confirm_destructive {
+        // "Confirm Before Saving" also covers writes run from the editor.
+        let writes: Vec<&String> = stmts
+            .iter()
+            .filter(|s| prefs.confirm_save && db::is_write(s))
+            .collect();
+        let (level, title, shown) = if !risky.is_empty() {
+            (PromptLevel::Warning, "Run a dangerous statement?", risky)
+        } else if !writes.is_empty() {
+            let title = if writes.len() == 1 {
+                "Run a statement that writes to the database?"
+            } else {
+                "Run statements that write to the database?"
+            };
+            (PromptLevel::Info, title, writes)
+        } else {
             self.run_sql_in_tab(ix, scope, cx);
             return;
-        }
-        let detail = risky
+        };
+        const MAX_SHOWN: usize = 8;
+        let mut detail = shown
             .iter()
+            .take(MAX_SHOWN)
             .map(|s| s.trim().lines().next().unwrap_or_default().to_string())
             .collect::<Vec<_>>()
             .join("\n");
+        if shown.len() > MAX_SHOWN {
+            detail.push_str(&format!("\n… and {} more", shown.len() - MAX_SHOWN));
+        }
         let answer = window.prompt(
-            PromptLevel::Warning,
-            "Run a dangerous statement?",
+            level,
+            title,
             Some(&format!("{detail}\n\n(Safe mode — Settings ▸ Safe Mode)")),
             &["Run", "Cancel"],
             cx,

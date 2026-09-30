@@ -650,6 +650,32 @@ pub fn is_destructive(stmt: &str) -> bool {
     }
 }
 
+/// Safe mode ("Confirm Before Saving"): statements that change data or schema
+/// — anything but a read, a transaction boundary or a session setting.
+pub fn is_write(stmt: &str) -> bool {
+    if classify_statement(stmt) == StmtKind::Query {
+        return false;
+    }
+    let first = strip_leading_comments(stmt)
+        .split(|c: char| c.is_whitespace() || c == ';')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    !matches!(
+        first.as_str(),
+        "" | "BEGIN"
+            | "START"
+            | "COMMIT"
+            | "END"
+            | "ROLLBACK"
+            | "SAVEPOINT"
+            | "RELEASE"
+            | "SET"
+            | "RESET"
+            | "USE"
+    )
+}
+
 /// The statement under the cursor: the one whose
 /// text (or terminating `;`) contains `cursor`; on blank lines between
 /// statements, the one before the cursor; before the first, the first.
@@ -1649,7 +1675,7 @@ pub async fn fetch_objects(db: &Db, schema: &str) -> DbResult<ObjectTree> {
 
 #[cfg(test)]
 mod statement_tests {
-    use super::{is_destructive, statement_at};
+    use super::{is_destructive, is_write, statement_at};
 
     #[test]
     fn safe_mode_flags_only_irreversible_statements() {
@@ -1660,6 +1686,18 @@ mod statement_tests {
         assert!(!is_destructive("UPDATE t SET a = 1 WHERE id = 2"));
         assert!(!is_destructive("delete from t where id=1"));
         assert!(!is_destructive("SELECT * FROM drops"));
+    }
+
+    #[test]
+    fn safe_mode_save_confirm_flags_writes() {
+        assert!(is_write("INSERT INTO t VALUES (1)"));
+        assert!(is_write("-- fix\nUPDATE t SET a = 1 WHERE id = 2"));
+        assert!(is_write("/* x */ create table t (id int)"));
+        assert!(is_write("DROP TABLE t"));
+        assert!(!is_write("SELECT * FROM inserts"));
+        assert!(!is_write("with x as (select 1) select * from x"));
+        assert!(!is_write("BEGIN;"));
+        assert!(!is_write("set search_path = app"));
     }
 
     #[test]
