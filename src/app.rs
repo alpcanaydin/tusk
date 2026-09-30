@@ -338,7 +338,11 @@ impl TuskApp {
         Self {
             screen: AppScreen::Connection,
             status_line: "Not connected".to_string(),
-            toasts: Vec::new(),
+            // A connections.json that couldn't be read was set aside at load.
+            toasts: db::take_load_notice()
+                .map(|m| (Some(false), m))
+                .into_iter()
+                .collect(),
             form,
             pool: None,
             tunnel: None,
@@ -871,15 +875,10 @@ impl TuskApp {
                 "the password can't be read back from the credential store ({e})"
             )),
         };
-        if let Some(ix) = self.form.saved.iter().position(|c| c.name == conn.name) {
-            self.form.saved[ix] = conn.clone();
-            self.form.selected = Some(ix);
-        } else {
-            self.form.saved.push(conn.clone());
-            self.form.selected = Some(self.form.saved.len() - 1);
-        }
-        match db::save_connections(&self.form.saved) {
-            Ok(()) => {
+        match db::upsert_connection(conn.clone(), None) {
+            Ok((list, ix)) => {
+                self.form.saved = list;
+                self.form.selected = Some(ix);
                 self.form.notice = Some(match keychain_warning {
                     Some(w) => (
                         false,
@@ -912,10 +911,10 @@ impl TuskApp {
                 match result {
                     Ok(c) => this.connected_with(c, &conn, &password, cx),
                     Err(e) => {
-                        // Outside the dialog (welcome list, ⌘1…) only a toast is seen.
+                        // Outside the dialog (welcome list, ⌘1…) only a toast is
+                        // seen: render turns the error notice into one.
                         log::warn!("connect {}: {e}", conn.name);
-                        this.toast(false, format!("{}: {e}", conn.name));
-                        this.form.notice = Some((false, e));
+                        this.form.notice = Some((false, format!("{}: {e}", conn.name)));
                     }
                 }
                 cx.notify();
@@ -2293,7 +2292,7 @@ impl TuskApp {
                         this.connected_with(c, &conn, &pw, cx);
                     }
                     Err(e) => {
-                        this.toast(false, format!("{}: {e}", conn.name));
+                        // Render turns the error notice into a toast.
                         this.form.notice = Some((false, format!("{}: {e}", conn.name)));
                     }
                 }

@@ -367,20 +367,36 @@ impl ConnDialog {
         .detach();
     }
 
-    fn on_save(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((conn, password)) = self.read_or_notice(cx) else {
-            return;
-        };
+    /// A new profile (or a rename) may not take an existing profile's name:
+    /// saving would silently replace that profile.
+    fn name_taken_notice(&mut self, name: &str, cx: &mut Context<Self>) -> bool {
+        if !db::connection_name_taken(name, self.form.editing.as_deref()) {
+            return false;
+        }
+        self.form.notice = Some((
+            false,
+            format!("A connection named “{name}” already exists. Pick another name."),
+        ));
+        cx.notify();
+        true
+    }
+
+    /// Write the profile to `connections.json` and its secrets to the
+    /// Keychain (Save, and Connect — a profile you connected to is kept).
+    /// Ok carries a Keychain warning, if any; Err the message to show.
+    fn persist(
+        &mut self,
+        conn: &db::SavedConnection,
+        password: &str,
+        ssh_secret: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<String>, String> {
         // Verify the write by reading back: some environments (e.g. unsigned
         // dev builds) silently drop Keychain writes, and a false "Saved"
         // leaves the user locked out on restart with no explanation.
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
-            if let Err(e) = db::save_password(&conn.name, &password) {
-                self.form.notice = Some((false, format!("Credential store error: {e}")));
-                cx.notify();
-                return;
-            }
+            db::save_password(&conn.name, password).map_err(|e| format!("Credential store error: {e}"))?;
             match db::load_password(&conn.name) {
                 Ok(back) if back == password => {}
                 Ok(_) => {
@@ -394,72 +410,63 @@ impl ConnDialog {
                 }
             }
         }
-        let ssh_secret = self.form.ssh_secret_text(cx);
-        if conn.ssh.is_some()
-            && !ssh_secret.is_empty()
-            && let Err(e) = db::save_ssh_secret(&conn.name, &ssh_secret)
-        {
-            {
-                self.form.notice = Some((false, format!("Credential store error: {e}")));
-                cx.notify();
-                return;
-            }
+        if conn.ssh.is_some() && !ssh_secret.is_empty() {
+            db::save_ssh_secret(&conn.name, ssh_secret)
+                .map_err(|e| format!("Credential store error: {e}"))?;
         }
         // Editing an existing profile: replace it in place (a rename moves
-        // its Keychain secrets along); otherwise add or overwrite by name.
+        // its Keychain secrets along); otherwise add or update by name.
         let original = self.form.editing.clone();
-        let slot = original
-            .as_ref()
-            .and_then(|old| self.form.saved.iter().position(|c| c.name == *old))
-            .or_else(|| self.form.saved.iter().position(|c| c.name == conn.name));
-        if let Some(old) = original.filter(|old| *old != conn.name) {
+        if let Some(old) = original.as_ref().filter(|old| **old != conn.name) {
             if password.is_empty()
-                && let Ok(pw) = db::load_password(&old)
+                && let Ok(pw) = db::load_password(old)
             {
                 let _ = db::save_password(&conn.name, &pw);
             }
             if ssh_secret.is_empty()
-                && let Some(sec) = db::load_ssh_secret(&old)
+                && let Some(sec) = db::load_ssh_secret(old)
             {
                 let _ = db::save_ssh_secret(&conn.name, &sec);
             }
-            db::delete_secrets(&old);
+            db::delete_secrets(old);
         }
-        match slot {
-            Some(ix) => {
-                self.form.saved[ix] = conn.clone();
-                self.form.selected = Some(ix);
-            }
-            None => {
-                self.form.saved.push(conn.clone());
-                self.form.selected = Some(self.form.saved.len() - 1);
-            }
-        }
+        let (list, ix) = db::upsert_connection(conn.clone(), original.as_deref())
+            .map_err(|e| format!("Save failed: {e:#}"))?;
+        self.form.saved = list;
+        self.form.selected = Some(ix);
         self.form.editing = Some(conn.name.clone());
-        match db::save_connections(&self.form.saved) {
-            Ok(()) => {
-                // The welcome screen lists saved connections — show it now,
-                // not only after a restart.
-                let main = cx.global::<TuskHandle>().0.clone();
-                main.update(cx, |app, cx| app.reload_saved_connections(cx));
-                self.form.notice = Some(match keychain_warning {
-                    Some(w) => (
-                        false,
-                        format!(
-                            "Saved “{}” — but {w}; it won't survive a restart.",
-                            conn.name
-                        ),
-                    ),
-                    None => (true, format!("Saved “{}”.", conn.name)),
-                });
-                // Saved cleanly: done, close the window. A Keychain warning
-                // keeps it open so the message can be read.
-                if self.form.notice.as_ref().is_some_and(|(ok, _)| *ok) {
-                    window.remove_window();
-                    return;
-                }
+        // The welcome screen lists saved connections — show it now, not only
+        // after a restart.
+        let main = cx.global::<TuskHandle>().0.clone();
+        main.update(cx, |app, cx| app.reload_saved_connections(cx));
+        Ok(keychain_warning)
+    }
+
+    fn on_save(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((conn, password)) = self.read_or_notice(cx) else {
+            return;
+        };
+        if self.name_taken_notice(&conn.name, cx) {
+            return;
+        }
+        let ssh_secret = self.form.ssh_secret_text(cx);
+        match self.persist(&conn, &password, &ssh_secret, cx) {
+            // Saved cleanly: done, close the window.
+            Ok(None) => {
+                window.remove_window();
+                return;
             }
-            Err(e) => self.form.notice = Some((false, format!("Save failed: {e:#}"))),
+            // A Keychain warning keeps it open so the message can be read.
+            Ok(Some(w)) => {
+                self.form.notice = Some((
+                    false,
+                    format!(
+                        "Saved “{}” — but {w}; it won't survive a restart.",
+                        conn.name
+                    ),
+                ));
+            }
+            Err(e) => self.form.notice = Some((false, e)),
         }
         cx.notify();
     }
@@ -468,19 +475,33 @@ impl ConnDialog {
         let Some((conn, password)) = self.read_or_notice(cx) else {
             return;
         };
+        if self.name_taken_notice(&conn.name, cx) {
+            return;
+        }
         let ssh_secret = self.form.ssh_secret_text(cx);
         self.form.busy = true;
         self.form.notice = Some((true, format!("Connecting to {}…", conn.name)));
         cx.notify();
         let dialog_window = window.window_handle();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            let result = db::connect(conn.clone(), password.clone(), Some(ssh_secret)).await;
+            let result =
+                db::connect(conn.clone(), password.clone(), Some(ssh_secret.clone())).await;
             let main = cx.update(|cx| cx.global::<TuskHandle>().0.clone());
             let _ = weak.update(cx, |this: &mut ConnDialog, cx| {
                 this.form.busy = false;
                 match result {
                     Ok(c) => {
+                        // Connected: keep the profile (before `connected_with`,
+                        // which stamps it as recently used).
+                        let saved = this.persist(&conn, &password, &ssh_secret, cx);
                         main.update(cx, |app, cx| {
+                            match saved {
+                                Ok(None) => {}
+                                Ok(Some(w)) => {
+                                    app.toast(false, format!("Saved “{}” — but {w}.", conn.name))
+                                }
+                                Err(e) => app.toast(false, e),
+                            }
                             app.connected_with(c, &conn, &password, cx);
                         });
                         cx.notify();

@@ -17,9 +17,12 @@ use super::*;
 use crate::dialog::ConnDialog;
 
 impl TuskApp {
-    /// Saved-profile indexes, most recently used first (never-used last).
+    /// Indexes of the profiles actually connected to, most recent first
+    /// (imported or never-used profiles aren't "recent").
     pub(super) fn recent_indexes(&self) -> Vec<usize> {
-        let mut ix: Vec<usize> = (0..self.form.saved.len()).collect();
+        let mut ix: Vec<usize> = (0..self.form.saved.len())
+            .filter(|&i| self.form.saved[i].last_used.is_some())
+            .collect();
         ix.sort_by_key(|&i| std::cmp::Reverse(self.form.saved[i].last_used.unwrap_or(0)));
         ix
     }
