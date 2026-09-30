@@ -309,6 +309,9 @@ pub struct ExportWindow {
     columns: Vec<String>,
     /// Picked fields; empty = all.
     fields: Vec<String>,
+    /// Opened for several tables (Export Tables…): the table list stays,
+    /// whatever is ticked; the fields picker joins it for a single table.
+    multi: bool,
     busy: bool,
     notice: Option<(bool, String)>,
 }
@@ -358,9 +361,11 @@ impl ExportWindow {
             Source::Result { columns, .. } => columns.clone(),
             _ => Vec::new(),
         };
+        let multi = matches!(&source, Source::Tables { picked, .. } if picked.len() != 1);
         let mut this = Self {
             focus: cx.focus_handle(),
             pool,
+            multi,
             source,
             opts: Options::default(),
             file_name,
@@ -666,50 +671,56 @@ impl ExportWindow {
                     }),
             );
 
-        // Several tables → table list; one table / result → field chips.
-        let several = matches!(&self.source, Source::Tables { picked, .. } if picked.len() != 1);
-        let picker: AnyElement = if several {
-            let Source::Tables { all, picked, .. } = &self.source else {
-                unreachable!()
-            };
-            let mut list = div().flex().flex_col().gap_1();
-            for (i, name) in all.iter().enumerate() {
-                let (checked, n2) = (picked.contains(name), name.clone());
-                list = list.child(
-                    Checkbox::new(SharedString::from(format!("exp-t-{i}")))
-                        .label(name.clone())
-                        .checked(checked)
-                        .on_click(cx.listener(move |this, on: &bool, _, cx| {
-                            if let Source::Tables { picked, .. } = &mut this.source {
-                                picked.retain(|p| *p != n2);
-                                if *on {
-                                    picked.push(n2.clone());
+        // Export Tables… → table list (kept while ticking); exactly one
+        // table / a result → field chips (under the list when both).
+        let single = match &self.source {
+            Source::Tables { picked, .. } => picked.len() == 1,
+            Source::Result { .. } => true,
+        };
+        let tables_picker: Option<AnyElement> =
+            if let (true, Source::Tables { all, picked, .. }) = (self.multi, &self.source) {
+                let mut list = div().flex().flex_col().gap_1();
+                for (i, name) in all.iter().enumerate() {
+                    let (checked, n2) = (picked.contains(name), name.clone());
+                    list = list.child(
+                        Checkbox::new(SharedString::from(format!("exp-t-{i}")))
+                            .label(name.clone())
+                            .checked(checked)
+                            .on_click(cx.listener(move |this, on: &bool, _, cx| {
+                                if let Source::Tables { picked, .. } = &mut this.source {
+                                    picked.retain(|p| *p != n2);
+                                    if *on {
+                                        picked.push(n2.clone());
+                                    }
                                 }
-                            }
-                            this.fields.clear();
-                            this.load_columns(cx);
-                            cx.notify();
-                        })),
-                );
-            }
-            div()
-                .flex()
-                .flex_col()
-                .child(label("Tables to export"))
-                .child(
-                    div()
-                        .id("exp-tables")
-                        .max_h(px(150.))
-                        .overflow_y_scroll()
-                        .p_2()
-                        .rounded(crate::theme::RADIUS_MD)
-                        .border_1()
-                        .border_color(border)
-                        .bg(card)
-                        .child(list),
-                )
-                .into_any_element()
-        } else {
+                                this.fields.clear();
+                                this.load_columns(cx);
+                                cx.notify();
+                            })),
+                    );
+                }
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(label("Tables to export"))
+                    .child(
+                        div()
+                            .id("exp-tables")
+                            .max_h(px(150.))
+                            .overflow_y_scroll()
+                            .p_2()
+                            .rounded(crate::theme::RADIUS_MD)
+                            .border_1()
+                            .border_color(border)
+                            .bg(card)
+                            .child(list),
+                    )
+                    .into_any_element()
+                    .into()
+            } else {
+                None
+            };
+        let fields_picker: Option<AnyElement> = if single {
             // Field chips: highlighted = exported; click to toggle.
             let mut chips = div().flex().flex_wrap().gap_1();
             for (i, c) in self.columns.iter().enumerate() {
@@ -774,6 +785,9 @@ impl ExportWindow {
                         .child(chips),
                 )
                 .into_any_element()
+                .into()
+        } else {
+            None
         };
 
         let query = div().flex().flex_col().child(label("Export query")).child(
@@ -1038,7 +1052,8 @@ impl ExportWindow {
                     .pt_3()
                     .pb_4()
                     .child(file_row)
-                    .child(picker)
+                    .children(tables_picker)
+                    .children(fields_picker)
                     .child(query)
                     .child(format_card),
             )
