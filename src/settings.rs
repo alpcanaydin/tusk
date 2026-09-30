@@ -82,7 +82,8 @@ pub struct Prefs {
     // ---- safe mode ----
     /// Ask before DROP / TRUNCATE / ALTER and UPDATE / DELETE without WHERE.
     pub confirm_destructive: bool,
-    /// Ask before ⌘S writes pending changes.
+    /// Ask before ⌘S writes pending changes, and before the SQL editor runs
+    /// a statement that writes (INSERT / UPDATE / DELETE / DDL).
     pub confirm_save: bool,
     /// Accent (primary) color name, see [`ACCENTS`]; "Theme" = the theme's own.
     pub accent: String,
@@ -725,7 +726,7 @@ impl SettingsWindow {
                     ))
                     .item(switch(
                         "Confirm Before Saving",
-                        "Ask before ⌘S writes pending changes to the database.",
+                        "Ask before ⌘S writes pending changes, or a query writes to the database.",
                         |p| p.confirm_save,
                         |p, v| p.confirm_save = v,
                         d.confirm_save,
