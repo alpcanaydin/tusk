@@ -6,6 +6,9 @@ name: release
 'on':
   push:
     tags: ['v*']
+  # Dry run from any branch: builds the Linux and Windows packages only
+  # (the macOS job needs the tag-only "release" environment).
+  workflow_dispatch:
 
 # One release at a time, never cancelled half-way through notarization.
 concurrency:
@@ -27,7 +30,9 @@ jobs:
     steps:
       - id: check
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          elif gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::$GITHUB_REF_NAME is already published"
             echo "published=true" >> "$GITHUB_OUTPUT"
           else
@@ -126,8 +131,8 @@ jobs:
 
   build:
     name: Build and publish
-    needs: [check, linux, fedora, arch]
-    if: needs.check.outputs.published != 'true'
+    needs: check
+    if: needs.check.outputs.published != 'true' && github.ref_type == 'tag'
     runs-on: macos-15
     timeout-minutes: 90
     # The signing secrets live in this environment only.
@@ -166,25 +171,20 @@ jobs:
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
 
+      # Hand-written notes (docs/release-notes/<version>.md) when present,
+      # otherwise GitHub's generated changelog.
       - name: Release notes
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
-            -f tag_name="$GITHUB_REF_NAME" --jq .body > "$RUNNER_TEMP/notes.md"
-          cat >> "$RUNNER_TEMP/notes.md" <<'EOF'
-
-          ### Linux build (x86_64)
-
-          Ubuntu 24.04: download and install the `.deb` with `sudo apt install ./Tusk-*-ubuntu-amd64.deb`.
-          Fedora: download and install the `.rpm` with `sudo dnf install ./Tusk-*-fedora-x86_64.rpm`.
-          Arch Linux: download and install the `.pkg.tar.zst` with `sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst`.
-
-          This build runs on Wayland with Xwayland fallback. It includes both SQL
-          language servers. Install your distribution's PostgreSQL client tools
-          for backup and restore, and use a Secret Service provider to save passwords.
-          See the README for system dependencies and source build instructions.
-          EOF
+          notes="docs/release-notes/$VERSION.md"
+          if [ -f "$notes" ]; then
+            cp "$notes" "$RUNNER_TEMP/notes.md"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$GITHUB_REF_NAME" --jq .body > "$RUNNER_TEMP/notes.md"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Build, sign, notarize
         run: scripts/release.sh "$RUNNER_TEMP/notes.md"
@@ -202,31 +202,10 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Download Linux packages
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: linux-build
-          path: target/release/bundle
-
-      - name: Download Fedora RPM
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: fedora-rpm
-          path: target/release/bundle
-
-      - name: Download Arch package
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: arch-pkg
-          path: target/release/bundle
-
       - name: Publish the release
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "target/release/bundle/Tusk-$VERSION-arm64.dmg" \
-            "target/release/bundle/Tusk-$VERSION-ubuntu-amd64.deb" \
-            "target/release/bundle/Tusk-$VERSION-fedora-x86_64.rpm" \
-            "target/release/bundle/Tusk-$VERSION-arch-x86_64.pkg.tar.zst" \
             target/release/bundle/appcast.xml \
             --repo "$GITHUB_REPOSITORY" --title "Tusk $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
         env:
@@ -238,6 +217,84 @@ jobs:
         run: |
           [ -n "${RELEASE_KEYCHAIN:-}" ] && security delete-keychain "$RELEASE_KEYCHAIN" || true
           rm -f "$RUNNER_TEMP"/notary.p8
+
+  windows:
+    name: Windows (${{ matrix.arch }})
+    needs: check
+    if: needs.check.outputs.published != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ring needs clang; the arm64 image doesn't ship LLVM.
+      - name: Toolchain
+        shell: pwsh
+        run: |
+          if (-not (Get-Command clang -ErrorAction SilentlyContinue)) { choco install llvm -y --no-progress }
+          rustup show active-toolchain
+          if ($LASTEXITCODE -ne 0) { rustup toolchain install }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+          cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
+          $stage = "Tusk-$version-windows-${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item target\release\tusk.exe "$stage\Tusk.exe"
+          Copy-Item LICENSE "$stage\LICENSE.txt"
+          New-Item -ItemType Directory -Force -Path target\release\bundle | Out-Null
+          Compress-Archive -Path "$stage\*" -DestinationPath "target\release\bundle\$stage.zip" -Force
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: target/release/bundle/Tusk-*-windows-*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  # Linux and Windows packages join the release once it exists; a failing
+  # platform never holds back the macOS release (the appcast updates users).
+  attach:
+    name: Attach Linux and Windows packages
+    needs: [build, linux, fedora, arch, windows]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Upload
+        run: |
+          shopt -s nullglob
+          files=(packages/*.deb packages/*.rpm packages/*.pkg.tar.zst packages/*-windows-*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::no Linux or Windows packages to attach"
+            exit 0
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   homebrew:
     name: Homebrew cask
