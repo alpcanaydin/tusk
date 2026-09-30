@@ -503,8 +503,8 @@ impl TuskApp {
             .active_conn
             .as_ref()
             .map(|(c, _)| match &c.ssh {
-                Some(ssh) => format!("{}:{} via ssh {}", c.host, c.port, ssh.host),
-                None => format!("{}:{}", c.host, c.port),
+                Some(ssh) => format!("{} via ssh {}", c.endpoint(), ssh.host),
+                None => c.endpoint(),
             })
             .unwrap_or_default();
         let saved = self.form.saved.clone();
@@ -2167,7 +2167,7 @@ impl TuskApp {
         password: &str,
         cx: &mut Context<Self>,
     ) {
-        let (name, host, port) = (conn.name.clone(), conn.host.clone(), conn.port);
+        let name = conn.name.clone();
         let db::Connected {
             pool,
             tunnel,
@@ -2202,7 +2202,11 @@ impl TuskApp {
         {
             crate::settings::toggle_group_collapsed(cx, folder);
         }
-        self.server_label = Some(format!("{} · {name} @ {host}:{port}", conn.engine.label()));
+        self.server_label = Some(format!(
+            "{} · {name} @ {}",
+            conn.engine.label(),
+            conn.endpoint()
+        ));
         self.status_line.clear();
         self.screen = AppScreen::Workspace;
         self.load_sidebar_after_connect(cx);
@@ -2694,18 +2698,9 @@ impl TuskApp {
         let (muted, fg) = (cx.theme().muted_foreground, cx.theme().foreground);
         use crate::engine::Form;
         let where_ = match conn.engine.form() {
-            Form::File => conn
-                .path
-                .as_deref()
-                .and_then(|p| std::path::Path::new(p).file_name())
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            Form::UrlToken => conn.path.clone().unwrap_or_default(),
-            Form::CloudflareD1 | Form::Snowflake | Form::BigQuery | Form::DynamoDb => {
-                conn.options.values().next().cloned().unwrap_or_default()
-            }
             Form::Server if conn.database.is_empty() => conn.host.clone(),
             Form::Server => format!("{} · {}", conn.host, conn.database),
+            _ => conn.endpoint(),
         };
         let mut detail = format!("{} · {where_}", conn.engine.label());
         if conn.ssh.is_some() {

@@ -141,6 +141,26 @@ impl SavedConnection {
             .and_then(|i| STATUS_COLORS.get(i).copied())
     }
 
+    /// Where the connection points, for the title bar and connection lists:
+    /// the file name for file databases (never a meaningless `host:0`), the
+    /// URL / account for token and cloud engines, `host:port` for servers.
+    pub fn endpoint(&self) -> String {
+        use crate::engine::Form;
+        match self.engine.form() {
+            Form::File => self
+                .path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Form::UrlToken => self.path.clone().unwrap_or_default(),
+            Form::CloudflareD1 | Form::Snowflake | Form::BigQuery | Form::DynamoDb => {
+                self.options.values().next().cloned().unwrap_or_default()
+            }
+            Form::Server => format!("{}:{}", self.host, self.port),
+        }
+    }
+
     /// `postgresql://user@host:port/db` (no password) for "Copy as URL".
     pub fn url(&self) -> String {
         use crate::engine::Form;
@@ -2149,6 +2169,19 @@ mod tests {
             .expect_err("bad ssh password");
         assert!(err.contains("SSH authentication"), "{err}");
         let _ = std::fs::remove_file(kh);
+    }
+
+    #[test]
+    fn endpoint_names_the_file_not_host_zero() {
+        let pg = dev_default();
+        assert_eq!(pg.endpoint(), "127.0.0.1:55432");
+        let lite = SavedConnection {
+            engine: crate::engine::Engine::Sqlite,
+            path: Some("/tmp/demo/shop.sqlite".into()),
+            port: 0,
+            ..dev_default()
+        };
+        assert_eq!(lite.endpoint(), "shop.sqlite");
     }
 
     #[test]

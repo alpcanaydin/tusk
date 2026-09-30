@@ -180,7 +180,10 @@ impl TuskApp {
         };
         let t = cx.theme();
         let (muted, fg) = (t.muted_foreground, t.foreground);
-        let mut detail = format!("{} · {}", conn.host, conn.database);
+        let mut detail = match conn.engine.form() {
+            crate::engine::Form::Server => format!("{} · {}", conn.host, conn.database),
+            _ => conn.endpoint(),
+        };
         if let Some(s) = &conn.ssh {
             detail.push_str(&format!(" · ssh {}", s.host));
         }
