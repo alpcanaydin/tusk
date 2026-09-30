@@ -358,3 +358,14 @@ pub fn no_ligatures() -> FontFeatures {
         ("dlig".into(), 0),
     ]))
 }
+
+/// Secondary windows (connection dialog, settings, export, backup, about).
+/// On Linux they're parented to the main window, so tiling compositors
+/// (Hyprland, Sway…) float them instead of tiling them beside it.
+pub fn secondary_window_kind() -> gpui_kit::WindowKind {
+    if cfg!(target_os = "linux") {
+        gpui_kit::WindowKind::Floating
+    } else {
+        gpui_kit::WindowKind::Normal
+    }
+}

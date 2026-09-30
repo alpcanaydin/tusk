@@ -374,6 +374,7 @@ impl BackupWindow {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(660.), px(380.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             move |window, cx| {

@@ -327,6 +327,7 @@ impl ExportWindow {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(500.), px(480.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             move |window, cx| {

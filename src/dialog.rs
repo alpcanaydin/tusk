@@ -308,6 +308,7 @@ impl ConnDialog {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(600.), px(200.))),
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             |window, cx| {

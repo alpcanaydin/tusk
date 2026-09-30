@@ -32,6 +32,7 @@ impl AboutWindow {
                 is_resizable: false,
                 is_minimizable: false,
                 focus: !crate::background(),
+                kind: crate::theme::secondary_window_kind(),
                 ..TitleBar::window_options()
             },
             |window, cx| {
