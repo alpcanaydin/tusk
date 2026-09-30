@@ -446,7 +446,7 @@ impl TuskApp {
 
         let search = div().px_2().pt_2().pb_1().child(
             Input::new(&self.conn_search)
-                .xsmall()
+                .small()
                 .prefix(Icon::new(IconName::Search).size(px(12.)).text_color(muted))
                 .font_family(crate::settings::ui_font()),
         );
