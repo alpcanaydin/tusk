@@ -192,7 +192,9 @@ impl TuskApp {
             .active_conn
             .as_ref()
             .map(|(c, _)| (c.name.clone(), c.database.clone()));
-        crate::backup::BackupWindow::open(mode, pre, cx);
+        // The password this workspace connected with (maybe not stored).
+        let session = self.active_conn.as_ref().map(|(_, pw)| pw.clone());
+        crate::backup::BackupWindow::open(mode, pre, session, cx);
     }
 
     /// Export window for a table / view; an open, filtered grid of it

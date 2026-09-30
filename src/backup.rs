@@ -341,6 +341,14 @@ pub struct BackupWindow {
     notice: Option<(bool, String)>,
     /// The last backup's file, for "Show in Finder" (see ExportWindow).
     saved: Option<PathBuf>,
+    /// Passwords typed this session, by connection name — the workspace's
+    /// own and any entered below. In memory only.
+    passwords: std::collections::HashMap<String, String>,
+    /// The picked connection needs a password (none stored, or refused).
+    needs_password: bool,
+    password: Entity<InputState>,
+    /// Keep an entered password in the credential store (off by default).
+    store_password: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -349,7 +357,14 @@ static LAST_BACKUP_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::ne
 
 impl BackupWindow {
     /// `preselect`: open with this connection (and database) picked.
-    pub fn open(mode: Mode, preselect: Option<(String, String)>, cx: &mut App) {
+    /// `session`: the password the workspace connected with, for the
+    /// preselected connection (it may not be in the credential store).
+    pub fn open(
+        mode: Mode,
+        preselect: Option<(String, String)>,
+        session: Option<String>,
+        cx: &mut App,
+    ) {
         if let Some(handle) = cx.default_global::<OpenBackup>().0 {
             let _ = cx.update_window(handle, |_, window, _| window.remove_window());
         }
@@ -362,7 +377,7 @@ impl BackupWindow {
                 ..TitleBar::window_options()
             },
             move |window, cx| {
-                let view = cx.new(|cx| Self::new(mode, preselect, window, cx));
+                let view = cx.new(|cx| Self::new(mode, preselect, session, window, cx));
                 view.read(cx).focus.clone().focus(window, cx);
                 cx.new(|cx| Root::new(view, window, cx))
             },
@@ -376,6 +391,7 @@ impl BackupWindow {
     fn new(
         mode: Mode,
         preselect: Option<(String, String)>,
+        session: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -390,7 +406,12 @@ impl BackupWindow {
             st.set_value("{database}_{date}".to_string(), window, cx);
             st
         });
-        let subs = [&conn_search, &db_search]
+        let password = cx.new(|cx| {
+            InputState::new(window, cx)
+                .masked(true)
+                .placeholder("Password")
+        });
+        let mut subs: Vec<Subscription> = [&conn_search, &db_search]
             .into_iter()
             .map(|s| {
                 cx.subscribe(s, |_, _, ev: &InputEvent, cx| {
@@ -400,6 +421,15 @@ impl BackupWindow {
                 })
             })
             .collect();
+        subs.push(cx.subscribe(&password, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. }) {
+                this.submit_password(cx);
+            }
+        }));
+        let mut passwords = std::collections::HashMap::new();
+        if let (Some((name, _)), Some(pw)) = (&preselect, session) {
+            passwords.insert(name.clone(), pw);
+        }
         let tools = installed_tools();
         let mut this = BackupWindow {
             focus: cx.focus_handle(),
@@ -429,6 +459,10 @@ impl BackupWindow {
             modal: false,
             notice: None,
             saved: None,
+            passwords,
+            needs_password: false,
+            password,
+            store_password: false,
             _subs: subs,
         };
         if let Some((conn, database)) = preselect
@@ -453,9 +487,23 @@ impl BackupWindow {
         self.loading = true;
         self.notice = None;
         self.saved = None;
+        self.needs_password = false;
         cx.notify();
+        let typed = self.passwords.get(&conn.name).cloned();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            let password = db::load_password(&conn.name).unwrap_or_default();
+            let stored = match typed {
+                Some(pw) => Some(pw),
+                None => {
+                    cx.background_executor()
+                        .spawn({
+                            let name = conn.name.clone();
+                            async move { db::load_password(&name).ok() }
+                        })
+                        .await
+                }
+            };
+            let missing = stored.as_deref().is_none_or(str::is_empty);
+            let password = stored.unwrap_or_default();
             let result = async {
                 let connected = db::connect(conn.clone(), password.clone(), None).await?;
                 let dbs = db::fetch_databases(&connected.pool).await?;
@@ -487,12 +535,39 @@ impl BackupWindow {
                         this.databases = dbs;
                         this.tool_ix = pick_tools(&this.tools, version);
                     }
-                    Err(e) => this.notice = Some((false, e)),
+                    Err(e) => {
+                        // No password to try, or it was refused: ask here.
+                        if missing || e.to_lowercase().contains("password") {
+                            this.needs_password = true;
+                        }
+                        this.notice = Some((false, e));
+                    }
                 }
                 cx.notify();
             });
         })
         .detach();
+    }
+
+    /// The password typed for the picked connection: try it (and store it
+    /// only when asked to).
+    fn submit_password(&mut self, cx: &mut Context<Self>) {
+        let Some(ix) = self.selected else { return };
+        let Some(name) = self.conns.get(ix).map(|c| c.name.clone()) else {
+            return;
+        };
+        let pw = self.password.read(cx).value().to_string();
+        if pw.is_empty() {
+            return;
+        }
+        if self.store_password
+            && let Err(e) = db::save_password(&name, &pw)
+        {
+            self.notice = Some((false, format!("{} error: {e}", db::CREDENTIAL_STORE)));
+        }
+        self.passwords.insert(name, pw);
+        let database = self.selected_db.clone();
+        self.pick_connection(ix, database, cx);
     }
 
     fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -809,6 +884,49 @@ impl BackupWindow {
                 .text_sm()
                 .text_color(muted)
                 .child("Connecting…")
+                .into_any_element();
+        }
+        if self.needs_password {
+            let name = self
+                .selected
+                .and_then(|ix| self.conns.get(ix))
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            return div()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(fg)
+                        .child(format!("Password for “{name}”")),
+                )
+                .child(Input::new(&self.password).small())
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            Checkbox::new("bk-store-pw")
+                                .label(format!("Store in {}", db::CREDENTIAL_STORE))
+                                .checked(self.store_password)
+                                .on_click(cx.listener(|this, v: &bool, _, cx| {
+                                    this.store_password = *v;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(div().flex_1())
+                        .child(
+                            Button::new("bk-pw-connect")
+                                .label("Connect")
+                                .small()
+                                .primary()
+                                .on_click(cx.listener(|this, _, _, cx| this.submit_password(cx))),
+                        ),
+                )
                 .into_any_element();
         }
         let q = self.db_search.read(cx).value().to_lowercase();

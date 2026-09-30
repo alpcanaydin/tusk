@@ -2988,7 +2988,7 @@ impl TuskApp {
                 "",
                 cx,
                 |_, _, _, cx| {
-                    crate::backup::BackupWindow::open(crate::backup::Mode::Backup, None, cx)
+                    crate::backup::BackupWindow::open(crate::backup::Mode::Backup, None, None, cx)
                 },
             ))
             .child(self.welcome_row(
@@ -2998,7 +2998,7 @@ impl TuskApp {
                 "",
                 cx,
                 |_, _, _, cx| {
-                    crate::backup::BackupWindow::open(crate::backup::Mode::Restore, None, cx)
+                    crate::backup::BackupWindow::open(crate::backup::Mode::Restore, None, None, cx)
                 },
             ));
         // Recent: the five last-used profiles (⌘1–⌘5 follow this order).
