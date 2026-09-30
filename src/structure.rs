@@ -145,8 +145,9 @@ impl StructureDelegate {
         }
     }
 
-    /// A new table: an `id serial` primary key to start from.
-    pub fn new_table(schema: String, table: String) -> Self {
+    /// A new table: an `id` primary key to start from, `id_type` being the
+    /// engine's auto-numbering integer (`Engine::new_table_id_type`).
+    pub fn new_table(schema: String, table: String, id_type: &str) -> Self {
         Self {
             schema,
             table,
@@ -154,7 +155,7 @@ impl StructureDelegate {
             rows: vec![StructRow {
                 orig: None,
                 name: "id".into(),
-                sql_type: "serial".into(),
+                sql_type: id_type.into(),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -897,7 +898,8 @@ mod tests {
 
     #[test]
     fn create_table_uses_primary_key_columns() {
-        let mut d = StructureDelegate::new_table("public".into(), "untitled_table_1".into());
+        let mut d =
+            StructureDelegate::new_table("public".into(), "untitled_table_1".into(), "serial");
         let ix = d.add_column();
         d.rows[ix].name = "tenant".into();
         d.rows[ix].sql_type = "int4".into();

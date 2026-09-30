@@ -127,6 +127,18 @@ impl TuskApp {
 
     /// ⇧⌘⌫: drop every pending change of the active tab and the sidebar.
     pub(super) fn discard_changes(&mut self, cx: &mut Context<Self>) {
+        // A New Table draft is nothing but pending changes: discarding it
+        // removes the draft (tab and sidebar entry) altogether.
+        if let Some(ix) = self.active_tab
+            && let Some(WorkspaceTab::Grid(g)) = self.tabs.get(ix)
+            && g.draft.is_some()
+        {
+            let name = g.table.name.clone();
+            self.close_tab_at(ix, cx);
+            self.toast_info(format!("Discarded new table “{name}”"));
+            cx.notify();
+            return;
+        }
         let mut n = self.pending_drops.len() + self.pending_renames.len();
         self.pending_drops.clear();
         self.pending_renames.clear();

@@ -1163,7 +1163,7 @@ impl TuskApp {
         self.open_grid_tab(table, window, cx);
     }
 
-    fn close_tab_at(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub(super) fn close_tab_at(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix >= self.tabs.len() {
             return;
         }
@@ -1198,6 +1198,50 @@ impl TuskApp {
             other => other,
         };
         cx.notify();
+    }
+
+    /// ⌘W: a tab with unsaved changes (or a New Table draft) asks first.
+    pub(super) fn close_tab_guarded(
+        &mut self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let n = self.tab_pending(ix, cx);
+        if n == 0 {
+            self.close_tab_at(ix, cx);
+            self.focus.focus(window, cx);
+            return;
+        }
+        let is_draft =
+            matches!(self.tabs.get(ix), Some(WorkspaceTab::Grid(g)) if g.draft.is_some());
+        let detail = if is_draft {
+            "The new table hasn't been created yet.".to_string()
+        } else {
+            format!(
+                "{n} unsaved change{} will be discarded.",
+                if n == 1 { "" } else { "s" }
+            )
+        };
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            "Close this tab?",
+            Some(&detail),
+            &["Discard", "Cancel"],
+            cx,
+        );
+        cx.spawn_in(window, async move |weak, cx| {
+            if answer.await != Ok(0) {
+                return;
+            }
+            let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
+                if ix < this.tabs.len() {
+                    this.close_tab_at(ix, cx);
+                    this.focus.focus(window, cx);
+                }
+            });
+        })
+        .detach();
     }
 
     fn refresh_active_tab(&mut self, cx: &mut Context<Self>) {
@@ -1238,12 +1282,26 @@ impl TuskApp {
             .filter(|t| matches!(t, WorkspaceTab::Sql(_)))
             .count()
             + 1;
+        // A plain ⌘T starts from a SELECT on the open table (or the
+        // schema's first one), selected so typing replaces it.
+        let starter = text.is_none();
         let initial = text.unwrap_or_else(|| {
-            crate::ddl::starter_query(
-                db::engine(),
-                &self.current_schema,
-                self.objects.tables.first().map(String::as_str),
-            )
+            let open = self.active_tab.and_then(|ix| match self.tabs.get(ix) {
+                Some(WorkspaceTab::Grid(g)) if g.draft.is_none() => {
+                    Some((g.table.schema.clone(), g.table.name.clone()))
+                }
+                _ => None,
+            });
+            match open {
+                Some((schema, table)) => {
+                    crate::ddl::starter_query(db::engine(), &schema, Some(table.as_str()))
+                }
+                None => crate::ddl::starter_query(
+                    db::engine(),
+                    &self.current_schema,
+                    self.objects.tables.first().map(String::as_str),
+                ),
+            }
         });
         let editor = cx.new(|cx| {
             gpui_kit::component::input::EditorState::new(window, cx)
@@ -1304,6 +1362,9 @@ impl TuskApp {
         self.tabs.push(WorkspaceTab::Sql(tab));
         self.activate_tab(self.tabs.len() - 1, cx);
         editor.read(cx).focus_handle(cx).focus(window, cx);
+        if starter {
+            editor.update(cx, |e, cx| e.select_all(window, cx));
+        }
         cx.notify();
     }
 
@@ -3389,10 +3450,10 @@ impl TuskApp {
                             )
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 cx.stop_propagation();
-                                this.close_tab_at(ix, cx);
-                                // The closed tab may have held focus; without
-                                // it no TuskApp shortcut (⌘⇧P, ⌘T…) fires.
-                                this.focus.focus(w, cx);
+                                // Asks first when the tab has unsaved changes;
+                                // refocuses the app (the closed tab may have
+                                // held focus, and then no shortcut fires).
+                                this.close_tab_guarded(ix, w, cx);
                             })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| this.activate_tab(ix, cx))),
@@ -3998,8 +4059,7 @@ impl Render for TuskApp {
             }))
             .on_action(cx.listener(|this, _: &CloseTab, w, cx| {
                 if let Some(ix) = this.active_tab {
-                    this.close_tab_at(ix, cx);
-                    this.focus.focus(w, cx);
+                    this.close_tab_guarded(ix, w, cx);
                 }
             }))
             .size_full()

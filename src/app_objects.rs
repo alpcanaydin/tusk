@@ -834,11 +834,17 @@ impl TuskApp {
             .child(label("Primary"))
             .child(primary)
             .when(designing, |d| {
-                d.child(div().flex_1()).child(
+                // One line, never squeezed: the hint yields to the name field.
+                d.child(div().flex_1().min_w_0()).child(
                     div()
+                        .flex_none()
+                        .whitespace_nowrap()
                         .text_caption()
                         .text_color(muted)
-                        .child(crate::kbd::rich_colored("[cmd-s] creates the table", muted)),
+                        .child(
+                            crate::kbd::rich_colored("[cmd-s] creates the table", muted)
+                                .flex_nowrap(),
+                        ),
                 )
             })
             .into_any_element()
@@ -923,13 +929,14 @@ impl TuskApp {
             name: name.clone(),
             kind: TableKind::Table,
         };
+        let id_type = pool.engine().new_table_id_type();
         let state = crate::grid::new_state(
             GridDelegate::new(pool, schema.clone(), name.clone(), true),
             window,
             cx,
         );
         let st = crate::structure::new_state(
-            StructureDelegate::new_table(schema, name.clone()),
+            StructureDelegate::new_table(schema, name.clone(), id_type),
             window,
             cx,
         );
