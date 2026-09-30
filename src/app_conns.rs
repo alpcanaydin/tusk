@@ -345,10 +345,17 @@ impl TuskApp {
         count: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        // A search looks through every folder (`pick_matches`), so the rail
+        // shows "All Connections" as the active scope while it's on.
+        let searching = !self.conn_search.read(cx).value().trim().is_empty();
         let t = cx.theme();
         let (muted, fg, accent) = (t.muted_foreground, t.foreground, t.accent);
         let sel_bg = crate::theme::selection(t);
-        let active = self.conn_pick == pick;
+        let active = if searching {
+            pick == FolderPick::All
+        } else {
+            self.conn_pick == pick
+        };
         let group = match &pick {
             FolderPick::Group(g) => Some(g.clone()),
             _ => None,
