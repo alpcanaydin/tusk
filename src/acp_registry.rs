@@ -65,11 +65,10 @@ pub struct CustomAgent {
     pub env: std::collections::BTreeMap<String, String>,
 }
 
+/// Agents, their installs, icons and the MCP bridge socket live in Tusk's
+/// data folder, so a `TUSK_DATA_DIR` profile keeps them separate too.
 pub fn data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("tusk")
-        .join("agents")
+    crate::db::app_dir().join("agents")
 }
 
 /// PATH for agents and installers: the inherited one plus the places node,
