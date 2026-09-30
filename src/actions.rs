@@ -116,7 +116,13 @@ gpui_kit::actions!(
         GridDuplicateRow,
         GridSetNull,
         GridEditNext,
-        GridEditPrev
+        GridEditPrev,
+        MinimizeWindow,
+        ZoomWindow,
+        ToggleFullScreen,
+        BringAllToFront,
+        OpenHelp,
+        ReportIssue
     ]
 );
 
@@ -247,6 +253,8 @@ pub fn bind_keys(cx: &mut App) {
         ),
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("cmd-h", HideApp, None),
+        KeyBinding::new("cmd-m", MinimizeWindow, None),
+        KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
         KeyBinding::new("cmd-,", OpenSettings, None),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("TuskApp")),
         KeyBinding::new("cmd-shift-1", ShowTablesPanel, Some("TuskApp")),
