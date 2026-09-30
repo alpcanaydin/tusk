@@ -741,9 +741,18 @@ where
         }
 
         cx.stop_propagation();
+        // Tusk patch: a right-click selects the cell first (as Finder and
+        // TablePlus do), so the menu's row actions visibly target the
+        // clicked row. No scrolling: the cell is already under the pointer.
+        if !(self.selection_mode.is_cell() && self.selected_cell == Some((row_ix, col_ix))) {
+            self.selection_mode = SelectionMode::Cell;
+            self.selected_cell = Some((row_ix, col_ix));
+            cx.emit(TableEvent::SelectCell(row_ix, col_ix));
+        }
         self.right_clicked_cell = Some((row_ix, col_ix));
         self.right_clicked_row = None;
         cx.emit(TableEvent::RightClickedCell(row_ix, col_ix));
+        cx.notify();
     }
 
     fn on_row_left_click(
