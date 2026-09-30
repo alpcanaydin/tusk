@@ -201,6 +201,21 @@ impl<M: InputModeKind> InputBaseState<M> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Tusk patch: with the completion menu open, Tab accepts the
+        // suggestion (like Return) instead of indenting.
+        if M::is_context_menu_open(self, cx)
+            && M::handle_context_menu_action(
+                self,
+                Box::new(crate::input::Enter {
+                    secondary: false,
+                    shift: false,
+                }),
+                window,
+                cx,
+            )
+        {
+            return;
+        }
         // First, try to accept inline completion if present
         if M::accept_inline_completion(self, window, cx) {
             return;

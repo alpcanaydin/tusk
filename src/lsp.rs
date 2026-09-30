@@ -555,7 +555,14 @@ fn decorate(item: &mut lsp_types::CompletionItem, prefix: &str) {
         && let Some(d) = &item.label_details
     {
         let kind = d.detail.as_deref().unwrap_or("").trim();
-        let detail = match d.description.as_deref() {
+        // An empty description ("Keyword" with no schema) mustn't leave a
+        // dangling "Keyword ·".
+        let detail = match d
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(desc) if !kind.is_empty() => format!("{kind} · {desc}"),
             Some(desc) => desc.to_string(),
             None => kind.to_string(),
@@ -620,6 +627,23 @@ mod tests {
     /// An accepted completion replaces only the word being typed (the kit
     /// used to reuse the first completion's start, so Enter replaced the
     /// line from there), and that word is the prefix the menu matched.
+    /// Snippet completions insert plain text with the caret on the first
+    /// tab stop (raw `${1:}` used to land in the editor).
+    #[test]
+    fn snippets_expand_to_plain_text() {
+        use gpui_kit::base::input::expand_snippet;
+        let (t, r) = expand_snippet("pg_catalog.network_supeq(${1:}, ${2:})");
+        assert_eq!(t, "pg_catalog.network_supeq(, )");
+        assert_eq!(r, Some(25..25));
+        let (t, r) = expand_snippet("coalesce(${1:value}, ${2:default})$0");
+        assert_eq!(t, "coalesce(value, default)");
+        assert_eq!(r, Some(9..14));
+        let (t, r) = expand_snippet("now()$0");
+        assert_eq!((t.as_str(), r), ("now()", Some(5..5)));
+        assert_eq!(expand_snippet("a \\$1 ${1|x,y|}").0, "a $1 x");
+        assert_eq!(expand_snippet("plain").1, None);
+    }
+
     #[test]
     fn completion_replaces_only_the_typed_word() {
         use gpui_kit::base::input::completion_word_start;

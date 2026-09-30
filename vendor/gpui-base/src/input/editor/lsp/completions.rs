@@ -141,7 +141,18 @@ impl InputBaseState<EditorMode> {
         let start = range.end;
         let new_offset = self.cursor();
 
+        // Tusk patch: a statement end, or a non-word character that isn't a
+        // trigger (space, comma, paren…), ends the word being completed —
+        // close the menu instead of leaving it up for the next Return.
+        let ends_word = |c: char| !(c.is_alphanumeric() || c == '_');
+        if new_text.ends_with(';') {
+            self.hide_context_menu(cx);
+            return;
+        }
         if !provider.is_completion_trigger(start, new_text, cx) {
+            if new_text.chars().any(ends_word) {
+                self.hide_context_menu(cx);
+            }
             return;
         }
 
