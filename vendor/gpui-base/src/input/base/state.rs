@@ -2720,6 +2720,10 @@ impl<M: InputModeKind> InputBaseState<M> {
             self.restore_selections(replay.selections);
             self.mode
                 .restore_auto_closed_pairs(replay.auto_closed_pairs.unwrap_or_default());
+        } else {
+            // Tusk patch: nothing to undo in this field → let the app undo
+            // (e.g. a grid cell editor passes ⌘Z on to the grid's changes).
+            cx.propagate();
         }
         self.undo_manager.set_ignoring(false);
     }
@@ -2735,6 +2739,9 @@ impl<M: InputModeKind> InputBaseState<M> {
             self.restore_selections(replay.selections);
             self.mode
                 .restore_auto_closed_pairs(replay.auto_closed_pairs.unwrap_or_default());
+        } else {
+            // Tusk patch: nothing to redo here → the app's redo.
+            cx.propagate();
         }
         self.undo_manager.set_ignoring(false);
     }
