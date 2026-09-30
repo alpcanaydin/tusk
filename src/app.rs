@@ -237,6 +237,8 @@ pub struct TuskApp {
     /// Set on connect: the next render empties the connection search, which
     /// the manager and the connections-tree sidebar share.
     clear_conn_search: bool,
+    /// Set when the connection manager opens: the next render focuses its search.
+    pub(super) focus_conn_search: bool,
     /// Runs parallel to the currently rendered command items.
     pub palette_runs: Vec<crate::palette::RunFn>,
     /// Known tables for quick-open (filled in Phase 5).
@@ -364,6 +366,7 @@ impl TuskApp {
             palette: None,
             conn_manager: false,
             clear_conn_search: false,
+            focus_conn_search: false,
             palette_runs: Vec::new(),
             tables: Vec::new(),
             pending_table: None,
@@ -3868,6 +3871,10 @@ impl Render for TuskApp {
         {
             self.conn_search
                 .update(cx, |s, cx| s.set_value("", window, cx));
+        }
+        if std::mem::take(&mut self.focus_conn_search) && self.conn_manager {
+            let handle = self.conn_search.read(cx).focus_handle(cx);
+            handle.focus(window, cx);
         }
         // The sidebar highlight follows the active tab (none when no table
         // tab is active); a click or right-click in between still moves it.

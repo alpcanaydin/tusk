@@ -317,6 +317,7 @@ impl TuskApp {
 
     pub(super) fn toggle_conn_manager(&mut self, cx: &mut Context<Self>) {
         self.conn_manager = !self.conn_manager;
+        self.focus_conn_search = self.conn_manager;
         cx.notify();
     }
 
