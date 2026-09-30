@@ -538,47 +538,29 @@ impl ConnDialog {
         let border = cx.theme().border;
         let busy = self.form.busy;
 
-        // Result toast: floats at the top under the title bar (click to
-        // dismiss), so it never shifts layout or the content-fit window height.
-        let elevated = cx.theme().colors.muted;
+        // Result / progress line: inline, right above the buttons, so it
+        // never covers a field (click to dismiss). The window grows to fit.
         let notice = self.form.notice.clone().map(|(ok, text)| {
-            let (fg, bd) = if ok {
-                (ok_green, ok_green)
+            let fg = if busy {
+                muted
+            } else if ok {
+                ok_green
             } else {
-                (err_red, err_red)
+                err_red
             };
             div()
-                .absolute()
-                .top(px(44.))
-                .left(px(0.))
-                .right(px(0.))
-                .flex()
-                .flex_row()
-                .justify_center()
-                .child(
-                    div()
-                        .id("dlg-notice")
-                        .rounded(crate::theme::RADIUS_LG)
-                        .border_1()
-                        .border_color(bd.opacity(0.5))
-                        .shadow_md()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.form.notice = None;
-                            cx.notify();
-                        }))
-                        .bg(elevated)
-                        .px_4()
-                        .py_2()
-                        // Long server errors must wrap inside the dialog.
-                        .max_w(px(520.))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_family(crate::settings::ui_font())
-                                .text_color(fg)
-                                .child(text),
-                        ),
-                )
+                .id("dlg-notice")
+                .px_1()
+                .text_sm()
+                .font_family(crate::settings::ui_font())
+                .text_color(fg)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if !this.form.busy {
+                        this.form.notice = None;
+                        cx.notify();
+                    }
+                }))
+                .child(text)
         });
 
         // ---- connection form: cards of label/field rows ----
@@ -1013,16 +995,19 @@ impl ConnDialog {
                             .pt_3()
                             .pb_4()
                             .child(measure)
-                            .when(self.choosing, |d| d.child(self.render_engine_grid(cx)))
-                            .when(!self.choosing, |d| {
-                                d.child(identity)
-                                    .child(server)
-                                    .children(ssh_card.filter(|_| can_ssh))
-                                    .child(footer)
+                            .map(|d| {
+                                if self.choosing {
+                                    d.child(self.render_engine_grid(cx)).children(notice)
+                                } else {
+                                    d.child(identity)
+                                        .child(server)
+                                        .children(ssh_card.filter(|_| can_ssh))
+                                        .children(notice)
+                                        .child(footer)
+                                }
                             }),
                     ),
             )
-            .children(notice)
     }
 }
 
@@ -1136,7 +1121,8 @@ impl ConnDialog {
                     .child(
                         Button::new("dlg-create")
                             .label("Create")
-                            .primary()
+                            // Import is the default while the URL field is open.
+                            .when(self.url.is_none(), |b| b.primary())
                             .w(px(84.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let e = this.picked;
@@ -1225,8 +1211,28 @@ impl ConnDialog {
         if let Some(d) = parsed.database {
             set(&self.form.database, d, window, cx);
         }
-        if let Some(p) = parsed.path {
+        let file = parsed.path.as_deref().map(|p| {
+            std::path::Path::new(p)
+                .file_name()
+                .map_or_else(|| p.to_string(), |f| f.to_string_lossy().into_owned())
+        });
+        if let Some(p) = parsed.path.clone() {
             set(&self.form.path, p, window, cx);
+        }
+        // A name to start from ("tusk_dev @ 127.0.0.1", or the file name).
+        if self.form.name.read(cx).value().trim().is_empty() {
+            let host = self.form.host.read(cx).value().to_string();
+            let db = self.form.database.read(cx).value().to_string();
+            let name = match (file, db.is_empty(), host.is_empty()) {
+                (Some(f), _, _) => f,
+                (None, false, false) => format!("{db} @ {host}"),
+                (None, true, false) => host,
+                (None, false, true) => db,
+                (None, true, true) => String::new(),
+            };
+            if !name.is_empty() {
+                set(&self.form.name, name, window, cx);
+            }
         }
         cx.notify();
     }
@@ -1234,12 +1240,6 @@ impl ConnDialog {
 
 impl Render for ConnDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Finished results go out as toasts; progress stays inline.
-        if !self.form.busy
-            && let Some((ok, msg)) = self.form.notice.take()
-        {
-            crate::toast::push_top(window, cx, Some(ok), msg);
-        }
         div()
             .track_focus(&self.focus)
             .key_context(crate::dialog_keys::CONTEXT)
