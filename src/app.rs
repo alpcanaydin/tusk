@@ -3625,8 +3625,16 @@ impl TuskApp {
         };
         let accent = cx.theme().accent;
         let border = cx.theme().border;
+        let (fg, muted) = (cx.theme().foreground, cx.theme().muted_foreground);
         let pane = |p: usize, tab: usize, this: &Self, cx: &mut Context<Self>| {
             let focused = this.split_focus == p;
+            // Each pane names its tab (the tab bar alone didn't say which
+            // tab sits in which pane); the focused one is underlined in accent.
+            let title = match this.tabs.get(tab) {
+                Some(WorkspaceTab::Grid(g)) => g.table.name.clone(),
+                Some(WorkspaceTab::Sql(t)) => t.title.to_string(),
+                None => String::new(),
+            };
             div()
                 .id(("split-pane", p))
                 .flex_1()
@@ -3635,12 +3643,20 @@ impl TuskApp {
                 .flex()
                 .flex_col()
                 .capture_any_mouse_down(cx.listener(move |this, _, _, cx| this.focus_pane(p, cx)))
-                // The focused pane's top edge carries the accent.
                 .child(
                     div()
-                        .h(px(2.))
                         .flex_none()
-                        .when(focused, |d| d.bg(accent.opacity(0.7))),
+                        .h(px(22.))
+                        .px_2()
+                        .flex()
+                        .items_center()
+                        .border_b_2()
+                        .border_color(if focused { accent.opacity(0.8) } else { border })
+                        .text_caption()
+                        .font_family(crate::settings::ui_font())
+                        .text_color(if focused { fg } else { muted })
+                        .truncate()
+                        .child(title),
                 )
                 .child(this.render_tab_area(Some(tab), cx))
         };
