@@ -33,6 +33,12 @@ pub fn install(cx: &mut App) {
     });
     cx.on_action(|_: &OpenHelp, cx| cx.open_url(REPO));
     cx.on_action(|_: &ReportIssue, cx| cx.open_url(&format!("{REPO}/issues/new")));
+    // The standard macOS Window-menu shortcuts.
+    #[cfg(target_os = "macos")]
+    cx.bind_keys([
+        KeyBinding::new("cmd-m", MinimizeWindow, None),
+        KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+    ]);
     refresh(cx);
 }
 
