@@ -147,9 +147,12 @@ impl TuskApp {
     pub(super) fn grid_copy(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut copied = None;
         self.with_active_grid(window, cx, |st, _, _| {
-            let cell = st.selected_cell();
-            let row = st.selected_row();
-            copied = st.delegate().copy_text(cell, row);
+            copied = match st.selected_range() {
+                Some((from, to)) => Some(st.delegate().copy_range(from, to)),
+                None => st
+                    .delegate()
+                    .copy_text(st.selected_cell(), st.selected_row()),
+            };
         });
         if let Some(text) = copied {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -163,7 +166,12 @@ impl TuskApp {
         };
         let mut n = 0;
         self.with_active_grid(window, cx, |st, _, cx| {
-            if let Some((r, c)) = st.selected_cell() {
+            // Into a selected range, paste starts at its top-left cell.
+            let start = st
+                .selected_range()
+                .map(|(from, _)| from)
+                .or(st.selected_cell());
+            if let Some((r, c)) = start {
                 n = st.delegate_mut().paste_text(r, c, &text);
                 cx.notify();
             }

@@ -543,6 +543,19 @@ impl GridDelegate {
         }
     }
 
+    /// ⌘C on a cell range: its cells as tab / newline separated text.
+    pub fn copy_range(&self, (r0, c0): (usize, usize), (r1, c1): (usize, usize)) -> String {
+        (r0..=r1)
+            .map(|r| {
+                (c0..=c1.min(self.columns.len().saturating_sub(1)))
+                    .map(|c| self.cell_plain(r, c))
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// ⇧⌘V: tab / newline separated text into the cells from `(row, col)`
     /// on, as pending changes (`NULL` pastes a NULL). Returns cells set.
     pub fn paste_text(&mut self, row: usize, col: usize, text: &str) -> usize {

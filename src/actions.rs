@@ -281,6 +281,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-c", GridCopy, Some("DataTable")),
         KeyBinding::new("secondary-shift-c", GridCopyCells, Some("DataTable")),
         KeyBinding::new("secondary-shift-v", GridPaste, Some("DataTable")),
+        // ⌘V outside a cell editor pastes into the grid too (the editor's
+        // own Input binding wins while a cell is being edited).
+        KeyBinding::new("secondary-v", GridPaste, Some("DataTable")),
         KeyBinding::new("secondary-shift-c", ToggleConsole, Some("Input")),
         KeyBinding::new("secondary-shift-m", ToggleProblems, Some("DataTable")),
         KeyBinding::new("secondary-shift-m", ToggleProblems, Some("Input")),
