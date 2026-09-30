@@ -58,6 +58,8 @@ pub async fn columns(rows: &RowsFn, table: &str) -> DbResult<Vec<GridColumnMeta>
         .map(|r| {
             let name = s(&r["name"]);
             let ty = s(&r["type"]);
+            let is_pk =
+                r["pk"].as_i64().unwrap_or(0) > 0 || s(&r["pk"]).parse::<i64>().unwrap_or(0) > 0;
             let fk = fks
                 .iter()
                 .find(|f| s(&f["from"]) == name)
@@ -65,14 +67,18 @@ pub async fn columns(rows: &RowsFn, table: &str) -> DbResult<Vec<GridColumnMeta>
             GridColumnMeta {
                 pg_type: super::short_type(if ty.is_empty() { "text" } else { &ty }),
                 sql_type: if ty.is_empty() { "ANY".into() } else { ty },
-                nullable: r["notnull"].as_i64().unwrap_or(0) == 0 && s(&r["notnull"]) != "1",
+                // PRAGMA table_info reports notnull=0 for an INTEGER PRIMARY
+                // KEY (the rowid alias), which can't hold NULL: show keys as
+                // NOT NULL.
+                nullable: !is_pk
+                    && r["notnull"].as_i64().unwrap_or(0) == 0
+                    && s(&r["notnull"]) != "1",
                 default: match &r["dflt_value"] {
                     Value::Null => None,
                     v => Some(s(v)),
                 },
                 comment: None,
-                is_pk: r["pk"].as_i64().unwrap_or(0) > 0
-                    || s(&r["pk"]).parse::<i64>().unwrap_or(0) > 0,
+                is_pk,
                 foreign_key: fk,
                 enum_values: Vec::new(),
                 name,
@@ -426,6 +432,11 @@ mod tests {
             ),
         )
         .unwrap();
+        let cols = rt
+            .block_on(db.driver().columns(String::new(), "people".into()))
+            .unwrap();
+        assert!(!cols[0].nullable, "INTEGER PRIMARY KEY can't be NULL");
+        assert!(cols[1].nullable);
         crate::drivers::live::exercise(c, "", "people", "email");
         let _ = std::fs::remove_dir_all(&dir);
     }
