@@ -69,6 +69,21 @@ impl TuskApp {
             })
         };
 
+        let danger = |label: &'static str,
+                      f: fn(
+            &mut TuskApp,
+            TableKind,
+            String,
+            &mut Window,
+            &mut Context<TuskApp>,
+        )| {
+            let (k, n) = (kind.clone(), name.clone());
+            crate::theme::danger_item(label, move |_, window, cx| {
+                let (k, n) = (k.clone(), n.clone());
+                with_app(cx, |app, cx| f(app, k, n, window, cx));
+            })
+        };
+
         let mut menu = menu.item(item(
             if is_fn { "Select" } else { "Open" },
             |app, k, n, w, cx| {
@@ -91,7 +106,7 @@ impl TuskApp {
                     let schema = app.current_schema.clone();
                     app.send_table_to_chat(k, schema, n, w, cx);
                 })
-                .icon(IconName::Sparkles),
+                .action(Box::new(SendToChat)),
             )
             .item(PopupMenuItem::submenu("Copy Script As", script_menu))
             .item(PopupMenuItem::submenu(
@@ -99,9 +114,10 @@ impl TuskApp {
                 open_script_menu,
             ))
             .separator()
-            .item(item("New Query", |app, _, _, w, cx| {
-                app.open_sql_tab(w, cx)
-            }))
+            .item(
+                item("New Query", |app, _, _, w, cx| app.open_sql_tab(w, cx))
+                    .action(Box::new(NewSqlTab)),
+            )
             .item(item("New Table…", |app, _, _, w, cx| {
                 app.new_table_editor(w, cx)
             }))
@@ -143,21 +159,29 @@ impl TuskApp {
                     }),
                 )
             });
+            menu = menu.item(PopupMenuItem::submenu("Duplicate", dup));
+        }
+        menu = menu.item(
+            item("Refresh", |app, _, _, _, cx| {
+                let schema = app.current_schema.clone();
+                app.fetch_objects_for(&schema, cx);
+            })
+            .action(Box::new(RefreshActive)),
+        );
+        // Destructive actions last, in red.
+        menu = menu.separator();
+        if is_table {
             menu = menu
-                .item(PopupMenuItem::submenu("Duplicate", dup))
-                .item(item("Truncate…", |app, _, n, w, cx| {
+                .item(danger("Truncate…", |app, _, n, w, cx| {
                     app.truncate_object(n, false, w, cx)
                 }))
-                .item(item("Truncate Cascade…", |app, _, n, w, cx| {
+                .item(danger("Truncate Cascade…", |app, _, n, w, cx| {
                     app.truncate_object(n, true, w, cx)
                 }));
         }
-        menu.item(item("Delete", |app, k, n, _, cx| app.toggle_drop(k, n, cx)))
-            .separator()
-            .item(item("Refresh", |app, _, _, _, cx| {
-                let schema = app.current_schema.clone();
-                app.fetch_objects_for(&schema, cx);
-            }))
+        menu.item(danger("Delete", |app, k, n, _, cx| {
+            app.toggle_drop(k, n, cx)
+        }))
     }
 
     /// Backup / Restore window, the current connection + database picked.
@@ -648,12 +672,13 @@ impl TuskApp {
                         with_app(cx, |app, cx| app.start_obj_group_rename(r, window, cx));
                     }),
                 )
-                .item(
-                    PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+                .item(crate::theme::danger_item(
+                    "Delete Group",
+                    move |_, _, cx| {
                         let d = d.clone();
                         with_app(cx, |app, cx| app.delete_obj_group(d, cx));
-                    }),
-                )
+                    },
+                ))
             })
             .into_any_element()
     }

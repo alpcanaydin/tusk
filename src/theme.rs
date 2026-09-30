@@ -295,3 +295,15 @@ pub fn backdrop(t: &gpui_kit::component::theme::Theme) -> Hsla {
         gpui_kit::black().opacity(0.2)
     }
 }
+
+/// A destructive context-menu item: red label, listed last.
+pub fn danger_item(
+    label: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> gpui_kit::component::menu::PopupMenuItem {
+    use gpui_kit::component::theme::ActiveTheme as _;
+    gpui_kit::component::menu::PopupMenuItem::element(move |_, cx| {
+        div().text_color(cx.theme().red).child(label)
+    })
+    .on_click(on_click)
+}

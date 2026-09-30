@@ -501,7 +501,7 @@ fn result_cell_menu(
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")
-                .icon(gpui_kit::assets::IconName::Sparkles)
+                .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
                     let cols: Vec<String> = d.columns.iter().map(|c| c.name.clone()).collect();
@@ -518,19 +518,17 @@ fn result_cell_menu(
         });
     if editable {
         let e = entity.clone();
-        menu = menu.separator().item(
-            PopupMenuItem::new(if deleted {
-                "Undo Delete Row"
-            } else {
-                "Delete Row"
-            })
-            .on_click(move |_, _, cx| {
-                e.update(cx, |st, cx| {
-                    st.delegate_mut().toggle_delete(row_ix);
-                    cx.notify();
-                });
-            }),
-        );
+        let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+            e.update(cx, |st, cx| {
+                st.delegate_mut().toggle_delete(row_ix);
+                cx.notify();
+            });
+        };
+        menu = menu.separator().item(if deleted {
+            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+        } else {
+            crate::theme::danger_item("Delete Row", toggle)
+        });
     }
     menu
 }

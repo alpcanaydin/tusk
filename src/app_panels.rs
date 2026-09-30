@@ -350,12 +350,13 @@ impl TuskApp {
             cx.write_to_clipboard(ClipboardItem::new_string(s3.clone()));
         }))
         .separator()
-        .item(
-            PopupMenuItem::new("Remove from History").on_click(move |_, _, cx| {
+        .item(crate::theme::danger_item(
+            "Remove from History",
+            move |_, _, cx| {
                 console::remove_history(at, &s4);
                 with_app(cx, |_, cx| cx.notify());
-            }),
-        )
+            },
+        ))
     }
 
     // ---------- Bottom panel ----------

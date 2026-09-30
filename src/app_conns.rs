@@ -292,10 +292,10 @@ impl TuskApp {
                 )
                 .item(PopupMenuItem::submenu("Move to Group", move_menu))
                 .separator()
-                .item(
-                    PopupMenuItem::new("Delete…")
-                        .on_click(call(|this, ix, w, cx| this.delete_connection(ix, w, cx))),
-                )
+                .item(crate::theme::danger_item(
+                    "Delete…",
+                    call(|this, ix, w, cx| this.delete_connection(ix, w, cx)),
+                ))
             })
             .into_any_element()
     }
@@ -407,12 +407,13 @@ impl TuskApp {
                     });
                 }),
             )
-            .item(
-                PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+            .item(crate::theme::danger_item(
+                "Delete Group",
+                move |_, _, cx| {
                     let view = cx.global::<TuskHandle>().0.clone();
                     view.update(cx, |this, cx| this.delete_group(d.clone(), cx));
-                }),
-            )
+                },
+            ))
         })
         .into_any_element()
     }

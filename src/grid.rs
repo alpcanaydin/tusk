@@ -1538,20 +1538,26 @@ fn cell_menu(
     if editable {
         let e = entity.clone();
         menu = menu.item(
-            PopupMenuItem::new("Edit Cell").on_click(move |_, window, cx| {
-                e.update(cx, |st, cx| {
-                    st.set_selected_cell(row_ix, col_ix, cx);
-                    st.delegate_mut().begin_edit(row_ix, col_ix, window, cx);
-                });
-            }),
+            PopupMenuItem::new("Edit Cell")
+                .action(Box::new(crate::actions::GridEdit))
+                .on_click(move |_, window, cx| {
+                    e.update(cx, |st, cx| {
+                        st.set_selected_cell(row_ix, col_ix, cx);
+                        st.delegate_mut().begin_edit(row_ix, col_ix, window, cx);
+                    });
+                }),
         );
         let e = entity.clone();
-        menu = menu.item(PopupMenuItem::new("Set NULL").on_click(move |_, _, cx| {
-            e.update(cx, |st, cx| {
-                st.delegate_mut().set_null(row_ix, col_ix);
-                cx.notify();
-            });
-        }));
+        menu = menu.item(
+            PopupMenuItem::new("Set NULL")
+                .action(Box::new(crate::actions::GridSetNull))
+                .on_click(move |_, _, cx| {
+                    e.update(cx, |st, cx| {
+                        st.delegate_mut().set_null(row_ix, col_ix);
+                        cx.notify();
+                    });
+                }),
+        );
         let e = entity.clone();
         menu = menu
             .item(
@@ -1566,9 +1572,13 @@ fn cell_menu(
     }
     let copy_value = text.clone();
     menu = menu
-        .item(PopupMenuItem::new("Copy Value").on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()));
-        }))
+        .item(
+            PopupMenuItem::new("Copy Value")
+                .action(Box::new(crate::actions::GridCopy))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()));
+                }),
+        )
         .item(
             PopupMenuItem::new("Copy Column Name").on_click(move |_, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
@@ -1578,7 +1588,7 @@ fn cell_menu(
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")
-                .icon(gpui_kit::assets::IconName::Sparkles)
+                .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
                     let (Some(json), table) = (d.row_json(row_ix), d.table.clone()) else {
@@ -1595,19 +1605,17 @@ fn cell_menu(
         .item(PopupMenuItem::submenu("Sort", sort_menu));
     if editable {
         let e = entity.clone();
-        menu = menu.separator().item(
-            PopupMenuItem::new(if deleted {
-                "Undo Delete Row"
-            } else {
-                "Delete Row"
-            })
-            .on_click(move |_, _, cx| {
-                e.update(cx, |st, cx| {
-                    st.delegate_mut().toggle_delete(row_ix);
-                    cx.notify();
-                });
-            }),
-        );
+        let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+            e.update(cx, |st, cx| {
+                st.delegate_mut().toggle_delete(row_ix);
+                cx.notify();
+            });
+        };
+        menu = menu.separator().item(if deleted {
+            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+        } else {
+            crate::theme::danger_item("Delete Row", toggle)
+        });
     }
     menu
 }
