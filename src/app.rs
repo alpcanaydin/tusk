@@ -2715,8 +2715,9 @@ impl TuskApp {
             cx.notify();
         } else if self.filter.read(cx).focus_handle(cx).is_focused(w) {
             self.close_sidebar_filter(w, cx);
-        } else {
-            self.cancel_editors(cx);
+        } else if self.cancel_editors(cx) {
+            // The editor held focus; without this ⌘S etc. go nowhere.
+            self.focus_active_table(w, cx);
         }
     }
     fn on_new_connection(&mut self, _: &NewConnection, w: &mut Window, cx: &mut Context<Self>) {

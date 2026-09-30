@@ -911,6 +911,23 @@ impl TuskApp {
         cx.notify();
     }
 
+    /// Keyboard focus back on the active tab's visible table (after its
+    /// cell editor or a picker closed), so ⌘S / arrows work without a click.
+    pub(super) fn focus_active_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let handle = match self.active_tab.and_then(|ix| self.tabs.get(ix)) {
+            Some(WorkspaceTab::Sql(t)) => Some(t.result.read(cx).focus_handle(cx)),
+            Some(WorkspaceTab::Grid(g)) => match g.view {
+                TabView::Structure => g.structure.as_ref().map(|s| s.read(cx).focus_handle(cx)),
+                TabView::Index => g.indexes.as_ref().map(|s| s.read(cx).focus_handle(cx)),
+                _ => Some(g.state.read(cx).focus_handle(cx)),
+            },
+            None => None,
+        };
+        if let Some(h) = handle {
+            h.focus(window, cx);
+        }
+    }
+
     /// Esc: close an open cell/rename editor without keeping its value.
     pub(super) fn cancel_editors(&mut self, cx: &mut Context<Self>) -> bool {
         if self.renaming.take().is_some() {
