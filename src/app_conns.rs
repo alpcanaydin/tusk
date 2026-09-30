@@ -423,7 +423,7 @@ impl TuskApp {
     pub(super) fn render_conn_manager(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
         let (border, bg, fg, muted) = (t.border, t.popover, t.foreground, t.muted_foreground);
-        let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
+        let backdrop = crate::theme::backdrop(t);
         let q = self.conn_search.read(cx).value().trim().to_lowercase();
 
         let new_button = Button::new("conn-new")

@@ -285,3 +285,13 @@ impl<T: Styled> TextCaption for T {}
 pub const RADIUS_SM: Pixels = px(4.);
 pub const RADIUS_MD: Pixels = px(6.);
 pub const RADIUS_LG: Pixels = px(10.);
+
+/// The scrim behind in-window sheets. A black tint does nothing on the black
+/// dark themes, so dark mode fades what's behind toward the page color.
+pub fn backdrop(t: &gpui_kit::component::theme::Theme) -> Hsla {
+    if t.is_dark() {
+        t.background.opacity(0.85)
+    } else {
+        gpui_kit::black().opacity(0.2)
+    }
+}

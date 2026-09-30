@@ -278,7 +278,7 @@ impl TuskApp {
         };
         let t = cx.theme();
         let (border, bg, fg) = (t.border, t.popover, t.foreground);
-        let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
+        let backdrop = crate::theme::backdrop(t);
         div()
             .id("preview-backdrop")
             .absolute()

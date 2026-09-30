@@ -560,7 +560,7 @@ impl TuskApp {
                 ),
             });
 
-        let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.5 } else { 0.25 });
+        let backdrop = crate::theme::backdrop(&t);
         div()
             .id("migrate-backdrop")
             .absolute()
