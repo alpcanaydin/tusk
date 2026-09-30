@@ -407,7 +407,6 @@ impl TuskApp {
                                 let table_c = table.clone();
                                 div()
                                     .id(("dbsearch-hit", i))
-                                    .cursor_pointer()
                                     .mx_2()
                                     .px_2()
                                     .h(px(crate::settings::row_h()))

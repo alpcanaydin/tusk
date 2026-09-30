@@ -546,7 +546,6 @@ impl TuskApp {
         let icon_btn = |id: &'static str, icon: IconName, tip: &'static str| {
             div()
                 .id(id)
-                .cursor_pointer()
                 .w(px(22.))
                 .h(px(22.))
                 .flex()
@@ -726,7 +725,6 @@ impl TuskApp {
                                         d.child(
                                             div()
                                                 .id(("json-format", col))
-                                                .cursor_pointer()
                                                 .px_1p5()
                                                 .rounded(crate::theme::RADIUS_SM)
                                                 .text_caption()
@@ -741,7 +739,6 @@ impl TuskApp {
                                     .child(
                                         div()
                                             .id(("field-null", col))
-                                            .cursor_pointer()
                                             .px_1p5()
                                             .rounded(crate::theme::RADIUS_SM)
                                             .text_caption()
@@ -802,7 +799,6 @@ impl TuskApp {
         let on = self.row_panel.open;
         div()
             .id("status-row-detail")
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()

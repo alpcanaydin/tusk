@@ -184,7 +184,6 @@ impl TuskApp {
         let folders = self.folders();
         div()
             .id(id.into())
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_2()
@@ -587,7 +586,6 @@ impl TuskApp {
             .justify_center()
             .items_start()
             .pt(px(72.))
-            .cursor_pointer()
             .on_click(cx.listener(|this, _, _, cx| {
                 this.conn_manager = false;
                 cx.notify();
@@ -605,7 +603,6 @@ impl TuskApp {
                     .shadow_lg()
                     .overflow_hidden()
                     // Clicks inside the card don't close it.
-                    .cursor_pointer()
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(header)
                     .child(search)

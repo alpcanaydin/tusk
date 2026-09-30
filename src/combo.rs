@@ -36,7 +36,6 @@ pub fn list<D: TableDelegate + 'static>(
             let on_pick = on_pick.clone();
             div()
                 .id(("combo-item", i))
-                .cursor_pointer()
                 .mx_1()
                 .px_2()
                 .h(px(crate::settings::row_h()))

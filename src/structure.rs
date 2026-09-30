@@ -784,7 +784,6 @@ impl TableDelegate for StructureDelegate {
                 this.child(div().flex_1()).child(
                     div()
                         .id(("type-combo", row_ix))
-                        .cursor_pointer()
                         .flex_none()
                         .text_color(t.colors.muted_foreground)
                         .child(Icon::new(IconName::ChevronsUpDown).size(px(12.)))

@@ -243,7 +243,6 @@ impl TuskApp {
                     );
                     div()
                         .id(("history-row", i))
-                        .cursor_pointer()
                         .group("history-row")
                         .w_full()
                         .flex()
@@ -288,7 +287,6 @@ impl TuskApp {
                         .child(
                             div()
                                 .id(("history-run", i))
-                                .cursor_pointer()
                                 .flex_none()
                                 .w(px(20.))
                                 .h(px(20.))
@@ -384,7 +382,6 @@ impl TuskApp {
                 .hover(|d| d.text_color(fg))
                 .child(which.icon().size(px(12.)))
                 .child(label)
-                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.bottom_panel = Some(which);
                     cx.notify();
@@ -406,7 +403,6 @@ impl TuskApp {
                         .when(on, |d| d.bg(muted.opacity(0.12)))
                         .hover(|d| d.text_color(fg))
                         .child(label)
-                        .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.console_filter = f;
                             this.console_scroll.scroll_to_bottom();
@@ -485,7 +481,6 @@ impl TuskApp {
                     .text_color(muted)
                     .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
                     .child(Icon::new(IconName::Close).size(px(12.)))
-                    .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.close_bottom_panel(cx))),
             );
         let body = match panel {
@@ -739,7 +734,6 @@ impl TuskApp {
                 col = col.child(
                     div()
                         .id(SharedString::from(format!("problem-{tab_ix}-{i}")))
-                        .cursor_pointer()
                         .flex()
                         .items_start()
                         .gap_2()
@@ -836,7 +830,6 @@ impl TuskApp {
         };
         div()
             .id("status-problems")
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_2()
@@ -885,7 +878,6 @@ impl TuskApp {
         let on = self.bottom_panel == Some(panel);
         div()
             .id(id)
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()

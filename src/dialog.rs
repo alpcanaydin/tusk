@@ -534,7 +534,6 @@ impl ConnDialog {
                         .border_1()
                         .border_color(bd.opacity(0.5))
                         .shadow_md()
-                        .cursor_pointer()
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.form.notice = None;
                             cx.notify();
@@ -1014,7 +1013,6 @@ impl ConnDialog {
             let on = e == self.picked;
             div()
                 .id(("engine", e as usize))
-                .cursor_pointer()
                 .w(px(128.))
                 .h(px(96.))
                 .flex()

@@ -345,7 +345,6 @@ impl TuskApp {
                 let on = u.selected == Some(i) && !u.creating;
                 div()
                     .id(("role-row", i))
-                    .cursor_pointer()
                     .mx_2()
                     .px_2()
                     .h(px(crate::settings::row_h()))

@@ -728,7 +728,6 @@ impl ExportWindow {
                         .when(on, |d| d.bg(accent.opacity(0.22)).text_color(fg))
                         .when(!on, |d| d.border_1().border_color(border).text_color(muted))
                         .child(c.clone())
-                        .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if this.fields.is_empty() {
                                 this.fields = this.columns.clone();
@@ -815,7 +814,6 @@ impl ExportWindow {
                     .when(active, |d| d.bg(fg.opacity(0.12)))
                     .when(!active, |d| d.hover(|d| d.text_color(fg)))
                     .child(f.label())
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.opts.format = f;
                         cx.notify();

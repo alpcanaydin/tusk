@@ -633,7 +633,6 @@ impl TuskApp {
         let (toggle, menu_name) = (name.clone(), name.clone());
         div()
             .id(SharedString::from(format!("obj-group-{name}")))
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1p5()

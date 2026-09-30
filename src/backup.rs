@@ -787,7 +787,6 @@ impl BackupWindow {
                             .text_color(muted),
                     )
                     .child(div().text_sm().text_color(fg).child(d.clone()))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected_db = Some(name.clone());
                         cx.notify();
@@ -899,7 +898,6 @@ impl BackupWindow {
                     .text_color(fg)
                     .child(o.clone())
                     .child(Icon::new(IconName::X).size(px(10.)).text_color(muted))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if i < this.options.len() {
                             this.options.remove(i);

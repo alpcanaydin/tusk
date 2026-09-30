@@ -824,7 +824,6 @@ impl TuskApp {
         let on = self.ai.open;
         div()
             .id("status-ai")
-            .cursor_pointer()
             .w(px(22.))
             .h(px(20.))
             .flex()
@@ -1025,7 +1024,6 @@ impl TuskApp {
                     let when = s.updated.as_deref().map(relative_time).unwrap_or_default();
                     div()
                         .id(("ai-session", i))
-                        .cursor_pointer()
                         .mx_1()
                         .px_2()
                         .py_1()
@@ -1208,7 +1206,6 @@ impl TuskApp {
                 .child(
                     div()
                         .id("ai-plan")
-                        .cursor_pointer()
                         .flex()
                         .items_center()
                         .gap_2()
@@ -1297,7 +1294,6 @@ impl TuskApp {
                 .children(rows.into_iter().enumerate().map(|(i, (name, desc))| {
                     div()
                         .id(("ai-suggest-row", i))
-                        .cursor_pointer()
                         .mx_1()
                         .px_2()
                         .py_1()
@@ -1556,7 +1552,6 @@ impl TuskApp {
                                 .child(
                                     div()
                                         .id(("ai-att-x", i))
-                                        .cursor_pointer()
                                         .text_color(muted)
                                         .hover(|d| d.text_color(fg))
                                         .child(Icon::new(IconName::Close).size(px(10.)))
@@ -1788,7 +1783,6 @@ fn render_entry(
             row.child(
                 div()
                     .id(("ai-thought", ix))
-                    .cursor_pointer()
                     .flex()
                     .items_center()
                     .gap_1()
@@ -1992,7 +1986,6 @@ fn render_entry(
                     .child(
                         div()
                             .id(("ai-tool", ix))
-                            .cursor_pointer()
                             .flex()
                             .items_center()
                             .gap_2()
@@ -2190,7 +2183,6 @@ impl Render for OptionPicker {
                         let this = this.clone();
                         div()
                             .id(("ai-option", r))
-                            .cursor_pointer()
                             .w_full()
                             .h(px(row_h))
                             .px_2()

@@ -610,7 +610,6 @@ impl TuskApp {
         };
         div()
             .id("status-update")
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1()
@@ -701,7 +700,6 @@ impl TuskApp {
                             .child(
                                 div()
                                     .id("status-sql")
-                                    .cursor_pointer()
                                     .flex()
                                     .items_center()
                                     .justify_center()
@@ -755,7 +753,6 @@ impl TuskApp {
             row = row.child(
                 div()
                     .id(SharedString::from(format!("panel-{}", panel.title())))
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(20.))
                     .flex()
@@ -1759,7 +1756,6 @@ impl TuskApp {
                                     .when(active, |t| t.bg(muted.opacity(0.18)))
                                     .hover(|t| t.bg(muted.opacity(0.1)))
                                     .child(format!("Result {}", i + 1))
-                                    .cursor_pointer()
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         if let Some(ix) = this.active_tab {
                                             this.show_result(ix, i, cx);
@@ -1837,7 +1833,6 @@ impl TuskApp {
                                 .hover(|this| this.bg(muted.opacity(0.1)).text_color(foreground))
                                 .child(Icon::new(IconName::Download).size(px(12.)))
                                 .child("Export")
-                                .cursor_pointer()
                                 .on_click(cx.listener(|this, _, _, cx| this.export_result(cx))),
                         ),
                 )
@@ -2617,7 +2612,6 @@ impl TuskApp {
     ) -> Stateful<Div> {
         div()
             .id(id.into())
-            .cursor_pointer()
             .flex()
             .items_center()
             .w_full()
@@ -2908,7 +2902,6 @@ impl TuskApp {
         let (kind_m, name_m) = (kind.clone(), name.clone());
         div()
             .id(SharedString::from(row_id))
-            .cursor_pointer()
             .flex()
             .flex_row()
             .items_center()
@@ -3040,7 +3033,6 @@ impl TuskApp {
                 list = list.child(
                     div()
                         .id(("draft-table", tab_ix))
-                        .cursor_pointer()
                         .flex()
                         .items_center()
                         .gap_1p5()
@@ -3098,7 +3090,6 @@ impl TuskApp {
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Close).size(px(12.)))
-                            .cursor_pointer()
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_sidebar_filter(window, cx)
                             })),
@@ -3128,7 +3119,6 @@ impl TuskApp {
                     .child(
                         div()
                             .id("sidebar-filter-open")
-                            .cursor_pointer()
                             .w(px(20.))
                             .h(px(20.))
                             .flex()
@@ -3238,8 +3228,7 @@ impl TuskApp {
                     muted.opacity(0.35)
                 })
                 .when(enabled, |this| {
-                    this.cursor_pointer()
-                        .hover(|this| this.bg(muted.opacity(0.1)))
+                    this.hover(|this| this.bg(muted.opacity(0.1)))
                 })
                 .child(Icon::new(icon).size(px(14.)))
         };
@@ -3294,7 +3283,6 @@ impl TuskApp {
             strip = strip.child(
                 div()
                     .id(format!("grid-tab-{ix}"))
-                    .cursor_pointer()
                     .group(group.clone())
                     .flex()
                     .flex_row()
@@ -3334,7 +3322,6 @@ impl TuskApp {
                     .child(
                         div()
                             .id(format!("close-tab-{ix}"))
-                            .cursor_pointer()
                             .relative()
                             .w(px(16.))
                             .h(px(16.))
@@ -3377,7 +3364,6 @@ impl TuskApp {
             div().flex().items_center().pl_1().child(
                 div()
                     .id("tab-strip-new")
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(22.))
                     .flex()

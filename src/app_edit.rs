@@ -28,7 +28,6 @@ fn pill_frame(id: impl Into<ElementId>, active: bool, cx: &App) -> Stateful<Div>
     let (muted, fg, border) = (t.muted_foreground, t.foreground, t.border);
     div()
         .id(id)
-        .cursor_pointer()
         .h(px(crate::settings::row_h()))
         .px_2()
         .flex()
@@ -55,8 +54,7 @@ fn icon_btn(id: impl Into<ElementId>, icon: IconName, enabled: bool, cx: &App) -
         .rounded(crate::theme::RADIUS_SM)
         .text_color(if enabled { muted } else { muted.opacity(0.3) })
         .when(enabled, |this| {
-            this.cursor_pointer()
-                .hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
+            this.hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
         })
         .child(Icon::new(icon).size(px(14.)))
 }
@@ -1495,7 +1493,6 @@ impl TuskApp {
                 .when(active, |this| this.bg(muted.opacity(0.18)))
                 .hover(|this| this.bg(muted.opacity(0.08)))
                 .child(label)
-                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.set_tab_view(ix, v, window, cx);
                 }))
