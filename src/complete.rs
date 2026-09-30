@@ -365,6 +365,8 @@ struct Catalog {
     objects: HashMap<String, Vec<(String, bool)>>,
     /// (column, type) of `schema.table`.
     columns: HashMap<String, Vec<(String, String)>>,
+    /// When a schema's object list was last re-read for an unknown name.
+    refreshed: HashMap<String, std::time::Instant>,
 }
 
 /// One editor's completion source; cheap to clone (shared catalog cache).
@@ -422,6 +424,31 @@ async fn columns(
     let key = format!("{schema}.{table}");
     if let Some(c) = cat.lock().unwrap().columns.get(&key) {
         return c.clone();
+    }
+    // Only tables / views the (cached) catalog knows: while typing, half a
+    // word after FROM (`pro`, `wh`) would otherwise cost a metadata query
+    // per keystroke.
+    let is_known =
+        |objs: &[(String, bool)]| objs.iter().any(|(n, _)| n.eq_ignore_ascii_case(table));
+    if !is_known(&objects(db, cat, schema).await) {
+        // Maybe created since the list was read: re-read it, at most every
+        // few seconds (not per keystroke).
+        let stale = {
+            let mut c = cat.lock().unwrap();
+            let now = std::time::Instant::now();
+            let due = c
+                .refreshed
+                .get(schema)
+                .is_none_or(|t| now.duration_since(*t).as_secs() >= 5);
+            if due {
+                c.refreshed.insert(schema.to_string(), now);
+                c.objects.remove(schema);
+            }
+            due
+        };
+        if !stale || !is_known(&objects(db, cat, schema).await) {
+            return Vec::new();
+        }
     }
     let cols: Vec<(String, String)> = db
         .driver()
@@ -609,7 +636,7 @@ impl SchemaCompletion {
                 .collect();
         }
         let mut items = Vec::new();
-        for (t, _) in &refs {
+        for (_, t) in &refs {
             for (c, ty) in columns(&self.db, &self.catalog, &schema, t).await {
                 items.push(item(&c, K::FIELD, &format!("{ty} · {t}")));
             }
