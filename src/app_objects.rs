@@ -335,7 +335,7 @@ impl TuskApp {
         };
         let schema = self.current_schema.clone();
         let answer = window.prompt(
-            PromptLevel::Warning,
+            PromptLevel::Critical,
             &format!("Truncate “{name}”?"),
             Some(if cascade {
                 "Deletes every row, and every row referencing it in other tables (CASCADE). This can't be undone."

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -1055,7 +1055,7 @@ impl BackupWindow {
                         "Start restore…"
                     })
                     .small()
-                    .outline()
+                    .primary()
                     .disabled(self.busy || self.selected_db.is_none())
                     .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
             );
@@ -1081,6 +1081,16 @@ impl BackupWindow {
         };
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(
+                cx.listener(|this, _: &crate::dialog_keys::DialogConfirm, window, cx| {
+                    // Return does what the (enabled) Start button does.
+                    if this.selected_db.is_some() {
+                        this.start(window, cx);
+                    }
+                }),
+            )
             .size_full()
             .flex()
             .flex_col()

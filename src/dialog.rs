@@ -5,7 +5,7 @@
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
@@ -913,7 +913,11 @@ impl ConnDialog {
             .child(div().flex_1())
             .child(footer_btn("dlg-save", "Save").on_click(cx.listener(Self::on_save)))
             .child(footer_btn("dlg-test", "Test").on_click(cx.listener(Self::on_test)))
-            .child(footer_btn("dlg-connect", "Connect").on_click(cx.listener(Self::on_connect)));
+            .child(
+                footer_btn("dlg-connect", "Connect")
+                    .primary()
+                    .on_click(cx.listener(Self::on_connect)),
+            );
 
         let title = if self.choosing {
             "Create a new connection".to_string()
@@ -1079,6 +1083,7 @@ impl ConnDialog {
                     .child(
                         Button::new("dlg-create")
                             .label("Create")
+                            .primary()
                             .w(px(84.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let e = this.picked;
@@ -1087,6 +1092,24 @@ impl ConnDialog {
                     ),
             )
             .into_any_element()
+    }
+
+    /// Return: Create on the engine grid, Connect on the form.
+    fn on_default(
+        &mut self,
+        _: &crate::dialog_keys::DialogConfirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.form.busy {
+            return;
+        }
+        if self.choosing {
+            let e = self.picked;
+            self.choose_engine(e, window, cx);
+        } else {
+            self.on_connect(&ClickEvent::default(), window, cx);
+        }
     }
 
     /// "Import from URL": a connection URL on the clipboard fills the form
@@ -1142,6 +1165,10 @@ impl Render for ConnDialog {
             crate::toast::push_top(window, cx, Some(ok), msg);
         }
         div()
+            .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(cx.listener(Self::on_default))
             .size_full()
             .relative()
             .child(self.render_inner(window, cx))

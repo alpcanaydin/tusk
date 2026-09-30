@@ -542,7 +542,7 @@ impl TuskApp {
                                 format!("Import {picked} Connections")
                             })
                             .small()
-                            .outline()
+                            .primary()
                             .disabled(picked == 0)
                             .on_click(cx.listener(|this, _, _, cx| this.start_migration(cx))),
                     ),

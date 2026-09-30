@@ -279,7 +279,7 @@ impl TuskApp {
             return;
         };
         let answer = window.prompt(
-            PromptLevel::Warning,
+            PromptLevel::Critical,
             &format!("Drop role “{name}”?"),
             Some("Objects it owns must be reassigned or dropped first."),
             &["Drop", "Cancel"],
@@ -491,7 +491,7 @@ impl TuskApp {
                                 Button::new("role-drop")
                                     .label("Drop")
                                     .small()
-                                    .outline()
+                                    .danger()
                                     .disabled(u.creating || u.selected.is_none())
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.drop_role(window, cx)
@@ -501,7 +501,7 @@ impl TuskApp {
                                 Button::new("role-save")
                                     .label(if u.creating { "Create" } else { "Save" })
                                     .small()
-                                    .outline()
+                                    .primary()
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_role(window, cx)
                                     })),

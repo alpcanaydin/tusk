@@ -355,7 +355,7 @@ impl TuskApp {
                                 Button::new("preview-commit")
                                     .label("Commit")
                                     .small()
-                                    .outline()
+                                    .primary()
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.preview = None;
                                         this.save_changes(window, cx);

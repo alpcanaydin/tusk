@@ -77,7 +77,11 @@ impl TuskApp {
             "Cancel the query of session"
         };
         let answer = window.prompt(
-            PromptLevel::Warning,
+            if kill {
+                PromptLevel::Critical
+            } else {
+                PromptLevel::Warning
+            },
             &format!("{what} {pid}?"),
             None,
             &[if kill { "Kill" } else { "Cancel Query" }, "Keep"],
@@ -177,7 +181,7 @@ impl TuskApp {
                                 Button::new("proc-kill")
                                     .label("Kill")
                                     .small()
-                                    .outline()
+                                    .danger()
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.signal_process(true, window, cx)
                                     })),

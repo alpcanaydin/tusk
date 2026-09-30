@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -1002,6 +1002,11 @@ impl ExportWindow {
         let n = self.picked_count();
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(
+                cx.listener(|this, _: &crate::dialog_keys::DialogConfirm, _, cx| this.start(cx)),
+            )
             .size_full()
             .flex()
             .flex_col()
@@ -1080,7 +1085,7 @@ impl ExportWindow {
                                 "Export…".into()
                             })
                             .small()
-                            .outline()
+                            .primary()
                             .disabled(n == 0 || self.busy)
                             .on_click(cx.listener(|this, _, _, cx| this.start(cx))),
                     ),
