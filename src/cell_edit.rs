@@ -459,9 +459,43 @@ pub fn change_for(value: Option<EditValue>, original: Option<&Value>) -> Option<
     }
 }
 
+/// Why `text` can't go in a numeric column (`int4`, `numeric`, SQLite
+/// `INTEGER`…), or `None` when it can. Other types are left to the server.
+pub fn invalid_for(sql_type: &str, text: &str) -> Option<String> {
+    let ty = sql_type.to_ascii_lowercase();
+    let t = text.trim();
+    let is_int = ["int", "serial"].iter().any(|k| ty.contains(k))
+        && !ty.contains("interval")
+        && !ty.contains("point");
+    let is_num = ["numeric", "decimal", "real", "float", "double", "money"]
+        .iter()
+        .any(|k| ty.contains(k));
+    if is_int && !ty.starts_with('_') && !ty.ends_with("[]") {
+        let digits = t.strip_prefix(['-', '+']).unwrap_or(t);
+        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+            return Some(format!("“{text}” isn't a whole number ({sql_type})."));
+        }
+    } else if is_num && !ty.starts_with('_') && !ty.ends_with("[]") && t.parse::<f64>().is_err() {
+        return Some(format!("“{text}” isn't a number ({sql_type})."));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{EditValue, change_for, split_date, split_time};
+    use super::{EditValue, change_for, invalid_for, split_date, split_time};
+
+    #[test]
+    fn numeric_columns_reject_text() {
+        assert!(invalid_for("integer", "QA").is_some());
+        assert!(invalid_for("int4", "").is_some());
+        assert!(invalid_for("INTEGER", "-42").is_none());
+        assert!(invalid_for("numeric(10,2)", "3.5").is_none());
+        assert!(invalid_for("double precision", "x").is_some());
+        assert!(invalid_for("text", "QA").is_none());
+        assert!(invalid_for("interval", "1 day").is_none());
+        assert!(invalid_for("_int4", "{1,2}").is_none());
+    }
     use serde_json::json;
 
     #[test]

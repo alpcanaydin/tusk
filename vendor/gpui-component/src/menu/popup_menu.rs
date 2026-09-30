@@ -288,6 +288,11 @@ pub struct PopupMenu {
     /// change where actions are dispatched: they still bubble from the menu's
     /// own focus path (through the trigger element's ancestors).
     pub(crate) previous_focus_handle: Option<FocusHandle>,
+    /// Tusk patch: hover intent. While a submenu is open, a row only takes
+    /// over after the pointer rests on it, so crossing a neighbour on the
+    /// way into the submenu doesn't switch it. `(row, generation)`.
+    hover_intent: Option<(usize, u64)>,
+    hover_generation: u64,
     /// A focus handle on the trigger's dispatch path, so shortcut hints can
     /// resolve against the key contexts the menu's actions bubble through on
     /// the very frame the menu opens. GPUI looks a handle up in the previously
@@ -336,6 +341,8 @@ impl PopupMenu {
             focus_handle: cx.focus_handle(),
             action_context: None,
             previous_focus_handle: None,
+            hover_intent: None,
+            hover_generation: 0,
             trigger_focus_handle: None,
             parent_menu: None,
             menu_items: Vec::new(),
@@ -1068,6 +1075,12 @@ impl PopupMenu {
                 .or(self.action_context.as_ref())
             {
                 window.focus(handle, cx);
+            } else if self.focus_handle.contains_focused(window, cx) {
+                // Tusk patch: nothing to go back to (the menu was opened on
+                // an unfocusable row) — don't leave focus on the closed menu,
+                // or the window's shortcuts and typing go nowhere. With
+                // nothing focused the app view takes focus back.
+                window.blur(cx);
             }
         }
 
@@ -1232,11 +1245,37 @@ impl PopupMenu {
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, _, cx| {
+                const INTENT: std::time::Duration = std::time::Duration::from_millis(250);
                 if *hovered {
+                    let submenu_open =
+                        this.active_submenu().is_some() && this.selected_index != Some(ix);
+                    if submenu_open {
+                        this.hover_generation += 1;
+                        let generation = this.hover_generation;
+                        this.hover_intent = Some((ix, generation));
+                        cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(INTENT).await;
+                            let _ = this.update(cx, |this, cx| {
+                                if this.hover_intent == Some((ix, generation)) {
+                                    this.hover_intent = None;
+                                    this.selected_index = Some(ix);
+                                    cx.notify();
+                                }
+                            });
+                        })
+                        .detach();
+                        return;
+                    }
+                    this.hover_intent = None;
                     this.selected_index = Some(ix);
-                } else if !is_submenu && this.selected_index == Some(ix) {
-                    // TODO: Better handle the submenu unselection when hover out
-                    this.selected_index = None;
+                } else {
+                    // Left before the intent delay: it was only passed over.
+                    if this.hover_intent.is_some_and(|(i, _)| i == ix) {
+                        this.hover_intent = None;
+                    }
+                    if !is_submenu && this.selected_index == Some(ix) {
+                        this.selected_index = None;
+                    }
                 }
 
                 cx.notify();

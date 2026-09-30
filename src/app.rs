@@ -3878,6 +3878,20 @@ impl Render for TuskApp {
         {
             self.toast(false, msg);
         }
+        // A refused cell value (text in a number column) → toast.
+        let refused: Vec<String> = self
+            .tabs
+            .iter()
+            .filter_map(|t| match t {
+                WorkspaceTab::Grid(g) => g
+                    .state
+                    .update(cx, |s, _| s.delegate_mut().cell_error.take()),
+                _ => None,
+            })
+            .collect();
+        for why in refused {
+            self.toast(false, why);
+        }
         for (ok, msg) in std::mem::take(&mut self.toasts) {
             crate::toast::push(window, cx, ok, msg);
         }

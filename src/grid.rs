@@ -107,6 +107,9 @@ pub struct GridDelegate {
     generation: u64,
     pub error: Option<String>,
     pub query_ms: Option<u128>,
+    /// A cell value that was refused (text in a number column); the app
+    /// shows it as a toast and clears it.
+    pub cell_error: Option<String>,
     // ---- pending changes (saved with ⌘S) ----
     pub edits: BTreeMap<String, RowEdit>,
     pub deleted: BTreeMap<String, Vec<Value>>,
@@ -162,6 +165,7 @@ impl GridDelegate {
             generation: 0,
             error: None,
             query_ms: None,
+            cell_error: None,
             edits: BTreeMap::new(),
             deleted: BTreeMap::new(),
             editing: None,
@@ -416,7 +420,16 @@ impl GridDelegate {
         let Some(original) = self.original(row) else {
             return;
         };
-        let change = cell_edit::change_for(ed.editor.value(cx), original.get(col));
+        let value = ed.editor.value(cx);
+        if let (Some(cell_edit::EditValue::Text(t)), Some(meta)) = (&value, self.metas.get(col))
+            && let Some(why) = cell_edit::invalid_for(&meta.sql_type, t)
+        {
+            // Refuse it here instead of failing the whole ⌘S later.
+            self.cell_error = Some(why);
+            cx.notify();
+            return;
+        }
+        let change = cell_edit::change_for(value, original.get(col));
         self.set_change(ed.key, original, col, change);
         cx.notify();
     }
@@ -499,6 +512,12 @@ impl GridDelegate {
             return;
         };
         if self.deleted.contains_key(&key) {
+            return;
+        }
+        if let (Some(t), Some(meta)) = (&value, self.metas.get(col_ix))
+            && let Some(why) = cell_edit::invalid_for(&meta.sql_type, t)
+        {
+            self.cell_error = Some(why);
             return;
         }
         let v = match value {
