@@ -264,11 +264,11 @@ pub fn take_load_notice() -> Option<String> {
 fn load_connections_from(path: &std::path::Path) -> Vec<SavedConnection> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(_) => return vec![dev_default()],
+        // First run: no connections yet (no sample profile to trip over).
+        Err(_) => return Vec::new(),
     };
     match serde_json::from_str::<Vec<SavedConnection>>(&text) {
-        Ok(list) if !list.is_empty() => list,
-        Ok(_) => vec![dev_default()],
+        Ok(list) => list,
         Err(e) => {
             // Unreadable (another build's format, a hand edit…): keep the
             // file under another name, or the next save would wipe the
@@ -291,7 +291,7 @@ fn load_connections_from(path: &std::path::Path) -> Vec<SavedConnection> {
             if let Ok(mut n) = LOAD_NOTICE.lock() {
                 *n = Some(msg);
             }
-            vec![dev_default()]
+            Vec::new()
         }
     }
 }
@@ -1795,8 +1795,7 @@ mod tests {
         let path = dir.join("connections.json");
         std::fs::write(&path, "[{\"engine\": \"from-the-future\"").unwrap();
         let list = load_connections_from(&path);
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, dev_default().name);
+        assert!(list.is_empty());
         // The original moved to a backup, so a later save can't clobber it.
         assert!(!path.exists());
         let backups: Vec<_> = std::fs::read_dir(&dir)

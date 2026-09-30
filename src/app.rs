@@ -907,10 +907,10 @@ impl TuskApp {
                 match result {
                     Ok(c) => this.connected_with(c, &conn, &password, cx),
                     Err(e) => {
-                        // Outside the dialog (welcome list, ⌘1…) only a toast is seen.
+                        // Outside the dialog (welcome list, ⌘1…) only a toast is
+                        // seen: render turns the error notice into one.
                         log::warn!("connect {}: {e}", conn.name);
-                        this.toast(false, format!("{}: {e}", conn.name));
-                        this.form.notice = Some((false, e));
+                        this.form.notice = Some((false, format!("{}: {e}", conn.name)));
                     }
                 }
                 cx.notify();
@@ -2267,7 +2267,7 @@ impl TuskApp {
                         this.connected_with(c, &conn, &pw, cx);
                     }
                     Err(e) => {
-                        this.toast(false, format!("{}: {e}", conn.name));
+                        // Render turns the error notice into a toast.
                         this.form.notice = Some((false, format!("{}: {e}", conn.name)));
                     }
                 }
