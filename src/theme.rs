@@ -339,3 +339,13 @@ pub fn empty_state(text: impl Into<SharedString>, cx: &App) -> AnyElement {
         )
         .into_any_element()
 }
+
+/// Font features for literal text such as CLI flags: the UI font's
+/// ligatures would draw `--format` as `—format`.
+pub fn no_ligatures() -> FontFeatures {
+    FontFeatures(std::sync::Arc::new(vec![
+        ("calt".into(), 0),
+        ("liga".into(), 0),
+        ("dlig".into(), 0),
+    ]))
+}

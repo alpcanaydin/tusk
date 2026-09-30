@@ -8,9 +8,20 @@ use super::*;
 
 impl TuskApp {
     /// ⌘.: open (or refresh) the process list sheet.
+    /// Tools panels are one at a time: opening one closes the others (they
+    /// used to stack, the new one hidden behind the old).
+    pub(super) fn close_tool_panels(&mut self) {
+        self.processes = None;
+        self.users = None;
+        self.db_search = None;
+    }
+
     pub(super) fn open_process_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.pool.is_none() {
             return;
+        }
+        if self.users.is_some() || self.db_search.is_some() {
+            self.close_tool_panels();
         }
         let st = match self.processes.clone() {
             Some(st) => st,
@@ -227,6 +238,8 @@ impl TuskApp {
             s.input.read(cx).focus_handle(cx).focus(window, cx);
             return;
         }
+        self.processes = None;
+        self.users = None;
         let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search every table for…"));
         let sub = cx.subscribe_in(&input, window, |this, _, ev: &InputEvent, _, cx| {
             if let InputEvent::PressEnter { .. } = ev {

@@ -396,7 +396,11 @@ impl BackupWindow {
         let mut this = BackupWindow {
             focus: cx.focus_handle(),
             mode,
-            conns: db::load_connections(),
+            // pg_dump / pg_restore only speak Postgres: no SQLite etc. here.
+            conns: db::load_connections()
+                .into_iter()
+                .filter(|c| c.engine.caps().backup)
+                .collect(),
             conn_search,
             db_search,
             file_name,
@@ -742,7 +746,7 @@ impl BackupWindow {
                                 .truncate()
                                 .text_caption()
                                 .text_color(muted.opacity(0.6))
-                                .child(format!("{} · {}", c.host, c.database)),
+                                .child(format!("{} · {}", c.endpoint(), c.database)),
                         )
                         .on_click(
                             cx.listener(move |this, _, _, cx| this.pick_connection(ix, None, cx)),
@@ -862,19 +866,22 @@ impl BackupWindow {
                 for &o in all {
                     let v = view.clone();
                     menu = menu.item(
-                        PopupMenuItem::new(o)
-                            .checked(picked.iter().any(|p| p == o))
-                            .on_click(move |_, _, cx| {
-                                v.update(cx, |this, cx| {
-                                    match this.options.iter().position(|x| x == o) {
-                                        Some(p) => {
-                                            this.options.remove(p);
-                                        }
-                                        None => this.options.push(o.to_string()),
+                        // Literal flags: no `--` → `—` ligature.
+                        PopupMenuItem::element(move |_, _| {
+                            div().font_features(crate::theme::no_ligatures()).child(o)
+                        })
+                        .checked(picked.iter().any(|p| p == o))
+                        .on_click(move |_, _, cx| {
+                            v.update(cx, |this, cx| {
+                                match this.options.iter().position(|x| x == o) {
+                                    Some(p) => {
+                                        this.options.remove(p);
                                     }
-                                    cx.notify();
-                                });
-                            }),
+                                    None => this.options.push(o.to_string()),
+                                }
+                                cx.notify();
+                            });
+                        }),
                     );
                 }
                 menu
@@ -901,6 +908,7 @@ impl BackupWindow {
                     .bg(accent.opacity(0.22))
                     .text_caption()
                     .font_family(crate::settings::table_font())
+                    .font_features(crate::theme::no_ligatures())
                     .text_color(fg)
                     .child(o.clone())
                     .child(Icon::new(IconName::X).size(px(10.)).text_color(muted))

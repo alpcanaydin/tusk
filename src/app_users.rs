@@ -92,6 +92,7 @@ impl TuskApp {
         if self.pool.is_none() {
             return;
         }
+        self.close_tool_panels();
         let input = |placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
