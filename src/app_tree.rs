@@ -32,6 +32,53 @@ impl TuskApp {
             .count()
     }
 
+    /// "2 unsaved changes and 1 unsaved query" when leaving this workspace
+    /// would throw work away; None when nothing would be lost.
+    pub(super) fn lost_work(&self, cx: &App) -> Option<String> {
+        let n = self.pending_total(cx);
+        let q = self.unsaved_queries(cx);
+        let mut lost = Vec::new();
+        if n > 0 {
+            lost.push(format!(
+                "{n} unsaved change{}",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
+        if q > 0 {
+            lost.push(format!(
+                "{q} unsaved quer{}",
+                if q == 1 { "y" } else { "ies" }
+            ));
+        }
+        (!lost.is_empty()).then(|| lost.join(" and "))
+    }
+
+    /// Disconnect (menu, palette, title bar), asking first when that would
+    /// throw away unsaved changes or queries.
+    pub(super) fn disconnect_guarded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(lost) = self.lost_work(cx) else {
+            Self::run_disconnect(self, window, cx);
+            return;
+        };
+        let answer = crate::dialog_keys::confirm(
+            window,
+            PromptLevel::Warning,
+            &format!("Disconnect from “{}”?", self.active_name),
+            Some(&format!("{lost} will be discarded.")),
+            "Disconnect",
+            cx,
+        );
+        cx.spawn_in(window, async move |weak, cx| {
+            if !answer.await {
+                return;
+            }
+            let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
+                Self::run_disconnect(this, window, cx);
+            });
+        })
+        .detach();
+    }
+
     /// Switch this window to a saved connection, asking first when that
     /// would throw away unsaved changes.
     pub(super) fn switch_connection_guarded(
@@ -46,30 +93,15 @@ impl TuskApp {
         if name == self.active_name {
             return;
         }
-        let n = self.pending_total(cx);
-        let q = self.unsaved_queries(cx);
-        if n == 0 && q == 0 {
+        let Some(lost) = self.lost_work(cx) else {
             self.switch_connection(ix, window, cx);
             return;
-        }
-        let mut lost = Vec::new();
-        if n > 0 {
-            lost.push(format!(
-                "{n} unsaved change{}",
-                if n == 1 { "" } else { "s" }
-            ));
-        }
-        if q > 0 {
-            lost.push(format!(
-                "{q} unsaved quer{}",
-                if q == 1 { "y" } else { "ies" }
-            ));
-        }
+        };
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Warning,
             &format!("Switch to “{name}”?"),
-            Some(&format!("{} will be discarded.", lost.join(" and "))),
+            Some(&format!("{lost} will be discarded.")),
             "Switch",
             cx,
         );

@@ -97,6 +97,9 @@ pub struct GridDelegate {
     pub editable: bool,
     pub columns: Vec<GridColumn>,
     pub metas: Vec<GridColumnMeta>,
+    /// The table's columns in their real (ordinal) order; `metas` follows
+    /// the display order after a header drag, this never moves.
+    pub table_metas: Vec<GridColumnMeta>,
     rows: BTreeMap<usize, Vec<Value>>,
     ctids: BTreeMap<usize, String>,
     total: Option<i64>,
@@ -156,6 +159,7 @@ impl GridDelegate {
             editable,
             columns: Vec::new(),
             metas: Vec::new(),
+            table_metas: Vec::new(),
             rows: BTreeMap::new(),
             ctids: BTreeMap::new(),
             total: None,
@@ -1099,6 +1103,7 @@ pub fn apply_initial(state: &Entity<TableState<GridDelegate>>, data: InitialData
         match data.metas {
             Ok(metas) => {
                 d.columns = metas.iter().map(GridColumn::from_meta).collect();
+                d.table_metas = metas.clone();
                 d.metas = metas;
             }
             Err(e) => d.error = Some(e),

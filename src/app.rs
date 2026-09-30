@@ -2240,7 +2240,8 @@ impl TuskApp {
     /// screen (returns false = keep the window); on the welcome screen, close.
     pub fn on_close_request(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.screen == AppScreen::Workspace {
-            Self::run_disconnect(self, window, cx);
+            // Asks first when unsaved changes / queries would be lost.
+            self.disconnect_guarded(window, cx);
             self.focus.focus(window, cx);
             false
         } else {
@@ -4225,7 +4226,7 @@ impl Render for TuskApp {
             .on_action(cx.listener(|this, _: &ShowHistory, _, cx| {
                 this.toggle_bottom_panel(panels::BottomPanel::History, cx)
             }))
-            .on_action(cx.listener(|this, _: &Disconnect, w, cx| Self::run_disconnect(this, w, cx)))
+            .on_action(cx.listener(|this, _: &Disconnect, w, cx| this.disconnect_guarded(w, cx)))
             .on_action(cx.listener(|this, _: &ShowTablesPanel, _, cx| {
                 this.show_panel(SidebarPanel::Tables, cx)
             }))

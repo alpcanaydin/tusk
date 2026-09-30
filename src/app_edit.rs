@@ -130,7 +130,15 @@ impl TuskApp {
         let Some(tab) = self.grid_tab(ix) else { return };
         let needs_structure = view == TabView::Structure && tab.structure.is_none();
         if needs_structure {
-            let metas = tab.state.read(cx).delegate().metas.clone();
+            // Real column order: a header drag in Data only moves the display.
+            let metas = {
+                let d = tab.state.read(cx).delegate();
+                if d.table_metas.is_empty() {
+                    d.metas.clone()
+                } else {
+                    d.table_metas.clone()
+                }
+            };
             let ddl = self.pool.as_ref().is_some_and(|p| p.caps().edit_structure);
             let d = StructureDelegate::new(
                 tab.table.schema.clone(),
