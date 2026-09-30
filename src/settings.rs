@@ -945,6 +945,8 @@ impl Render for SettingsWindow {
         let t = cx.theme();
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
             .size_full()
             .flex()
             .flex_col()

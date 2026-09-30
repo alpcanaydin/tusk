@@ -6,6 +6,15 @@ use gpui_kit::*;
 
 use crate::actions::*;
 
+const REPO: &str = "https://github.com/alpcanaydin/tusk";
+
+/// Window-menu commands act on the key window (a main or a secondary one).
+fn with_active_window(cx: &mut App, f: fn(&Window)) {
+    if let Some(w) = cx.active_window() {
+        let _ = w.update(cx, |_, window, _| f(window));
+    }
+}
+
 pub fn install(cx: &mut App) {
     cx.on_action(|_: &Quit, cx| cx.quit());
     cx.on_action(|_: &HideApp, cx| cx.hide());
@@ -14,6 +23,23 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &ShowReleaseNotes, cx| crate::whats_new::open_release_notes(cx));
     cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
     cx.on_action(|_: &RestartToUpdate, _| crate::updater::restart_to_update());
+    cx.on_action(|_: &MinimizeWindow, cx| with_active_window(cx, Window::minimize_window));
+    cx.on_action(|_: &ZoomWindow, cx| with_active_window(cx, Window::zoom_window));
+    cx.on_action(|_: &ToggleFullScreen, cx| with_active_window(cx, Window::toggle_fullscreen));
+    cx.on_action(|_: &BringAllToFront, cx| {
+        for w in cx.windows() {
+            let _ = w.update(cx, |_, window, _| window.activate_window());
+        }
+        cx.activate(true);
+    });
+    cx.on_action(|_: &OpenHelp, cx| cx.open_url(REPO));
+    cx.on_action(|_: &ReportIssue, cx| cx.open_url(&format!("{REPO}/issues/new")));
+    // The standard macOS Window-menu shortcuts.
+    #[cfg(target_os = "macos")]
+    cx.bind_keys([
+        KeyBinding::new("cmd-m", MinimizeWindow, None),
+        KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+    ]);
     refresh(cx);
 }
 
@@ -149,6 +175,17 @@ pub fn refresh(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("Split Pane Right", SplitPaneRight),
             MenuItem::action("Select Next Pane", NextPane),
+        ]),
+        Menu::new("Window").items([
+            MenuItem::action("Minimize", MinimizeWindow),
+            MenuItem::action("Zoom", ZoomWindow),
+            MenuItem::action("Enter Full Screen", ToggleFullScreen),
+            MenuItem::separator(),
+            MenuItem::action("Bring All to Front", BringAllToFront),
+        ]),
+        Menu::new("Help").items([
+            MenuItem::action("Tusk on GitHub", OpenHelp),
+            MenuItem::action("Report an Issue…", ReportIssue),
         ]),
     ]);
 }

@@ -4,6 +4,7 @@
 //! - `AppState::Workspace`: sol sidebar (240px, 180..400 arasi suruklenebilir) +
 //!   ana alan (tab bar + icerik) + alt durum cubugu.
 
+use crate::theme::TextCaption as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::TitleBar;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -532,7 +533,7 @@ impl TuskApp {
                             .text_color(fg)
                             .child(active.clone()),
                     )
-                    .child(div().text_xs().text_color(muted).child(endpoint))
+                    .child(div().text_caption().text_color(muted).child(endpoint))
                     .child(
                         Icon::new(IconName::ChevronDown)
                             .size(px(11.))
@@ -617,14 +618,13 @@ impl TuskApp {
         };
         div()
             .id("status-update")
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1()
             .px_2()
             .h(px(20.))
-            .rounded(px(4.))
-            .text_xs()
+            .rounded(crate::theme::RADIUS_SM)
+            .text_caption()
             .font_family(crate::settings::ui_font())
             .font_weight(FontWeight::MEDIUM)
             .text_color(accent)
@@ -655,7 +655,7 @@ impl TuskApp {
         // Layout: [toggles · message] | centered pending changes | [spacer].
         let pending = self.pending_summary(cx).map(|p| {
             div()
-                .text_xs()
+                .text_caption()
                 .font_family(crate::settings::ui_font())
                 .text_color(rgb(crate::theme::EDITED))
                 .child(crate::kbd::rich_colored(
@@ -684,7 +684,7 @@ impl TuskApp {
                     .children(problems)
                     .child(
                         div()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::ui_font())
                             .text_color(t.colors.muted_foreground)
                             .truncate()
@@ -708,14 +708,13 @@ impl TuskApp {
                             .child(
                                 div()
                                     .id("status-sql")
-                                    .cursor_pointer()
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .px_1()
                                     // Same box as the panel toggles on the left.
                                     .h(px(20.))
-                                    .rounded(px(4.))
+                                    .rounded(crate::theme::RADIUS_SM)
                                     .text_color(t.colors.muted_foreground)
                                     .hover(|this| {
                                         this.bg(t.colors.muted_foreground.opacity(0.12))
@@ -762,13 +761,12 @@ impl TuskApp {
             row = row.child(
                 div()
                     .id(SharedString::from(format!("panel-{}", panel.title())))
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(20.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_color(if active { active_tint } else { muted })
                     .hover(|this| {
                         this.bg(muted.opacity(0.12)).text_color(if active {
@@ -1739,7 +1737,7 @@ impl TuskApp {
                 .when(tab.last_sql.is_some() && !tab.running, |d| {
                     d.child(
                         div()
-                            .text_xs()
+                            .text_caption()
                             .font_family(crate::settings::ui_font())
                             .text_color(muted)
                             .child(extra),
@@ -1775,14 +1773,13 @@ impl TuskApp {
                                     .h(px(crate::settings::row_h() - 4.))
                                     .flex()
                                     .items_center()
-                                    .rounded(px(4.))
-                                    .text_xs()
+                                    .rounded(crate::theme::RADIUS_SM)
+                                    .text_caption()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(if active { foreground } else { muted })
                                     .when(active, |t| t.bg(muted.opacity(0.18)))
                                     .hover(|t| t.bg(muted.opacity(0.1)))
                                     .child(format!("Result {}", i + 1))
-                                    .cursor_pointer()
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         if let Some(ix) = this.active_tab {
                                             this.show_result(ix, i, cx);
@@ -1794,7 +1791,7 @@ impl TuskApp {
                         })
                         .child(
                             div()
-                                .text_xs()
+                                .text_caption()
                                 .font_family(crate::settings::ui_font())
                                 .text_color(foreground)
                                 .child({
@@ -1831,7 +1828,7 @@ impl TuskApp {
                                 .items_center()
                                 .gap_1()
                                 .px_1()
-                                .text_xs()
+                                .text_caption()
                                 .font_family(crate::settings::ui_font())
                                 .text_color(muted.opacity(0.7))
                                 .children(icon.map(|i| Icon::new(i).size(px(11.))))
@@ -1852,15 +1849,14 @@ impl TuskApp {
                                 .gap_1p5()
                                 .h(px(crate::settings::row_h()))
                                 .px_2()
-                                .rounded(px(6.))
+                                .rounded(crate::theme::RADIUS_MD)
                                 .border_1()
                                 .border_color(border)
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted)
                                 .hover(|this| this.bg(muted.opacity(0.1)).text_color(foreground))
                                 .child(Icon::new(IconName::Download).size(px(12.)))
                                 .child("Export")
-                                .cursor_pointer()
                                 .on_click(cx.listener(|this, _, _, cx| this.export_result(cx))),
                         ),
                 )
@@ -1935,7 +1931,7 @@ impl TuskApp {
                             .border_color(border)
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_caption()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(muted)
                                     .child(crate::kbd::rich_colored("[cmd-enter] run current (or selection) · [cmd-shift-enter] run all", muted)),
@@ -2640,7 +2636,6 @@ impl TuskApp {
     ) -> Stateful<Div> {
         div()
             .id(id.into())
-            .cursor_pointer()
             .flex()
             .items_center()
             .w_full()
@@ -2648,7 +2643,7 @@ impl TuskApp {
             .mt(px(1.))
             .pl(px(5.))
             .pr(px(6.))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 div()
@@ -2726,7 +2721,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_1p5()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child(
                         gpui_kit::component::spinner::Spinner::new()
@@ -2891,6 +2886,7 @@ impl TuskApp {
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
         let selected = self.selected_object == Some((kind.clone(), name.to_string()));
+        let sel_bg = crate::theme::selection(cx.theme());
         let dropping = self.is_pending_drop(&kind, name);
         let renamed = self.pending_rename(&kind, name).cloned();
         let editing = self
@@ -2930,15 +2926,14 @@ impl TuskApp {
         let (kind_m, name_m) = (kind.clone(), name.clone());
         div()
             .id(SharedString::from(row_id))
-            .cursor_pointer()
             .flex()
             .flex_row()
             .items_center()
             .gap_1p5()
             .px_2()
             .h(px(crate::settings::row_h()))
-            .rounded(px(4.))
-            .when(selected, |this| this.bg(muted.opacity(0.18)))
+            .rounded(crate::theme::RADIUS_SM)
+            .when(selected, |this| this.bg(sel_bg))
             .when(renamed.is_some() && !dropping, |this| {
                 this.bg(rgb(crate::theme::EDITED).opacity(0.25))
             })
@@ -3003,7 +2998,14 @@ impl TuskApp {
             None
         };
         if let Some(msg) = empty_msg {
-            list = list.child(div().px_2().py_1().text_xs().text_color(muted).child(msg));
+            list = list.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_caption()
+                    .text_color(muted)
+                    .child(msg),
+            );
         }
         // sidebar folders first, then everything ungrouped. Members are
         // `kind:name` keys: look them up in one index of the visible objects
@@ -3055,13 +3057,12 @@ impl TuskApp {
                 list = list.child(
                     div()
                         .id(("draft-table", tab_ix))
-                        .cursor_pointer()
                         .flex()
                         .items_center()
                         .gap_1p5()
                         .px_2()
                         .h(px(crate::settings::row_h()))
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .bg(rgb(crate::theme::ADDED).opacity(if active { 0.35 } else { 0.25 }))
                         .child(TableKind::Table.icon())
                         .child(
@@ -3109,11 +3110,10 @@ impl TuskApp {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(4.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Close).size(px(12.)))
-                            .cursor_pointer()
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_sidebar_filter(window, cx)
                             })),
@@ -3130,7 +3130,7 @@ impl TuskApp {
                     .child(
                         div()
                             .flex_1()
-                            .text_xs()
+                            .text_caption()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(muted)
                             .child(format!(
@@ -3143,13 +3143,12 @@ impl TuskApp {
                     .child(
                         div()
                             .id("sidebar-filter-open")
-                            .cursor_pointer()
                             .w(px(20.))
                             .h(px(20.))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(4.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Search).size(px(13.)))
@@ -3256,8 +3255,7 @@ impl TuskApp {
                     muted.opacity(0.35)
                 })
                 .when(enabled, |this| {
-                    this.cursor_pointer()
-                        .hover(|this| this.bg(muted.opacity(0.1)))
+                    this.hover(|this| this.bg(muted.opacity(0.1)))
                 })
                 .child(Icon::new(icon).size(px(14.)))
         };
@@ -3312,7 +3310,6 @@ impl TuskApp {
             strip = strip.child(
                 div()
                     .id(format!("grid-tab-{ix}"))
-                    .cursor_pointer()
                     .group(group.clone())
                     .flex()
                     .flex_row()
@@ -3352,14 +3349,13 @@ impl TuskApp {
                     .child(
                         div()
                             .id(format!("close-tab-{ix}"))
-                            .cursor_pointer()
                             .relative()
                             .w(px(16.))
                             .h(px(16.))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(3.))
+                            .rounded(crate::theme::RADIUS_SM)
                             .text_color(muted)
                             .hover(|this| this.bg(muted.opacity(0.2)).text_color(foreground))
                             // Modified: a dot, swapped for × while hovering the tab.
@@ -3395,13 +3391,12 @@ impl TuskApp {
             div().flex().items_center().pl_1().child(
                 div()
                     .id("tab-strip-new")
-                    .cursor_pointer()
                     .w(px(22.))
                     .h(px(22.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(4.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .text_color(muted)
                     .opacity(0.)
                     .group_hover("tab-strip", |this| this.opacity(1.))
@@ -3542,34 +3537,32 @@ impl TuskApp {
                     .into_any_element()
             }
             Some((_, WorkspaceTab::Sql(s))) => self.render_sql_tab(s, cx).into_any_element(),
-            None => {
-                div()
-                    .flex_1()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_family(crate::settings::ui_font())
-                                    .text_color(muted)
-                                    .child("No table open"),
-                            )
-                            .child(div().text_xs().text_color(muted).child(
-                                crate::kbd::rich_colored(
-                                    "Click a table in the sidebar, or press [cmd-p] to quick-open.",
-                                    muted,
-                                ),
-                            )),
-                    )
-                    .into_any_element()
-            }
+            None => div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_family(crate::settings::ui_font())
+                                .text_color(muted)
+                                .child("No table open"),
+                        )
+                        .child(div().text_caption().text_color(muted).child(
+                            crate::kbd::rich_colored(
+                                "Click a table in the sidebar, or press [cmd-p] to quick-open.",
+                                muted,
+                            ),
+                        )),
+                )
+                .into_any_element(),
         }
     }
 

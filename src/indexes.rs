@@ -734,7 +734,7 @@ impl TableDelegate for IndexDelegate {
                     .map(|this| {
                         if empty {
                             this.italic()
-                                .text_color(t.colors.muted_foreground.opacity(0.5))
+                                .text_color(t.colors.muted_foreground)
                                 .child(placeholder)
                         } else {
                             this.text_color(t.colors.foreground).child(text)

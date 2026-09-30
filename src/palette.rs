@@ -813,7 +813,7 @@ impl TuskApp {
                     .w(px(560.))
                     // Clicks inside stay inside.
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(elevated)

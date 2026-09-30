@@ -278,7 +278,7 @@ impl TuskApp {
         };
         let t = cx.theme();
         let (border, bg, fg) = (t.border, t.popover, t.foreground);
-        let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
+        let backdrop = crate::theme::backdrop(t);
         div()
             .id("preview-backdrop")
             .absolute()
@@ -304,7 +304,7 @@ impl TuskApp {
                     .h(px(440.))
                     .flex()
                     .flex_col()
-                    .rounded(px(8.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .bg(bg)
@@ -355,7 +355,7 @@ impl TuskApp {
                                 Button::new("preview-commit")
                                     .label("Commit")
                                     .small()
-                                    .outline()
+                                    .primary()
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.preview = None;
                                         this.save_changes(window, cx);

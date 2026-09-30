@@ -2,10 +2,11 @@
 //! opened by cmd-n / "New Connection". Owns its own form state; on a
 //! successful connect it hands the pool to the main view and closes itself.
 
+use crate::theme::TextCaption as _;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
@@ -35,6 +36,8 @@ pub struct ConnDialog {
     choosing: bool,
     /// Highlighted engine in the grid.
     picked: crate::engine::Engine,
+    /// "Import from URL": the URL field, shown once the button is pressed.
+    url: Option<Entity<gpui_kit::component::input::InputState>>,
     _subs: Vec<Subscription>,
 }
 
@@ -144,6 +147,7 @@ impl ConnDialog {
             group_select,
             choosing,
             picked,
+            url: None,
             _subs: vec![sub, ssl_sub, group_sub],
         }
     }
@@ -551,11 +555,10 @@ impl ConnDialog {
                 .child(
                     div()
                         .id("dlg-notice")
-                        .rounded(px(8.))
+                        .rounded(crate::theme::RADIUS_LG)
                         .border_1()
                         .border_color(bd.opacity(0.5))
                         .shadow_md()
-                        .cursor_pointer()
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.form.notice = None;
                             cx.notify();
@@ -611,7 +614,7 @@ impl ConnDialog {
                 .flex_col()
                 .px_3()
                 .py_1p5()
-                .rounded(px(10.))
+                .rounded(crate::theme::RADIUS_LG)
                 .bg(card_bg)
                 .border_1()
                 .border_color(border)
@@ -627,7 +630,7 @@ impl ConnDialog {
                     .id(("dlg-color", i))
                     .h(px(22.))
                     .w(px(if selected { 44. } else { 22. }))
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .bg(rgb(*c))
                     .when(selected, |this| {
                         this.border_2().border_color(foreground.opacity(0.6))
@@ -761,7 +764,7 @@ impl ConnDialog {
                     div()
                         .pl(px(LABEL_W + 8.))
                         .pb_1()
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child("A file that doesn't exist yet is created.")
                         .into_any_element(),
@@ -894,7 +897,7 @@ impl ConnDialog {
                 div()
                     .pl(px(LABEL_W + 8.))
                     .pb_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("Leave the key empty to use ~/.ssh/id_ed25519 or id_rsa.")
                     .into_any_element(),
@@ -935,7 +938,11 @@ impl ConnDialog {
             .child(div().flex_1())
             .child(footer_btn("dlg-save", "Save").on_click(cx.listener(Self::on_save)))
             .child(footer_btn("dlg-test", "Test").on_click(cx.listener(Self::on_test)))
-            .child(footer_btn("dlg-connect", "Connect").on_click(cx.listener(Self::on_connect)));
+            .child(
+                footer_btn("dlg-connect", "Connect")
+                    .primary()
+                    .on_click(cx.listener(Self::on_connect)),
+            );
 
         let title = if self.choosing {
             "Create a new connection".to_string()
@@ -1031,7 +1038,6 @@ impl ConnDialog {
             let on = e == self.picked;
             div()
                 .id(("engine", e as usize))
-                .cursor_pointer()
                 .w(px(128.))
                 .h(px(96.))
                 .flex()
@@ -1039,7 +1045,7 @@ impl ConnDialog {
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .rounded(px(8.))
+                .rounded(crate::theme::RADIUS_LG)
                 .border_1()
                 .border_color(if on {
                     t.accent
@@ -1051,7 +1057,7 @@ impl ConnDialog {
                 .child(crate::icons::engine_badge(e, 40.))
                 .child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .text_color(fg)
                         .text_center()
                         .child(e.label()),
@@ -1074,23 +1080,49 @@ impl ConnDialog {
                     .flex_wrap()
                     .gap_1()
                     .p_2()
-                    .rounded(px(10.))
+                    .rounded(crate::theme::RADIUS_LG)
                     .border_1()
                     .border_color(border)
                     .children(tiles),
             )
+            .children(self.url.as_ref().map(|url| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().child(Input::new(url)))
+                    .child(
+                        Button::new("dlg-url-import")
+                            .label("Import")
+                            .primary()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
+                            ),
+                    )
+                    .child(
+                        Button::new("dlg-url-close")
+                            .icon(gpui_kit::assets::IconName::Close)
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.url = None;
+                                cx.notify();
+                            })),
+                    )
+            }))
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(
-                        Button::new("dlg-import-url")
-                            .label("Import from URL")
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
-                            ),
-                    )
+                    .when(self.url.is_none(), |d| {
+                        d.child(
+                            Button::new("dlg-import-url")
+                                .label("Import from URL")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_url_field(window, cx)
+                                })),
+                        )
+                    })
                     .child(div().flex_1())
                     .child(
                         Button::new("dlg-cancel")
@@ -1101,6 +1133,7 @@ impl ConnDialog {
                     .child(
                         Button::new("dlg-create")
                             .label("Create")
+                            .primary()
                             .w(px(84.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let e = this.picked;
@@ -1111,21 +1144,62 @@ impl ConnDialog {
             .into_any_element()
     }
 
-    /// "Import from URL": a connection URL on the clipboard fills the form
+    /// Return: Create on the engine grid, Connect on the form.
+    fn on_default(
+        &mut self,
+        _: &crate::dialog_keys::DialogConfirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.form.busy {
+            return;
+        }
+        if self.choosing && self.url.is_some() {
+            self.import_url(window, cx);
+        } else if self.choosing {
+            let e = self.picked;
+            self.choose_engine(e, window, cx);
+        } else {
+            self.on_connect(&ClickEvent::default(), window, cx);
+        }
+    }
+
+    /// "Import from URL": show the URL field (pre-filled when the clipboard
+    /// holds a connection URL). Import then fills the form from it
     /// (`postgresql://user@host:5432/db`, `mysql://…`, `redis://…`, …).
-    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = cx
+    fn show_url_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let clip = cx
             .read_from_clipboard()
             .and_then(|c| c.text())
+            .map(|t| t.trim().to_string())
+            .filter(|t| crate::engine::parse_url(t).is_some())
+            .unwrap_or_default();
+        let input = cx.new(|cx| {
+            let mut st = gpui_kit::component::input::InputState::new(window, cx)
+                .placeholder("postgresql://user@host:5432/database");
+            st.set_value(clip, window, cx);
+            st
+        });
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        self.url = Some(input);
+        cx.notify();
+    }
+
+    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self
+            .url
+            .as_ref()
+            .map(|u| u.read(cx).value().to_string())
             .unwrap_or_default();
         let Some(parsed) = crate::engine::parse_url(text.trim()) else {
             self.form.notice = Some((
                 false,
-                "Copy a connection URL (like mysql://user@host/db) first.".into(),
+                "Enter a connection URL like mysql://user@host/db.".into(),
             ));
             cx.notify();
             return;
         };
+        self.url = None;
         self.choose_engine(parsed.engine, window, cx);
         let set = |e: &Entity<gpui_kit::component::input::InputState>,
                    v: String,
@@ -1164,6 +1238,10 @@ impl Render for ConnDialog {
             crate::toast::push_top(window, cx, Some(ok), msg);
         }
         div()
+            .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(cx.listener(Self::on_default))
             .size_full()
             .relative()
             .child(self.render_inner(window, cx))

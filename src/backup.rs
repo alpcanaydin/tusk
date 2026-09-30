@@ -4,11 +4,12 @@
 //! one. SSH profiles go through their tunnel; the password travels in
 //! `PGPASSWORD`, never on the command line.
 
+use crate::theme::TextCaption as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -663,7 +664,8 @@ impl BackupWindow {
 
     fn connection_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         let q = self.conn_search.read(cx).value().to_lowercase();
         let mut folders: Vec<Option<String>> = Vec::new();
         for c in &self.conns {
@@ -695,7 +697,7 @@ impl BackupWindow {
                         .px_2()
                         .pt_1()
                         .h(px(24.))
-                        .text_xs()
+                        .text_caption()
                         .text_color(muted)
                         .child(Icon::new(IconName::Folder).size(px(12.)))
                         .child(f.clone()),
@@ -713,9 +715,9 @@ impl BackupWindow {
                         .gap_2()
                         .px_2()
                         .h(px(26.))
-                        .rounded(px(4.))
+                        .rounded(crate::theme::RADIUS_SM)
                         .when(folder.is_some(), |this| this.pl(px(22.)))
-                        .when(active, |this| this.bg(accent.opacity(0.18)))
+                        .when(active, |this| this.bg(sel_bg))
                         .when(!active, |this| {
                             this.hover(|this| this.bg(muted.opacity(0.08)))
                         })
@@ -732,7 +734,7 @@ impl BackupWindow {
                                 .flex_1()
                                 .min_w_0()
                                 .truncate()
-                                .text_xs()
+                                .text_caption()
                                 .text_color(muted.opacity(0.6))
                                 .child(format!("{} · {}", c.host, c.database)),
                         )
@@ -747,7 +749,8 @@ impl BackupWindow {
 
     fn database_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         if self.loading {
             return div()
                 .p_3()
@@ -773,8 +776,8 @@ impl BackupWindow {
                     .gap_2()
                     .px_2()
                     .h(px(26.))
-                    .rounded(px(4.))
-                    .when(active, |this| this.bg(accent.opacity(0.18)))
+                    .rounded(crate::theme::RADIUS_SM)
+                    .when(active, |this| this.bg(sel_bg))
                     .when(!active, |this| {
                         this.hover(|this| this.bg(muted.opacity(0.08)))
                     })
@@ -784,7 +787,6 @@ impl BackupWindow {
                             .text_color(muted),
                     )
                     .child(div().text_sm().text_color(fg).child(d.clone()))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected_db = Some(name.clone());
                         cx.notify();
@@ -889,14 +891,13 @@ impl BackupWindow {
                     .gap_1()
                     .px_1p5()
                     .h(px(20.))
-                    .rounded(px(3.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .bg(accent.opacity(0.22))
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::table_font())
                     .text_color(fg)
                     .child(o.clone())
                     .child(Icon::new(IconName::X).size(px(10.)).text_color(muted))
-                    .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if i < this.options.len() {
                             this.options.remove(i);
@@ -917,7 +918,7 @@ impl BackupWindow {
                 div()
                     .flex_1()
                     .min_h(px(120.))
-                    .rounded(px(6.))
+                    .rounded(crate::theme::RADIUS_MD)
                     .border_1()
                     .border_color(border)
                     .bg(card)
@@ -951,7 +952,7 @@ impl BackupWindow {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .rounded(px(6.))
+                        .rounded(crate::theme::RADIUS_MD)
                         .border_1()
                         .border_color(border)
                         .bg(card)
@@ -1022,7 +1023,7 @@ impl BackupWindow {
                             .id("bk-notice")
                             .max_h(px(60.))
                             .overflow_y_scroll()
-                            .text_xs()
+                            .text_caption()
                             .text_color(if ok { ok_c } else { err_c })
                             .child(msg)
                     })),
@@ -1055,7 +1056,7 @@ impl BackupWindow {
                         "Start restore…"
                     })
                     .small()
-                    .outline()
+                    .primary()
                     .disabled(self.busy || self.selected_db.is_none())
                     .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
             );
@@ -1081,6 +1082,16 @@ impl BackupWindow {
         };
         div()
             .track_focus(&self.focus)
+            .key_context(crate::dialog_keys::CONTEXT)
+            .on_action(crate::dialog_keys::close)
+            .on_action(
+                cx.listener(|this, _: &crate::dialog_keys::DialogConfirm, window, cx| {
+                    // Return does what the (enabled) Start button does.
+                    if this.selected_db.is_some() {
+                        this.start(window, cx);
+                    }
+                }),
+            )
             .size_full()
             .flex()
             .flex_col()

@@ -762,7 +762,8 @@ impl RenderOnce for Tab {
         self.base
             .id(self.ix)
             // Tusk patch: pointer cursor on clickable, enabled items.
-            .when(!self.disabled, |this| this.cursor_pointer())
+            // Tusk patch: tabs keep the arrow cursor, as on macOS.
+            .when(!self.disabled, |this| this.cursor_default())
             .selected(self.selected)
             .disabled(self.disabled)
             .when_some(aria_label, |this, label| this.accessibility_label(label))

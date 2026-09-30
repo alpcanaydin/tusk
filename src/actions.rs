@@ -117,7 +117,13 @@ gpui_kit::actions!(
         GridDuplicateRow,
         GridSetNull,
         GridEditNext,
-        GridEditPrev
+        GridEditPrev,
+        MinimizeWindow,
+        ZoomWindow,
+        ToggleFullScreen,
+        BringAllToFront,
+        OpenHelp,
+        ReportIssue
     ]
 );
 

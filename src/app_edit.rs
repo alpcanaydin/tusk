@@ -28,15 +28,14 @@ fn pill_frame(id: impl Into<ElementId>, active: bool, cx: &App) -> Stateful<Div>
     let (muted, fg, border) = (t.muted_foreground, t.foreground, t.border);
     div()
         .id(id)
-        .cursor_pointer()
         .h(px(crate::settings::row_h()))
         .px_2()
         .flex()
         .items_center()
-        .rounded(px(6.))
+        .rounded(crate::theme::RADIUS_MD)
         .border_1()
         .border_color(border)
-        .text_xs()
+        .text_caption()
         .text_color(if active { fg } else { muted })
         .when(active, |this| this.bg(muted.opacity(0.18)))
         .hover(|this| this.bg(muted.opacity(0.1)).text_color(fg))
@@ -52,11 +51,10 @@ fn icon_btn(id: impl Into<ElementId>, icon: IconName, enabled: bool, cx: &App) -
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(5.))
+        .rounded(crate::theme::RADIUS_SM)
         .text_color(if enabled { muted } else { muted.opacity(0.3) })
         .when(enabled, |this| {
-            this.cursor_pointer()
-                .hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
+            this.hover(|this| this.bg(muted.opacity(0.12)).text_color(fg))
         })
         .child(Icon::new(icon).size(px(14.)))
 }
@@ -1438,7 +1436,7 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_1p5()
-                    .text_xs()
+                    .text_caption()
                     .child(div().text_color(muted.opacity(0.7)).child(label))
                     .child(crate::kbd::caps(key))
             }));
@@ -1490,12 +1488,11 @@ impl TuskApp {
                 .h_full()
                 .flex()
                 .items_center()
-                .text_xs()
+                .text_caption()
                 .text_color(if active { fg } else { muted })
                 .when(active, |this| this.bg(muted.opacity(0.18)))
                 .hover(|this| this.bg(muted.opacity(0.08)))
                 .child(label)
-                .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.set_tab_view(ix, v, window, cx);
                 }))
@@ -1546,7 +1543,7 @@ impl TuskApp {
             .flex()
             .flex_row()
             .h(px(crate::settings::row_h()))
-            .rounded(px(6.))
+            .rounded(crate::theme::RADIUS_MD)
             .border_1()
             .border_color(border)
             .overflow_hidden()
@@ -1635,7 +1632,7 @@ impl TuskApp {
                     .flex_1()
                     .flex()
                     .justify_center()
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::ui_font())
                     .text_color(muted)
                     .child(center),
@@ -1679,7 +1676,7 @@ impl TuskApp {
                                         view.update(cx, |this, cx| this.apply_page_inputs(ix, cx));
                                     }),
                             )
-                            .child(div().text_xs().text_color(muted).child(
+                            .child(div().text_caption().text_color(muted).child(
                                 crate::kbd::rich_colored(
                                     "[cmd-left] / [cmd-right] previous / next page",
                                     muted,

@@ -97,7 +97,6 @@ impl TuskApp {
         let folders = folders.to_vec();
         div()
             .id(("tree-conn", ix))
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1p5()
@@ -135,7 +134,7 @@ impl TuskApp {
                     .children(conn.tag.map(|tag| {
                         div()
                             .flex_none()
-                            .text_xs()
+                            .text_caption()
                             .text_color(rgb(tag.color()))
                             .child(tag.label())
                     })),
@@ -173,7 +172,6 @@ impl TuskApp {
         let menu_name = name.to_string();
         div()
             .id(SharedString::from(format!("tree-group-{name}")))
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1p5()
@@ -215,7 +213,7 @@ impl TuskApp {
             .child(
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child(count.to_string()),
             )
@@ -234,12 +232,13 @@ impl TuskApp {
                     }),
                 )
                 .separator()
-                .item(
-                    PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+                .item(crate::theme::danger_item(
+                    "Delete Group",
+                    move |_, _, cx| {
                         let view = cx.global::<TuskHandle>().0.clone();
                         view.update(cx, |this, cx| this.delete_group(d.clone(), cx));
-                    }),
-                )
+                    },
+                ))
             })
             .into_any_element()
     }
@@ -367,7 +366,7 @@ impl TuskApp {
                 div()
                     .px_2()
                     .py_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(muted)
                     .child("No matching connections."),
             );
@@ -381,7 +380,6 @@ impl TuskApp {
         );
         let footer = div()
             .id("tree-new-connection")
-            .cursor_pointer()
             .flex()
             .flex_none()
             .items_center()

@@ -69,6 +69,21 @@ impl TuskApp {
             })
         };
 
+        let danger = |label: &'static str,
+                      f: fn(
+            &mut TuskApp,
+            TableKind,
+            String,
+            &mut Window,
+            &mut Context<TuskApp>,
+        )| {
+            let (k, n) = (kind.clone(), name.clone());
+            crate::theme::danger_item(label, move |_, window, cx| {
+                let (k, n) = (k.clone(), n.clone());
+                with_app(cx, |app, cx| f(app, k, n, window, cx));
+            })
+        };
+
         let mut menu = menu.item(item(
             if is_fn { "Select" } else { "Open" },
             |app, k, n, w, cx| {
@@ -91,7 +106,7 @@ impl TuskApp {
                     let schema = app.current_schema.clone();
                     app.send_table_to_chat(k, schema, n, w, cx);
                 })
-                .icon(IconName::Sparkles),
+                .action(Box::new(SendToChat)),
             )
             .item(PopupMenuItem::submenu("Copy Script As", script_menu))
             .item(PopupMenuItem::submenu(
@@ -99,9 +114,10 @@ impl TuskApp {
                 open_script_menu,
             ))
             .separator()
-            .item(item("New Query", |app, _, _, w, cx| {
-                app.open_sql_tab(w, cx)
-            }))
+            .item(
+                item("New Query", |app, _, _, w, cx| app.open_sql_tab(w, cx))
+                    .action(Box::new(NewSqlTab)),
+            )
             .item(item("New Table…", |app, _, _, w, cx| {
                 app.new_table_editor(w, cx)
             }))
@@ -143,21 +159,29 @@ impl TuskApp {
                     }),
                 )
             });
+            menu = menu.item(PopupMenuItem::submenu("Duplicate", dup));
+        }
+        menu = menu.item(
+            item("Refresh", |app, _, _, _, cx| {
+                let schema = app.current_schema.clone();
+                app.fetch_objects_for(&schema, cx);
+            })
+            .action(Box::new(RefreshActive)),
+        );
+        // Destructive actions last, in red.
+        menu = menu.separator();
+        if is_table {
             menu = menu
-                .item(PopupMenuItem::submenu("Duplicate", dup))
-                .item(item("Truncate…", |app, _, n, w, cx| {
+                .item(danger("Truncate…", |app, _, n, w, cx| {
                     app.truncate_object(n, false, w, cx)
                 }))
-                .item(item("Truncate Cascade…", |app, _, n, w, cx| {
+                .item(danger("Truncate Cascade…", |app, _, n, w, cx| {
                     app.truncate_object(n, true, w, cx)
                 }));
         }
-        menu.item(item("Delete", |app, k, n, _, cx| app.toggle_drop(k, n, cx)))
-            .separator()
-            .item(item("Refresh", |app, _, _, _, cx| {
-                let schema = app.current_schema.clone();
-                app.fetch_objects_for(&schema, cx);
-            }))
+        menu.item(danger("Delete", |app, k, n, _, cx| {
+            app.toggle_drop(k, n, cx)
+        }))
     }
 
     /// Backup / Restore window, the current connection + database picked.
@@ -335,7 +359,7 @@ impl TuskApp {
         };
         let schema = self.current_schema.clone();
         let answer = window.prompt(
-            PromptLevel::Warning,
+            PromptLevel::Critical,
             &format!("Truncate “{name}”?"),
             Some(if cascade {
                 "Deletes every row, and every row referencing it in other tables (CASCADE). This can't be undone."
@@ -609,13 +633,12 @@ impl TuskApp {
         let (toggle, menu_name) = (name.clone(), name.clone());
         div()
             .id(SharedString::from(format!("obj-group-{name}")))
-            .cursor_pointer()
             .flex()
             .items_center()
             .gap_1p5()
             .px_2()
             .h(px(crate::settings::row_h()))
-            .rounded(px(4.))
+            .rounded(crate::theme::RADIUS_SM)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(
                 Icon::new(if collapsed {
@@ -630,8 +653,8 @@ impl TuskApp {
             .child(title)
             .child(
                 div()
-                    .text_xs()
-                    .text_color(muted.opacity(0.6))
+                    .text_caption()
+                    .text_color(muted)
                     .child(count.to_string()),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -648,12 +671,13 @@ impl TuskApp {
                         with_app(cx, |app, cx| app.start_obj_group_rename(r, window, cx));
                     }),
                 )
-                .item(
-                    PopupMenuItem::new("Delete Group").on_click(move |_, _, cx| {
+                .item(crate::theme::danger_item(
+                    "Delete Group",
+                    move |_, _, cx| {
                         let d = d.clone();
                         with_app(cx, |app, cx| app.delete_obj_group(d, cx));
-                    }),
-                )
+                    },
+                ))
             })
             .into_any_element()
     }
@@ -738,7 +762,7 @@ impl TuskApp {
                 Vec::new(),
             ),
         };
-        let label = |s: &'static str| div().flex_none().text_xs().text_color(muted).child(s);
+        let label = |s: &'static str| div().flex_none().text_caption().text_color(muted).child(s);
         let chips = div()
             .flex()
             .items_center()
@@ -746,9 +770,9 @@ impl TuskApp {
             .children(pk.iter().map(|c| {
                 div()
                     .px_1p5()
-                    .rounded(px(3.))
+                    .rounded(crate::theme::RADIUS_SM)
                     .bg(chip_bg)
-                    .text_xs()
+                    .text_caption()
                     .font_family(crate::settings::table_font())
                     .text_color(fg)
                     .child(c.clone())
@@ -756,9 +780,9 @@ impl TuskApp {
             .when(pk.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .italic()
-                        .text_color(muted.opacity(0.6))
+                        .text_color(muted)
                         .child("none"),
                 )
             });
@@ -810,10 +834,12 @@ impl TuskApp {
             .child(label("Primary"))
             .child(primary)
             .when(designing, |d| {
-                d.child(div().flex_1())
-                    .child(div().text_xs().text_color(muted.opacity(0.7)).child(
-                        crate::kbd::rich_colored("[cmd-s] creates the table", muted.opacity(0.7)),
-                    ))
+                d.child(div().flex_1()).child(
+                    div()
+                        .text_caption()
+                        .text_color(muted)
+                        .child(crate::kbd::rich_colored("[cmd-s] creates the table", muted)),
+                )
             })
             .into_any_element()
     }
@@ -844,12 +870,9 @@ impl TuskApp {
             )
             .child(
                 div()
-                    .text_xs()
-                    .text_color(t.muted_foreground.opacity(0.7))
-                    .child(crate::kbd::rich_colored(
-                        hint,
-                        t.muted_foreground.opacity(0.7),
-                    )),
+                    .text_caption()
+                    .text_color(t.muted_foreground)
+                    .child(crate::kbd::rich_colored(hint, t.muted_foreground)),
             )
             .into_any_element()
     }

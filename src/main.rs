@@ -19,6 +19,7 @@ mod copy_as;
 mod db;
 mod ddl;
 mod dialog;
+mod dialog_keys;
 mod dock;
 mod drivers;
 mod engine;
@@ -79,6 +80,7 @@ fn main() {
     app.run(move |cx: &mut App| {
         gpui_kit::init(cx);
         actions::bind_keys(cx);
+        dialog_keys::bind_keys(cx);
         updater::init(cx);
         menus::install(cx);
 

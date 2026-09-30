@@ -10,6 +10,8 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
 
+use crate::theme::TextCaption as _;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Release tags are `v<version>` (scripts/tag-release.sh, appcast.sh).
@@ -84,7 +86,7 @@ fn card(version: &str, url: &str, cx: &mut Context<Notification>) -> AnyElement 
         .child(
             h_flex()
                 .gap_1()
-                .text_xs()
+                .text_caption()
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(accent)
                 .child(Icon::new(gpui_kit::assets::IconName::Sparkles).size(px(12.)))
