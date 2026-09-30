@@ -405,7 +405,14 @@ impl TuskApp {
                     sheet.picked.iter().filter(|p| **p).count()
                 ),
                 Phase::Done { imported, passwords, .. } => {
-                    format!("{imported} connection(s) and {passwords} password(s) imported")
+                    let plural = |n: usize, one: &str, many: &str| {
+                        format!("{n} {}", if n == 1 { one } else { many })
+                    };
+                    format!(
+                        "{} and {} imported",
+                        plural(*imported, "connection", "connections"),
+                        plural(*passwords, "password", "passwords")
+                    )
                 }
             }));
 
@@ -547,17 +554,28 @@ impl TuskApp {
                             .on_click(cx.listener(|this, _, _, cx| this.start_migration(cx))),
                     ),
                 Phase::Importing { .. } => d.child(div().h(px(24.))),
-                Phase::Done { .. } => d.child(
-                    Button::new("mig-close")
-                        .label("Open Connections")
-                        .small()
-                        .outline()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.migrate = None;
-                            this.conn_manager = true;
-                            cx.notify();
-                        })),
-                ),
+                Phase::Done { .. } => d
+                    .child(
+                        Button::new("mig-close")
+                            .label("Open Connections")
+                            .small()
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.migrate = None;
+                                this.conn_manager = true;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("mig-done")
+                            .label("Done")
+                            .small()
+                            .primary()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.migrate = None;
+                                cx.notify();
+                            })),
+                    ),
             });
 
         let backdrop = crate::theme::backdrop(&t);

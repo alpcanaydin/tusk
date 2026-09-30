@@ -1497,17 +1497,25 @@ impl TuskApp {
         let center = match view {
             TabView::Data => match (d.total_rows(), d.page_len()) {
                 (Some(0), _) => "0 rows".to_string(),
-                (Some(n), Some(len)) => format!(
-                    "{}–{} of {} rows{}",
-                    super::fmt_int(d.page_offset + 1),
-                    super::fmt_int(d.page_offset + len),
-                    super::fmt_int(n),
-                    if d.filter.is_some() {
+                (Some(n), Some(len)) => {
+                    let filtered = if d.filter.is_some() {
                         " (filtered)"
                     } else {
                         ""
+                    };
+                    let rows = if n == 1 { "row" } else { "rows" };
+                    // Every row on screen: just the count, no range.
+                    if d.page_offset == 0 && len >= n {
+                        format!("{} {rows}{filtered}", super::fmt_int(n))
+                    } else {
+                        format!(
+                            "{}–{} of {} {rows}{filtered}",
+                            super::fmt_int(d.page_offset + 1),
+                            super::fmt_int(d.page_offset + len),
+                            super::fmt_int(n),
+                        )
                     }
-                ),
+                }
                 _ => "…".to_string(),
             },
             TabView::Structure => {
