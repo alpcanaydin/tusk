@@ -660,16 +660,16 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             ));
         }
     }
-    for mode in crate::settings::Appearance::ALL {
+    for mode in crate::settings::Appearance::available() {
         if mode == current_theme.appearance {
             continue;
         }
         dynamic.push((
             format!("theme: appearance {}", mode.label().to_lowercase()),
-            if mode == crate::settings::Appearance::Light {
-                IconName::Sun
-            } else {
-                IconName::Moon
+            match mode {
+                crate::settings::Appearance::Light => IconName::Sun,
+                crate::settings::Appearance::Omarchy => IconName::Palette,
+                _ => IconName::Moon,
             },
             std::rc::Rc::new(
                 move |_: &mut TuskApp, _: &mut Window, cx: &mut Context<TuskApp>| {

@@ -100,11 +100,17 @@ pub fn apply(cx: &mut App) {
     let light = crate::settings::is_light(cx);
     let name = crate::settings::active_theme(cx);
     // Light mode always has a palette (Tusk Light is the default one).
-    let pal = crate::themes::find(&name).or_else(|| {
-        light
-            .then(|| crate::themes::find(crate::themes::DEFAULT_LIGHT))
-            .flatten()
-    });
+    let pal = crate::themes::find(&name)
+        .or_else(|| {
+            (name == crate::omarchy::NAME)
+                .then(crate::omarchy::palette)
+                .flatten()
+        })
+        .or_else(|| {
+            light
+                .then(|| crate::themes::find(crate::themes::DEFAULT_LIGHT))
+                .flatten()
+        });
     let config: Rc<ThemeConfig> =
         match pal.map(|p| serde_json::from_value::<ThemeConfig>(crate::themes::config_json(p))) {
             Some(Ok(c)) => Rc::new(c),
@@ -171,10 +177,12 @@ pub fn apply(cx: &mut App) {
         theme.notification.placement = gpui_kit::Anchor::BottomRight;
         theme.notification.margins.bottom = px(40.);
         theme.notification.margins.right = px(12.);
-        // Settings ▸ Appearance ▸ Accent Color.
+        // Settings ▸ Appearance ▸ Accent Color. Omarchy themes bring their
+        // own accent, which matches the rest of the desktop.
         if let Some(&(_, dark_c, light_c)) = crate::settings::ACCENTS
             .iter()
             .find(|(n, _, _)| *n == prefs.accent && *n != "Theme")
+            .filter(|_| name != crate::omarchy::NAME)
         {
             let c: Hsla = rgb(if light { light_c } else { dark_c }).into();
             let colors = &mut theme.colors;

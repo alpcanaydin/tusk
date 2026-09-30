@@ -27,16 +27,24 @@ pub enum Appearance {
     System,
     Light,
     Dark,
+    /// Follow the Omarchy desktop's active theme (colors and light / dark).
+    Omarchy,
 }
 
 impl Appearance {
-    pub const ALL: [Appearance; 3] = [Appearance::System, Appearance::Light, Appearance::Dark];
+    pub const ALL: [Appearance; 4] = [
+        Appearance::System,
+        Appearance::Light,
+        Appearance::Dark,
+        Appearance::Omarchy,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Appearance::System => "System",
             Appearance::Light => "Light",
             Appearance::Dark => "Dark",
+            Appearance::Omarchy => crate::omarchy::NAME,
         }
     }
 
@@ -45,6 +53,25 @@ impl Appearance {
             .into_iter()
             .find(|a| a.label() == s)
             .unwrap_or_default()
+    }
+
+    /// Modes offered in the pickers: "Omarchy" only where Omarchy's theme
+    /// exists (or it is the current choice).
+    pub fn available() -> Vec<Appearance> {
+        let current = get().appearance;
+        Self::ALL
+            .into_iter()
+            .filter(|a| *a != Appearance::Omarchy || *a == current || crate::omarchy::detected())
+            .collect()
+    }
+
+    /// Default mode: follow Omarchy's theme when it is there.
+    fn initial() -> Self {
+        if crate::omarchy::detected() {
+            Appearance::Omarchy
+        } else {
+            Appearance::System
+        }
     }
 }
 
@@ -132,7 +159,7 @@ pub const TABLE_SIZE_RANGE: (f32, f32) = (9., 24.);
 impl Default for Prefs {
     fn default() -> Self {
         Self {
-            appearance: Appearance::System,
+            appearance: Appearance::initial(),
             light_theme: themes::DEFAULT_LIGHT.to_string(),
             dark_theme: themes::DEFAULT_DARK.to_string(),
             legacy_theme: None,
@@ -345,20 +372,27 @@ pub fn update(cx: &mut App, f: impl FnOnce(&mut Prefs)) {
 
 /// Is the light theme in effect right now (setting + macOS appearance)?
 pub fn is_light(cx: &App) -> bool {
+    let system = || {
+        matches!(
+            cx.window_appearance(),
+            WindowAppearance::Light | WindowAppearance::VibrantLight
+        )
+    };
     match get().appearance {
         Appearance::Light => true,
         Appearance::Dark => false,
-        Appearance::System => matches!(
-            cx.window_appearance(),
-            WindowAppearance::Light | WindowAppearance::VibrantLight
-        ),
+        Appearance::System => system(),
+        // Without a readable Omarchy theme, behave like "System".
+        Appearance::Omarchy => crate::omarchy::palette().map_or_else(system, |p| p.light),
     }
 }
 
 /// The theme in effect right now.
 pub fn active_theme(cx: &App) -> String {
     let p = get();
-    if is_light(cx) {
+    if p.appearance == Appearance::Omarchy && crate::omarchy::palette().is_some() {
+        crate::omarchy::NAME.to_string()
+    } else if is_light(cx) {
         p.light_theme.clone()
     } else {
         p.dark_theme.clone()
@@ -377,7 +411,7 @@ pub fn choose_theme(cx: &mut App, name: &str) {
         } else {
             p.dark_theme = name.to_string();
         }
-        if light != showing_light {
+        if light != showing_light || p.appearance == Appearance::Omarchy {
             p.appearance = if light {
                 Appearance::Light
             } else {
@@ -552,7 +586,7 @@ impl SettingsWindow {
                 .map(|n| (SharedString::from(n), SharedString::from(n)))
                 .collect()
         };
-        let modes: Vec<(SharedString, SharedString)> = Appearance::ALL
+        let modes: Vec<(SharedString, SharedString)> = Appearance::available()
             .into_iter()
             .map(|a| (SharedString::from(a.label()), SharedString::from(a.label())))
             .collect();

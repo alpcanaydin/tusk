@@ -33,6 +33,7 @@ mod mcp_bridge;
 mod menus;
 mod migrate;
 mod objects;
+mod omarchy;
 mod palette;
 mod settings;
 mod sql;
@@ -85,6 +86,7 @@ fn main() {
             eprintln!("font load error: {e:#}");
         }
         theme::apply(cx);
+        omarchy::watch(cx);
         dock::set_icon();
         open_main_window(cx, true);
         // Automated UI checks run the app without taking focus.
@@ -132,10 +134,14 @@ fn open_main_window(cx: &mut App, auto_connect: bool) {
             // Red traffic light in a workspace = leave it: the
             // window stays and shows the welcome screen. On the welcome screen
             // it closes (the dock icon reopens it).
-            // Mode "System": re-theme when macOS switches light / dark.
+            // Mode "System" (or "Omarchy" without a readable theme):
+            // re-theme when the OS switches light / dark.
             window
                 .observe_window_appearance(|_, cx| {
-                    if settings::get().appearance == settings::Appearance::System {
+                    let mode = settings::get().appearance;
+                    if mode == settings::Appearance::System
+                        || (mode == settings::Appearance::Omarchy && omarchy::palette().is_none())
+                    {
                         theme::apply(cx);
                         cx.refresh_windows();
                     }
