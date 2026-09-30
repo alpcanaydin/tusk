@@ -311,6 +311,9 @@ pub struct ExportWindow {
     multi: bool,
     busy: bool,
     notice: Option<(bool, String)>,
+    /// The last export's file, for "Show in Finder". Revealing it right away
+    /// pulled Finder to the front mid-flow and left Tusk's windows stale.
+    saved: Option<PathBuf>,
 }
 
 impl ExportWindow {
@@ -370,6 +373,7 @@ impl ExportWindow {
             fields: Vec::new(),
             busy: false,
             notice: None,
+            saved: None,
         };
         this.load_columns(cx);
         this
@@ -495,6 +499,7 @@ impl ExportWindow {
             let Some(target) = target else { return };
             let _ = weak.update(cx, |this: &mut ExportWindow, cx| {
                 this.busy = true;
+                this.saved = None;
                 this.notice = Some((true, "Exporting…".into()));
                 cx.notify();
             });
@@ -503,7 +508,7 @@ impl ExportWindow {
                 this.busy = false;
                 this.notice = Some(match result {
                     Ok(n) => {
-                        cx.reveal_path(&target);
+                        this.saved = Some(target.clone());
                         (true, format!("Exported {n} rows to {}", target.display()))
                     }
                     Err(e) => (false, e),
@@ -1076,6 +1081,12 @@ impl ExportWindow {
                                 .child(msg)
                         },
                     )))
+                    .children(self.saved.clone().map(|path| {
+                        Button::new("exp-reveal")
+                            .label(crate::theme::REVEAL_LABEL)
+                            .small()
+                            .on_click(move |_, _, cx| cx.reveal_path(&path))
+                    }))
                     .child(
                         Button::new("exp-cancel")
                             .label("Cancel")

@@ -339,6 +339,8 @@ pub struct BackupWindow {
     /// it, not start another run from the window's own Return binding.
     modal: bool,
     notice: Option<(bool, String)>,
+    /// The last backup's file, for "Show in Finder" (see ExportWindow).
+    saved: Option<PathBuf>,
     _subs: Vec<Subscription>,
 }
 
@@ -426,6 +428,7 @@ impl BackupWindow {
             busy: false,
             modal: false,
             notice: None,
+            saved: None,
             _subs: subs,
         };
         if let Some((conn, database)) = preselect
@@ -449,6 +452,7 @@ impl BackupWindow {
         self.endpoint = None;
         self.loading = true;
         self.notice = None;
+        self.saved = None;
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let password = db::load_password(&conn.name).unwrap_or_default();
@@ -541,6 +545,7 @@ impl BackupWindow {
                     }
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
+                        this.saved = None;
                         this.notice = Some((true, format!("Backing up {database}…")));
                         cx.notify();
                     });
@@ -564,8 +569,9 @@ impl BackupWindow {
                         this.busy = false;
                         this.notice = Some(match result {
                             Ok(file) => {
-                                cx.reveal_path(&file);
-                                (true, format!("Backup saved to {}", file.display()))
+                                let msg = format!("Backup saved to {}", file.display());
+                                this.saved = Some(file);
+                                (true, msg)
                             }
                             Err(e) => (false, e),
                         });
@@ -610,6 +616,7 @@ impl BackupWindow {
                     };
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
+                        this.saved = None;
                         this.notice = Some((true, format!("Restoring into {database}…")));
                         cx.notify();
                     });
@@ -1077,6 +1084,12 @@ impl BackupWindow {
                             .child(msg)
                     })),
             )
+            .children(self.saved.clone().map(|path| {
+                Button::new("bk-reveal")
+                    .label(crate::theme::REVEAL_LABEL)
+                    .small()
+                    .on_click(move |_, _, cx| cx.reveal_path(&path))
+            }))
             .when(backup, |this| {
                 this.child(
                     Checkbox::new("bk-gzip")

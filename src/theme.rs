@@ -340,6 +340,15 @@ pub fn empty_state(text: impl Into<SharedString>, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// The button that reveals a written file in the platform's file manager.
+pub const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
+    "Show in Finder"
+} else if cfg!(windows) {
+    "Show in Explorer"
+} else {
+    "Show in Folder"
+};
+
 /// Font features for literal text such as CLI flags: the UI font's
 /// ligatures would draw `--format` as `—format`.
 pub fn no_ligatures() -> FontFeatures {
