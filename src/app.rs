@@ -659,7 +659,7 @@ impl TuskApp {
                 .font_family(crate::settings::ui_font())
                 .text_color(rgb(crate::theme::EDITED))
                 .child(crate::kbd::rich_colored(
-                    &p,
+                    &format!("{p} — [cmd-s] to save"),
                     rgb(crate::theme::EDITED).into(),
                 ))
         });

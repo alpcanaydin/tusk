@@ -972,7 +972,7 @@ impl TuskApp {
         }
         (n > 0).then(|| {
             format!(
-                "{n} unsaved change{} — [cmd-s] to save",
+                "{n} unsaved change{}",
                 if n == 1 { "" } else { "s" }
             )
         })
