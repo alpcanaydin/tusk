@@ -118,6 +118,8 @@ pub struct Notification {
     placement: Option<Anchor>,
     delivery: Option<NotificationDelivery>,
     autohide: bool,
+    /// Tusk patch: keep the close button shown, not only on hover.
+    close_visible: bool,
     action_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> Button>>,
     content_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement>>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
@@ -178,6 +180,7 @@ impl Notification {
             placement: None,
             delivery: None,
             autohide: true,
+            close_visible: false,
             action_builder: None,
             content_builder: None,
             on_click: None,
@@ -313,6 +316,13 @@ impl Notification {
     /// Set the auto hide of the notification, default is true.
     pub fn autohide(mut self, autohide: bool) -> Self {
         self.autohide = autohide;
+        self
+    }
+
+    /// Tusk patch: always show the close button (cards with their own
+    /// layout, where a hover-only × is easy to miss).
+    pub fn close_visible(mut self) -> Self {
+        self.close_visible = true;
         self
     }
 
@@ -458,8 +468,9 @@ impl Render for Notification {
                     .absolute()
                     .top_1()
                     .right_1()
-                    .invisible()
-                    .group_hover("", |this| this.visible())
+                    .when(!self.close_visible, |this| {
+                        this.invisible().group_hover("", |this| this.visible())
+                    })
                     .child(
                         Button::new("close")
                             .icon(IconName::Close)

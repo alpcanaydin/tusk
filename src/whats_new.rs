@@ -7,6 +7,7 @@
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -62,17 +63,60 @@ pub fn announce(window: &mut Window, cx: &mut App) {
     // Deferred: the window's root isn't set while it is being built.
     window.defer(cx, move |window, cx| {
         let url = release_notes_url(&version);
-        let note = Notification::info("See what's new in this release.")
-            .title(format!("Updated to Tusk {version}"))
-            .action(move |_, _, _| {
-                let url = url.clone();
-                Button::new("release-notes")
-                    .primary()
-                    .label("View Release Notes")
-                    .on_click(move |_, _, cx| cx.open_url(&url))
-            });
+        let note = Notification::new()
+            .autohide(false)
+            .close_visible()
+            .content(move |_, _, cx| card(&version, &url, cx));
         window.push_notification(note, cx);
     });
+}
+
+/// "What's new" card: label, title, one line, then a full-width button
+/// (the kit's action button would squeeze the text into a column).
+fn card(version: &str, url: &str, cx: &mut Context<Notification>) -> AnyElement {
+    let t = cx.theme();
+    let (accent, muted) = (t.accent, t.muted_foreground);
+    let url = url.to_string();
+    v_flex()
+        .w_full()
+        .gap_1()
+        .font_family(crate::settings::ui_font())
+        .child(
+            h_flex()
+                .gap_1()
+                .text_xs()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(accent)
+                .child(Icon::new(gpui_kit::assets::IconName::Sparkles).size(px(12.)))
+                .child("WHAT'S NEW"),
+        )
+        // Right padding clears the close button in the corner.
+        .child(
+            div()
+                .pr_6()
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(format!("Updated to Tusk {version}")),
+        )
+        .child(
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child("See what changed in this release."),
+        )
+        .child(
+            Button::new("release-notes")
+                .primary()
+                .small()
+                .w_full()
+                .mt_2()
+                .label("View Release Notes")
+                .on_click(cx.listener(move |note, _, window, cx| {
+                    cx.open_url(&url);
+                    note.dismiss(window, cx);
+                })),
+        )
+        .into_any_element()
 }
 
 #[cfg(test)]
