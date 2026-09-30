@@ -14,6 +14,13 @@ xcrun actool --compile "$app/Contents/Resources" --platform macosx \
   --minimum-deployment-target 14.0 --app-icon Tusk \
   --output-partial-info-plist "$root/target/release/bundle/icon.plist" \
   "$root/assets/icon/Tusk.icon" >/dev/null
+# assets/icon/Tusk.icon is an Icon Composer icon: only Xcode 26+ actool
+# compiles it, and an older one silently writes nothing. Never ship a
+# placeholder icon.
+[ -f "$app/Contents/Resources/Tusk.icns" ] && [ -f "$app/Contents/Resources/Assets.car" ] || {
+  echo "bundle: actool produced no icon (Xcode 26 or later is needed; have: $(xcodebuild -version | head -1))" >&2
+  exit 1
+}
 # pg_dump / pg_restore / psql + their libraries, relocatable (Backup / Restore
 # work without Homebrew or PostgreSQL on the Mac).
 "$root/scripts/bundle-pgtools.sh" "$app/Contents/Resources/pgtools"
