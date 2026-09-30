@@ -37,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   linux:
-    name: Linux archive
+    name: Linux packages
     needs: check
     if: needs.check.outputs.published != 'true'
     runs-on: ubuntu-24.04
@@ -95,9 +95,38 @@ jobs:
           path: target/release/bundle/Tusk-*-fedora-x86_64.rpm
           if-no-files-found: error
 
+  arch:
+    name: Arch package
+    needs: linux
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel@sha256:8edb44f40a0cb5d3e44ef474f02780098ce0084e591c8641bdc01f02f185cc40
+    timeout-minutes: 20
+    steps:
+      - run: pacman -Syu --noconfirm git
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-build
+          path: target/release/bundle
+      - name: Build and install package
+        run: |
+          useradd -m builder
+          chown -R builder:builder target/release/bundle
+          runuser -u builder -- scripts/package-linux.sh arch
+          pacman -U --noconfirm target/release/bundle/Tusk-*-arch-x86_64.pkg.tar.zst
+          ldd /usr/bin/tusk > /tmp/tusk-ldd.txt
+          ! grep 'not found' /tmp/tusk-ldd.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arch-pkg
+          path: target/release/bundle/Tusk-*-arch-x86_64.pkg.tar.zst
+          if-no-files-found: error
+
   build:
     name: Build and publish
-    needs: [check, linux, fedora]
+    needs: [check, linux, fedora, arch]
     if: needs.check.outputs.published != 'true'
     runs-on: macos-15
     timeout-minutes: 90
@@ -147,13 +176,7 @@ jobs:
 
           Ubuntu 24.04: download and install the `.deb` with `sudo apt install ./Tusk-*-ubuntu-amd64.deb`.
           Fedora: download and install the `.rpm` with `sudo dnf install ./Tusk-*-fedora-x86_64.rpm`.
-          For other distributions, download the Linux tarball and install it with:
-
-          ```sh
-          mkdir -p ~/.local
-          tar -C ~/.local -xzf Tusk-*-linux-x86_64.tar.gz
-          ~/.local/bin/tusk
-          ```
+          Arch Linux: download and install the `.pkg.tar.zst` with `sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst`.
 
           This build runs on Wayland with Xwayland fallback. It includes both SQL
           language servers. Install your distribution's PostgreSQL client tools
@@ -179,7 +202,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Download Linux archive
+      - name: Download Linux packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: linux-build
@@ -191,13 +214,19 @@ jobs:
           name: fedora-rpm
           path: target/release/bundle
 
+      - name: Download Arch package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: arch-pkg
+          path: target/release/bundle
+
       - name: Publish the release
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "target/release/bundle/Tusk-$VERSION-arm64.dmg" \
-            "target/release/bundle/Tusk-$VERSION-linux-x86_64.tar.gz" \
             "target/release/bundle/Tusk-$VERSION-ubuntu-amd64.deb" \
             "target/release/bundle/Tusk-$VERSION-fedora-x86_64.rpm" \
+            "target/release/bundle/Tusk-$VERSION-arch-x86_64.pkg.tar.zst" \
             target/release/bundle/appcast.xml \
             --repo "$GITHUB_REPOSITORY" --title "Tusk $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
         env:

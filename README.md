@@ -160,15 +160,9 @@ On Ubuntu 24.04, install the `Tusk-<version>-ubuntu-amd64.deb` from the
 [Releases page](https://github.com/alpcanaydin/tusk/releases) with
 `sudo apt install ./Tusk-*-ubuntu-amd64.deb`. On Fedora, install
 `Tusk-<version>-fedora-x86_64.rpm` with
-`sudo dnf install ./Tusk-*-fedora-x86_64.rpm`.
-
-For another Linux distribution, use the `Tusk-<version>-linux-x86_64.tar.gz`:
-
-```sh
-mkdir -p ~/.local
-tar -C ~/.local -xzf Tusk-*-linux-x86_64.tar.gz
-~/.local/bin/tusk
-```
+`sudo dnf install ./Tusk-*-fedora-x86_64.rpm`. On Arch Linux, install
+`Tusk-<version>-arch-x86_64.pkg.tar.zst` with
+`sudo pacman -U ./Tusk-*-arch-x86_64.pkg.tar.zst`.
 
 To build from source, clone the repository and install the pinned Rust
 toolchain with [rustup](https://rustup.rs). You also
@@ -220,7 +214,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`). The work
 1. Builds the app and signs it with the Developer ID.
 2. Notarizes and staples both the app and the DMG.
 3. Signs the DMG for Sparkle and writes the update feed (`appcast.xml`).
-4. Builds a Linux archive, Ubuntu DEB, and Fedora RPM with the desktop launcher and SQL language servers.
+4. Builds Ubuntu DEB, Fedora RPM, and Arch Linux packages with the desktop launcher and SQL language servers.
 5. Publishes a GitHub release with the DMG, Linux packages, and update feed.
 6. Updates the Homebrew cask.
 

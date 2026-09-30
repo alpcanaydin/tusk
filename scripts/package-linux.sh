@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-kind="${1:?usage: package-linux.sh deb|rpm}"
+kind="${1:?usage: package-linux.sh deb|rpm|arch}"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 bundle="target/release/bundle"
+bundle_dir="$(realpath "$bundle")"
 archive="$bundle/Tusk-$version-linux-x86_64.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -57,6 +58,33 @@ EOF
         rpmbuild -bb --define "_topdir $stage/rpmbuild" --define "_rpmdir $bundle" "$stage/tusk.spec"
         mv "$bundle/x86_64/tusk-$version"-*.rpm "$bundle/Tusk-$version-fedora-x86_64.rpm"
         rmdir "$bundle/x86_64"
+        ;;
+    arch)
+        command -v makepkg >/dev/null
+        ln -s "$PWD/$archive" "$stage/$(basename "$archive")"
+        checksum="$(sha256sum "$archive" | cut -d' ' -f1)"
+        cat > "$stage/PKGBUILD" <<EOF
+pkgname=tusk
+pkgver=$version
+pkgrel=1
+pkgdesc='GPU-rendered database client for Wayland and Xwayland'
+arch=('x86_64')
+url='https://github.com/alpcanaydin/tusk'
+license=('MIT')
+depends=('dbus' 'fontconfig' 'libxcb' 'libxkbcommon' 'libxkbcommon-x11' 'vulkan-icd-loader')
+optdepends=('gnome-keyring: save credentials with Secret Service' 'postgresql: backup and restore')
+options=('!strip')
+source=('$(basename "$archive")')
+sha256sums=('$checksum')
+
+package() {
+    install -d "\$pkgdir/usr"
+    cp -R "\$srcdir/bin" "\$srcdir/share" "\$pkgdir/usr/"
+    install -Dm644 "\$srcdir/share/doc/tusk/LICENSE" "\$pkgdir/usr/share/licenses/tusk/LICENSE"
+}
+EOF
+        (cd "$stage" && PKGDEST="$bundle_dir" makepkg --nodeps --noconfirm)
+        mv "$bundle/tusk-$version-1-x86_64.pkg.tar.zst" "$bundle/Tusk-$version-arch-x86_64.pkg.tar.zst"
         ;;
     *) echo "unknown package format: $kind" >&2; exit 2 ;;
 esac

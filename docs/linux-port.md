@@ -39,9 +39,8 @@ language servers and uses installed PostgreSQL client tools for backup.
 - [x] Check GPU rendering on Wayland: the running Tusk process opens DRM render
   devices and its Intel Iris Xe `i915` render-engine counter advances. GPUI Kit
   uses its WGPU renderer for the Wayland window.
-- [x] Build an Ubuntu 24.04 x86_64 release archive (glibc 2.39), extract it,
-  validate its launcher and language servers, and smoke-test its binary on
-  Wayland and Xwayland.
+- [x] Build the Linux binary on Ubuntu 24.04 (glibc 2.39), package it for
+  Ubuntu, Fedora, and Arch, and smoke-test it on Wayland and Xwayland.
 
 The macOS build and runtime still need verification on a Mac after these
 changes; this Linux host cannot run that check.
