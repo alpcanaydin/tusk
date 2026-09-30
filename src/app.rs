@@ -234,6 +234,9 @@ pub struct TuskApp {
     pub palette: Option<PaletteOverlay>,
     /// The saved-connections manager (groups, tags, search) is open.
     pub conn_manager: bool,
+    /// Set on connect: the next render empties the connection search, which
+    /// the manager and the connections-tree sidebar share.
+    clear_conn_search: bool,
     /// Runs parallel to the currently rendered command items.
     pub palette_runs: Vec<crate::palette::RunFn>,
     /// Known tables for quick-open (filled in Phase 5).
@@ -360,6 +363,7 @@ impl TuskApp {
             focus: cx.focus_handle(),
             palette: None,
             conn_manager: false,
+            clear_conn_search: false,
             palette_runs: Vec::new(),
             tables: Vec::new(),
             pending_table: None,
@@ -2333,6 +2337,7 @@ impl TuskApp {
         cx: &mut Context<Self>,
     ) {
         let name = conn.name.clone();
+        self.clear_conn_search = true;
         // Another connection (or database): the old tabs, split, selection
         // and pending edits belong to the old one.
         let same = self
@@ -3856,6 +3861,14 @@ impl TuskApp {
 
 impl Render for TuskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A search typed in the connection manager must not keep filtering
+        // the connections tree after it connected.
+        if std::mem::take(&mut self.clear_conn_search)
+            && !self.conn_search.read(cx).value().is_empty()
+        {
+            self.conn_search
+                .update(cx, |s, cx| s.set_value("", window, cx));
+        }
         // The sidebar highlight follows the active tab (none when no table
         // tab is active); a click or right-click in between still moves it.
         let tab_key = self.active_tab.and_then(|ix| match self.tabs.get(ix) {
