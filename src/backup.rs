@@ -335,9 +335,15 @@ pub struct BackupWindow {
     options: Vec<String>,
     gzip: bool,
     busy: bool,
+    /// A save / open panel or a confirmation is up: Return must answer
+    /// it, not start another run from the window's own Return binding.
+    modal: bool,
     notice: Option<(bool, String)>,
     _subs: Vec<Subscription>,
 }
+
+/// The folder the last backup went to (the save panel opens there next).
+static LAST_BACKUP_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 
 impl BackupWindow {
     /// `preselect`: open with this connection (and database) picked.
@@ -418,6 +424,7 @@ impl BackupWindow {
             }],
             gzip: false,
             busy: false,
+            modal: false,
             notice: None,
             _subs: subs,
         };
@@ -485,7 +492,7 @@ impl BackupWindow {
     }
 
     fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy {
+        if self.busy || self.modal {
             return;
         }
         let (Some(ix), Some(database), Some(ep)) = (
@@ -517,10 +524,21 @@ impl BackupWindow {
                     self.gzip,
                 );
                 let gzip = self.gzip;
-                let dir = dirs::home_dir().unwrap_or_default().join("Downloads");
+                let dir = LAST_BACKUP_DIR
+                    .lock()
+                    .ok()
+                    .and_then(|d| d.clone())
+                    .filter(|d| d.is_dir())
+                    .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"));
                 let rx = cx.prompt_for_new_path(&dir, Some(&name));
+                self.modal = true;
                 cx.spawn(async move |weak, cx: &mut AsyncApp| {
-                    let Ok(Ok(Some(path))) = rx.await else { return };
+                    let picked = rx.await;
+                    let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+                    let Ok(Ok(Some(path))) = picked else { return };
+                    if let (Some(parent), Ok(mut last)) = (path.parent(), LAST_BACKUP_DIR.lock()) {
+                        *last = Some(parent.to_path_buf());
+                    }
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
                         this.notice = Some((true, format!("Backing up {database}…")));
@@ -564,27 +582,32 @@ impl BackupWindow {
                     prompt: Some("Restore".into()),
                 });
                 let handle = window.window_handle();
+                self.modal = true;
                 cx.spawn(async move |weak, cx: &mut AsyncApp| {
-                    let Ok(Ok(Some(paths))) = rx.await else {
+                    let file = match rx.await {
+                        Ok(Ok(Some(paths))) => paths.into_iter().next(),
+                        _ => None,
+                    };
+                    let confirmed = match &file {
+                        // Return = Restore: the user just picked the file.
+                        Some(file) => match handle.update(cx, |_, window, cx| {
+                            window.prompt(
+                                PromptLevel::Warning,
+                                &format!("Restore into “{database}”?"),
+                                Some(&format!("{}\n\n{}", file.display(), options.join(" "))),
+                                &["Restore", "Cancel"],
+                                cx,
+                            )
+                        }) {
+                            Ok(answer) => answer.await == Ok(0),
+                            Err(_) => false,
+                        },
+                        None => false,
+                    };
+                    let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+                    let (true, Some(file)) = (confirmed, file) else {
                         return;
                     };
-                    let Some(file) = paths.into_iter().next() else {
-                        return;
-                    };
-                    let Ok(answer) = handle.update(cx, |_, window, cx| {
-                        window.prompt(
-                            PromptLevel::Warning,
-                            &format!("Restore into “{database}”?"),
-                            Some(&format!("{}\n\n{}", file.display(), options.join(" "))),
-                            &["Restore", "Cancel"],
-                            cx,
-                        )
-                    }) else {
-                        return;
-                    };
-                    if answer.await != Ok(0) {
-                        return;
-                    }
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
                         this.notice = Some((true, format!("Restoring into {database}…")));
@@ -638,7 +661,16 @@ impl BackupWindow {
         let Some(pool) = self.connected.as_ref().map(|c| c.pool.clone()) else {
             return;
         };
-        let mut name = "restored".to_string();
+        if self.modal {
+            return;
+        }
+        // The name typed in the database search, else restored, restored_2…
+        let typed = self.db_search.read(cx).value().trim().to_string();
+        let mut name = if typed.is_empty() || self.databases.contains(&typed) {
+            "restored".to_string()
+        } else {
+            typed
+        };
         let mut n = 2;
         while self.databases.contains(&name) {
             name = format!("restored_{n}");
@@ -647,12 +679,15 @@ impl BackupWindow {
         let answer = window.prompt(
             PromptLevel::Info,
             &format!("Create database “{name}”?"),
-            None,
+            Some("To use another name, type it in the database search first."),
             &["Create", "Cancel"],
             cx,
         );
+        self.modal = true;
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            let answer = answer.await;
+            let _ = weak.update(cx, |this: &mut BackupWindow, _| this.modal = false);
+            if answer != Ok(0) {
                 return;
             }
             let sql = format!("CREATE DATABASE {}", db::quote_ident(&name));
@@ -1286,12 +1321,6 @@ mod live_tests {
 
 impl Render for BackupWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Finished results go out as toasts; progress stays inline.
-        if !self.busy
-            && let Some((ok, msg)) = self.notice.take()
-        {
-            crate::toast::push_top(window, cx, Some(ok), msg);
-        }
         div()
             .size_full()
             .relative()

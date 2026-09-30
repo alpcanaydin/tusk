@@ -26,3 +26,30 @@ pub fn bind_keys(cx: &mut App) {
 pub fn close(_: &DialogCancel, window: &mut Window, _: &mut App) {
     window.remove_window();
 }
+
+/// Confirm a destructive action with a native prompt that Return can't
+/// accept: `[Cancel, verb]`. GPUI gives the Cancel button Escape, which
+/// replaces the Return the first button would get, so Return does nothing,
+/// Esc cancels and only a click (or Space on the focused verb) proceeds —
+/// a stray Return, e.g. one aimed at the window behind, never discards,
+/// drops or restores. Resolves to `true` only when `verb` was chosen.
+pub fn confirm(
+    window: &mut Window,
+    level: PromptLevel,
+    message: &str,
+    detail: Option<&str>,
+    verb: &str,
+    cx: &mut App,
+) -> impl std::future::Future<Output = bool> + use<> {
+    let answer = window.prompt(
+        level,
+        message,
+        detail,
+        &[
+            PromptButton::Cancel("Cancel".into()),
+            PromptButton::new(verb.to_string()),
+        ],
+        cx,
+    );
+    async move { answer.await == Ok(1) }
+}

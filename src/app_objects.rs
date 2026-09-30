@@ -358,7 +358,8 @@ impl TuskApp {
             return;
         };
         let schema = self.current_schema.clone();
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             PromptLevel::Critical,
             &format!("Truncate “{name}”?"),
             Some(if cascade {
@@ -366,11 +367,11 @@ impl TuskApp {
             } else {
                 "Deletes every row of the table. This can't be undone."
             }),
-            &["Truncate", "Cancel"],
+            "Truncate",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let sql = format!(

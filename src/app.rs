@@ -1248,15 +1248,16 @@ impl TuskApp {
                 if n == 1 { "" } else { "s" }
             )
         };
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             PromptLevel::Warning,
             "Close this tab?",
             Some(&detail),
-            &["Discard", "Cancel"],
+            "Discard",
             cx,
         );
         cx.spawn_in(window, async move |weak, cx| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
@@ -1709,15 +1710,16 @@ impl TuskApp {
         if shown.len() > MAX_SHOWN {
             detail.push_str(&format!("\n… and {} more", shown.len() - MAX_SHOWN));
         }
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             level,
             title,
             Some(&format!("{detail}\n\n(Safe mode — Settings ▸ Safe Mode)")),
-            &["Run", "Cancel"],
+            "Run",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await == Ok(0) {
+            if answer.await {
                 let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                     this.run_sql_in_tab(ix, scope, cx)
                 });

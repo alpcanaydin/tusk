@@ -132,15 +132,16 @@ impl TuskApp {
         let Some(name) = self.form.saved.get(ix).map(|c| c.name.clone()) else {
             return;
         };
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             PromptLevel::Critical,
             &format!("Delete “{name}”?"),
             Some("The saved profile and its stored passwords are removed."),
-            &["Delete", "Cancel"],
+            "Delete",
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {

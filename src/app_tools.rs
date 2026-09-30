@@ -87,7 +87,8 @@ impl TuskApp {
         } else {
             "Cancel the query of session"
         };
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             if kill {
                 PromptLevel::Critical
             } else {
@@ -95,11 +96,11 @@ impl TuskApp {
             },
             &format!("{what} {pid}?"),
             None,
-            &[if kill { "Kill" } else { "Cancel Query" }, "Keep"],
+            if kill { "Kill" } else { "Cancel Query" },
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let r = pool.driver().signal_session(pid.clone(), kill).await;

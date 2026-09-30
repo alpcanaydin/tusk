@@ -38,18 +38,19 @@ impl TuskApp {
             self.switch_connection(ix, window, cx);
             return;
         }
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             PromptLevel::Warning,
             &format!("Switch to “{name}”?"),
             Some(&format!(
                 "{n} unsaved change{} will be discarded.",
                 if n == 1 { "" } else { "s" }
             )),
-            &["Switch", "Cancel"],
+            "Switch",
             cx,
         );
         cx.spawn_in(window, async move |weak, cx| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {

@@ -279,15 +279,16 @@ impl TuskApp {
         else {
             return;
         };
-        let answer = window.prompt(
+        let answer = crate::dialog_keys::confirm(
+            window,
             PromptLevel::Critical,
             &format!("Drop role “{name}”?"),
             Some("Objects it owns must be reassigned or dropped first."),
-            &["Drop", "Cancel"],
+            "Drop",
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
-            if answer.await != Ok(0) {
+            if !answer.await {
                 return;
             }
             let r = db::run_exec(&pool, &format!("DROP ROLE {}", db::quote_ident(&name))).await;
