@@ -1088,6 +1088,34 @@ pub fn apply_initial(state: &Entity<TableState<GridDelegate>>, data: InitialData
     });
 }
 
+/// `timestamp` / `timestamptz` (any spelling the catalogs use).
+pub(crate) fn is_timestamp_type(pg_type: &str) -> bool {
+    let t = pg_type.to_ascii_lowercase();
+    t.starts_with("timestamp")
+}
+
+/// psql-style timestamp for display: `2026-09-11 21:56:05.750648+00`
+/// instead of JSON's `2026-09-11T21:56:05.750648+00:00`. Full precision is
+/// kept; editing still starts from the stored value (both parse back).
+pub(crate) fn pretty_timestamp(s: &str) -> String {
+    let b = s.as_bytes();
+    if b.len() < 19 || b[10] != b'T' || b[4] != b'-' || b[13] != b':' {
+        return s.to_string();
+    }
+    let mut out = format!("{} {}", &s[..10], &s[11..]);
+    // `+HH:00` / `-HH:00` → `+HH`; `Z` → `+00`.
+    if let Some(stripped) = out.strip_suffix('Z') {
+        out = format!("{stripped}+00");
+    } else if out.len() >= 6 {
+        let tail = &out[out.len() - 6..];
+        let tb = tail.as_bytes();
+        if (tb[0] == b'+' || tb[0] == b'-') && tb[3] == b':' && &tail[4..] == "00" {
+            out.truncate(out.len() - 3);
+        }
+    }
+    out
+}
+
 pub(crate) fn cell_text(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
@@ -1192,6 +1220,8 @@ pub(crate) fn render_value(
                 } else {
                     format!("\\x{preview}")
                 }
+            } else if is_timestamp_type(pg_type) {
+                pretty_timestamp(s)
             } else {
                 truncate_chars(s, 200)
             };
@@ -1714,5 +1744,24 @@ mod live_save_tests {
         let r = rt.block_on(d.query_rows("TTL user:1".into(), 1)).unwrap();
         assert!(r[0]["result"].as_i64().unwrap() > 0);
         rt.block_on(d.query_rows("FLUSHDB".into(), 1)).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    #[test]
+    fn timestamps_display_psql_style() {
+        use super::pretty_timestamp as p;
+        assert_eq!(
+            p("2026-09-11T21:56:05.750648+00:00"),
+            "2026-09-11 21:56:05.750648+00"
+        );
+        assert_eq!(p("2026-09-11T21:56:05+05:30"), "2026-09-11 21:56:05+05:30");
+        assert_eq!(p("2026-09-11T21:56:05Z"), "2026-09-11 21:56:05+00");
+        assert_eq!(p("2026-09-11T21:56:05.5"), "2026-09-11 21:56:05.5");
+        assert_eq!(p("not a timestamp"), "not a timestamp");
+        assert!(super::is_timestamp_type("timestamp with time zone"));
+        assert!(super::is_timestamp_type("timestamptz"));
+        assert!(!super::is_timestamp_type("text"));
     }
 }
