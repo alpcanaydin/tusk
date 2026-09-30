@@ -957,19 +957,11 @@ impl TuskApp {
     }
 
     pub(super) fn pending_summary(&self, cx: &App) -> Option<String> {
-        let mut n = self.pending_drops.len() + self.pending_renames.len();
-        if let Some(WorkspaceTab::Sql(t)) = self.active_tab.and_then(|ix| self.tabs.get(ix)) {
-            n += t.result.read(cx).delegate().pending_count();
-        }
-        if let Some(tab) = self.active_tab.and_then(|ix| self.grid_tab(ix)) {
-            n += tab.state.read(cx).delegate().pending_count();
-            if let Some(st) = &tab.structure {
-                n += st.read(cx).delegate().pending_count();
-            }
-            if let Some(st) = &tab.indexes {
-                n += st.read(cx).delegate().pending_count();
-            }
-        }
+        // tab_pending also counts a New View draft, so safe mode asks before
+        // ⌘S creates the view instead of finding "nothing to save".
+        let n = self.pending_drops.len()
+            + self.pending_renames.len()
+            + self.active_tab.map_or(0, |ix| self.tab_pending(ix, cx));
         (n > 0).then(|| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" }))
     }
 
