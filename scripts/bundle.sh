@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build Tusk.app: release binary + Info.plist + the Icon Composer icon
-# (assets/icon/Tusk.icon, compiled by actool into Assets.car / Tusk.icns).
+# Build Tusk.app: release binary + Info.plist + the app icon
+# (assets/icon/compiled/, made from assets/icon/Tusk.icon by compile-icon.sh).
 #   scripts/bundle.sh            → target/release/bundle/Tusk.app
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -10,17 +10,12 @@ app="$root/target/release/bundle/Tusk.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp target/release/tusk "$app/Contents/MacOS/Tusk"
-xcrun actool --compile "$app/Contents/Resources" --platform macosx \
-  --minimum-deployment-target 14.0 --app-icon Tusk \
-  --output-partial-info-plist "$root/target/release/bundle/icon.plist" \
-  "$root/assets/icon/Tusk.icon" >/dev/null
-# assets/icon/Tusk.icon is an Icon Composer icon: only Xcode 26+ actool
-# compiles it, and an older one silently writes nothing. Never ship a
-# placeholder icon.
-[ -f "$app/Contents/Resources/Tusk.icns" ] && [ -f "$app/Contents/Resources/Assets.car" ] || {
-  echo "bundle: actool produced no icon (Xcode 26 or later is needed; have: $(xcodebuild -version | head -1))" >&2
-  exit 1
-}
+# The icon, precompiled from assets/icon/Tusk.icon by scripts/compile-icon.sh
+# (CI's actool can't compile Icon Composer icons). Never ship a placeholder.
+for f in Tusk.icns Assets.car; do
+  [ -f "$root/assets/icon/compiled/$f" ] || { echo "bundle: missing assets/icon/compiled/$f (run scripts/compile-icon.sh)" >&2; exit 1; }
+  cp "$root/assets/icon/compiled/$f" "$app/Contents/Resources/$f"
+done
 # pg_dump / pg_restore / psql + their libraries, relocatable (Backup / Restore
 # work without Homebrew or PostgreSQL on the Mac).
 "$root/scripts/bundle-pgtools.sh" "$app/Contents/Resources/pgtools"
