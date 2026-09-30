@@ -307,3 +307,8 @@ pub fn danger_item(
     })
     .on_click(on_click)
 }
+
+/// The selected row of a list (sidebar objects, connections, pickers).
+pub fn selection(t: &gpui_kit::component::theme::Theme) -> Hsla {
+    t.accent.opacity(0.18)
+}

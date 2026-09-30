@@ -332,6 +332,7 @@ impl TuskApp {
     ) -> AnyElement {
         let t = cx.theme();
         let (muted, fg, accent) = (t.muted_foreground, t.foreground, t.accent);
+        let sel_bg = crate::theme::selection(t);
         let active = self.conn_pick == pick;
         let group = match &pick {
             FolderPick::Group(g) => Some(g.clone()),
@@ -367,7 +368,7 @@ impl TuskApp {
             .h(px(26.))
             .px_2()
             .rounded(crate::theme::RADIUS_SM)
-            .when(active, |this| this.bg(accent.opacity(0.14)))
+            .when(active, |this| this.bg(sel_bg))
             .when(!active, |this| {
                 this.hover(|this| this.bg(muted.opacity(0.08)))
             })

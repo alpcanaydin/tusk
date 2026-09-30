@@ -2868,6 +2868,7 @@ impl TuskApp {
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
         let selected = self.selected_object == Some((kind.clone(), name.to_string()));
+        let sel_bg = crate::theme::selection(cx.theme());
         let dropping = self.is_pending_drop(&kind, name);
         let renamed = self.pending_rename(&kind, name).cloned();
         let editing = self
@@ -2915,7 +2916,7 @@ impl TuskApp {
             .px_2()
             .h(px(crate::settings::row_h()))
             .rounded(crate::theme::RADIUS_SM)
-            .when(selected, |this| this.bg(muted.opacity(0.18)))
+            .when(selected, |this| this.bg(sel_bg))
             .when(renamed.is_some() && !dropping, |this| {
                 this.bg(rgb(crate::theme::EDITED).opacity(0.25))
             })

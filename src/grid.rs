@@ -1170,8 +1170,9 @@ pub(crate) fn render_value(
             .when(right_align, |this| this.w_full().text_right())
             .child(crate::settings::get().null_text.clone())
             .into_any_element(),
+        // Neutral: accent-colored values read like links.
         Value::Bool(b) => base
-            .text_color(t.colors.accent)
+            .text_color(t.colors.foreground)
             .child(b.to_string())
             .into_any_element(),
         Value::Number(n) => base

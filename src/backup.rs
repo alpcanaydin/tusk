@@ -664,7 +664,8 @@ impl BackupWindow {
 
     fn connection_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         let q = self.conn_search.read(cx).value().to_lowercase();
         let mut folders: Vec<Option<String>> = Vec::new();
         for c in &self.conns {
@@ -716,7 +717,7 @@ impl BackupWindow {
                         .h(px(26.))
                         .rounded(crate::theme::RADIUS_SM)
                         .when(folder.is_some(), |this| this.pl(px(22.)))
-                        .when(active, |this| this.bg(accent.opacity(0.18)))
+                        .when(active, |this| this.bg(sel_bg))
                         .when(!active, |this| {
                             this.hover(|this| this.bg(muted.opacity(0.08)))
                         })
@@ -748,7 +749,8 @@ impl BackupWindow {
 
     fn database_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme();
-        let (fg, muted, accent) = (t.foreground, t.muted_foreground, t.accent);
+        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let sel_bg = crate::theme::selection(t);
         if self.loading {
             return div()
                 .p_3()
@@ -775,7 +777,7 @@ impl BackupWindow {
                     .px_2()
                     .h(px(26.))
                     .rounded(crate::theme::RADIUS_SM)
-                    .when(active, |this| this.bg(accent.opacity(0.18)))
+                    .when(active, |this| this.bg(sel_bg))
                     .when(!active, |this| {
                         this.hover(|this| this.bg(muted.opacity(0.08)))
                     })
