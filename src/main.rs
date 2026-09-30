@@ -58,6 +58,8 @@ fn main() {
         }
         return;
     }
+    #[cfg(target_os = "linux")]
+    settings::apply_gpu_preference();
     let app = gpui_kit::application().with_assets(AllAssets);
     // Dock click / relaunch while running: bring the main window back, or
     // reopen it on the welcome screen if it was closed.

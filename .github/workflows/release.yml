@@ -59,18 +59,45 @@ jobs:
           tar -C "$HOME/.local" -czf "target/release/bundle/Tusk-${version}-linux-x86_64.tar.gz" \
             bin/tusk bin/postgres-language-server bin/sqls \
             share/applications/tusk.desktop share/icons/hicolor/1024x1024/apps/tusk.png \
+            share/icons/hicolor/scalable/apps/tusk.svg \
             share/doc/tusk/LICENSE
+          scripts/package-linux.sh deb
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-build
-          path: target/release/bundle/Tusk-*-linux-x86_64.tar.gz
+          path: |
+            target/release/bundle/Tusk-*-linux-x86_64.tar.gz
+            target/release/bundle/Tusk-*-ubuntu-amd64.deb
           if-no-files-found: error
           compression-level: 0
 
+  fedora:
+    name: Fedora RPM
+    needs: linux
+    runs-on: ubuntu-24.04
+    container: fedora:44@sha256:be9d65e2344d805cc11114319c685ecaa96b6d9b4350a0a6460cdb931babbd19
+    timeout-minutes: 15
+    steps:
+      - run: dnf install -y git tar gzip rpm-build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-build
+          path: target/release/bundle
+      - run: scripts/package-linux.sh rpm
+      - run: dnf install -y target/release/bundle/Tusk-*-fedora-x86_64.rpm
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fedora-rpm
+          path: target/release/bundle/Tusk-*-fedora-x86_64.rpm
+          if-no-files-found: error
+
   build:
     name: Build and publish
-    needs: [check, linux]
+    needs: [check, linux, fedora]
     if: needs.check.outputs.published != 'true'
     runs-on: macos-15
     timeout-minutes: 90
@@ -118,7 +145,9 @@ jobs:
 
           ### Linux build (x86_64)
 
-          Download the Linux tarball below and install it with:
+          Ubuntu 24.04: download and install the `.deb` with `sudo apt install ./Tusk-*-ubuntu-amd64.deb`.
+          Fedora: download and install the `.rpm` with `sudo dnf install ./Tusk-*-fedora-x86_64.rpm`.
+          For other distributions, download the Linux tarball and install it with:
 
           ```sh
           mkdir -p ~/.local
@@ -156,11 +185,19 @@ jobs:
           name: linux-build
           path: target/release/bundle
 
+      - name: Download Fedora RPM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: fedora-rpm
+          path: target/release/bundle
+
       - name: Publish the release
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "target/release/bundle/Tusk-$VERSION-arm64.dmg" \
             "target/release/bundle/Tusk-$VERSION-linux-x86_64.tar.gz" \
+            "target/release/bundle/Tusk-$VERSION-ubuntu-amd64.deb" \
+            "target/release/bundle/Tusk-$VERSION-fedora-x86_64.rpm" \
             target/release/bundle/appcast.xml \
             --repo "$GITHUB_REPOSITORY" --title "Tusk $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
         env:

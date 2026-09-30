@@ -70,6 +70,8 @@ pub struct Prefs {
     pub reopen_last: bool,
     /// `statement_timeout` for new connections, seconds (0 = none).
     pub query_timeout_secs: u32,
+    /// Linux renderer device ID (four hexadecimal digits); empty = automatic.
+    pub gpu_device: String,
     // ---- SQL editor ----
     pub editor_line_numbers: bool,
     pub editor_soft_wrap: bool,
@@ -140,6 +142,7 @@ impl Default for Prefs {
             table_font_size: 13.,
             reopen_last: true,
             query_timeout_secs: 0,
+            gpu_device: String::new(),
             editor_line_numbers: true,
             editor_soft_wrap: false,
             editor_tab_size: 4,
@@ -192,6 +195,9 @@ impl Prefs {
         }
         self.editor_tab_size = self.editor_tab_size.clamp(1, 8);
         self.query_timeout_secs = self.query_timeout_secs.min(86_400);
+        if self.gpu_device.len() != 4 || !self.gpu_device.bytes().all(|c| c.is_ascii_hexdigit()) {
+            self.gpu_device.clear();
+        }
         if self.null_text.trim().is_empty() {
             self.null_text = d.null_text.clone();
         }
@@ -200,6 +206,22 @@ impl Prefs {
             .round()
             .clamp(TABLE_SIZE_RANGE.0, TABLE_SIZE_RANGE.1);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Prefs;
+
+    #[test]
+    fn gpu_preference_accepts_only_pci_device_ids() {
+        let mut prefs = Prefs {
+            gpu_device: "2520".into(),
+            ..Prefs::default()
+        };
+        assert_eq!(prefs.clone().sanitized().gpu_device, "2520");
+        prefs.gpu_device = "not-a-device".into();
+        assert!(prefs.sanitized().gpu_device.is_empty());
     }
 }
 
@@ -253,6 +275,50 @@ fn save(p: &Prefs) {
 
 pub fn get() -> std::sync::Arc<Prefs> {
     PREFS.read().map(|p| p.clone()).unwrap_or_default()
+}
+
+#[cfg(target_os = "linux")]
+pub fn apply_gpu_preference() {
+    let device = &get().gpu_device;
+    if !device.is_empty() {
+        // Called before GPUI starts and before any threads can read the environment.
+        unsafe { std::env::set_var("ZED_DEVICE_ID", device) };
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn gpu_options() -> Vec<(SharedString, SharedString)> {
+    let mut options = vec![("".into(), "Automatic".into())];
+    let Ok(entries) = std::fs::read_dir("/sys/class/drm") else {
+        return options;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("renderD") {
+            continue;
+        }
+        let Ok(id) = std::fs::read_to_string(entry.path().join("device/device")) else {
+            continue;
+        };
+        let id = id.trim().trim_start_matches("0x");
+        if id.len() != 4 || !id.bytes().all(|c| c.is_ascii_hexdigit()) {
+            continue;
+        }
+        let vendor =
+            std::fs::read_to_string(entry.path().join("device/vendor")).unwrap_or_default();
+        let vendor = match vendor.trim() {
+            "0x8086" => "Intel",
+            "0x10de" => "NVIDIA",
+            "0x1002" => "AMD",
+            _ => "GPU",
+        };
+        let id = id.to_ascii_lowercase();
+        if options.iter().any(|(value, _)| value.as_ref() == id) {
+            continue;
+        }
+        options.push((id.clone().into(), format!("{vendor} GPU (0x{id})").into()));
+    }
+    options[1..].sort_by(|a, b| a.1.cmp(&b.1));
+    options
 }
 
 /// Change a setting: save, re-apply the theme and redraw every window.
@@ -617,35 +683,49 @@ impl SettingsWindow {
             )
             .description(desc)
         };
-        let general = SettingPage::new("General").icon(IconName::Settings2).group(
-            SettingGroup::new()
-                .title("Startup & Connections")
-                .item(switch(
-                    "Reopen Last Connection",
-                    "Connect to the last used database when the app starts.",
-                    |p| p.reopen_last,
-                    |p, v| p.reopen_last = v,
-                    d.reopen_last,
-                ))
-                .item(
-                    SettingItem::new(
-                        "Query Timeout",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.,
-                                max: 86_400.,
-                                step: 30.,
-                            },
-                            |_| get().query_timeout_secs as f64,
-                            |v, cx| update(cx, |p| p.query_timeout_secs = v as u32),
-                        )
-                        .default_value(d.query_timeout_secs as f64),
+        let general_group = SettingGroup::new()
+            .title("Startup & Connections")
+            .item(switch(
+                "Reopen Last Connection",
+                "Connect to the last used database when the app starts.",
+                |p| p.reopen_last,
+                |p, v| p.reopen_last = v,
+                d.reopen_last,
+            ))
+            .item(
+                SettingItem::new(
+                    "Query Timeout",
+                    SettingField::number_input(
+                        NumberFieldOptions {
+                            min: 0.,
+                            max: 86_400.,
+                            step: 30.,
+                        },
+                        |_| get().query_timeout_secs as f64,
+                        |v, cx| update(cx, |p| p.query_timeout_secs = v as u32),
                     )
-                    .description(
-                        "Seconds before a statement is cancelled (0 = never). New connections.",
-                    ),
+                    .default_value(d.query_timeout_secs as f64),
+                )
+                .description(
+                    "Seconds before a statement is cancelled (0 = never). New connections.",
                 ),
+            );
+        #[cfg(target_os = "linux")]
+        let general_group = general_group.item(
+            SettingItem::new(
+                "Graphics Device",
+                SettingField::dropdown(
+                    gpu_options(),
+                    |_| get().gpu_device.clone().into(),
+                    |v: SharedString, cx| update(cx, |p| p.gpu_device = v.to_string()),
+                )
+                .default_value(SharedString::default()),
+            )
+            .description("GPU used for rendering. Restart Tusk to apply."),
         );
+        let general = SettingPage::new("General")
+            .icon(IconName::Settings2)
+            .group(general_group);
         let editor = SettingPage::new("SQL Editor")
             .icon(IconName::SquareTerminal)
             .group(

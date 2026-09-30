@@ -156,8 +156,13 @@ scripts/bundle.sh            # → target/release/bundle/Tusk.app
 
 ### Linux build
 
-When a release includes `Tusk-<version>-linux-x86_64.tar.gz`, download it from
-the [Releases page](https://github.com/alpcanaydin/tusk/releases) and install it:
+On Ubuntu 24.04, install the `Tusk-<version>-ubuntu-amd64.deb` from the
+[Releases page](https://github.com/alpcanaydin/tusk/releases) with
+`sudo apt install ./Tusk-*-ubuntu-amd64.deb`. On Fedora, install
+`Tusk-<version>-fedora-x86_64.rpm` with
+`sudo dnf install ./Tusk-*-fedora-x86_64.rpm`.
+
+For another Linux distribution, use the `Tusk-<version>-linux-x86_64.tar.gz`:
 
 ```sh
 mkdir -p ~/.local
@@ -177,11 +182,27 @@ git clone https://github.com/alpcanaydin/tusk.git && cd tusk
 cargo run --release
 ```
 
+On Ubuntu 24.04, install build dependencies with:
+
+```sh
+sudo apt update
+sudo apt install clang cmake golang-go git curl pkg-config libasound2-dev libdbus-1-dev libfontconfig-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan-dev
+```
+
+On Fedora, install build dependencies with:
+
+```sh
+sudo dnf install clang cmake golang git curl pkgconf-pkg-config alsa-lib-devel dbus-devel fontconfig-devel wayland-devel libxcb-devel libxkbcommon-x11-devel vulkan-loader-devel
+```
+
 To install the binary, SQL language servers, and desktop launcher under `~/.local`, run
 `scripts/install-linux.sh`. Restart the desktop session if the launcher does
 not appear immediately. Linux uses your desktop's Secret Service provider
 (such as GNOME Keyring or a compatible KWallet service) for saved passwords.
 The app refuses to report a password as saved when the service is unavailable.
+On Linux, choose the graphics device in **Settings → General → Graphics Device**
+and restart Tusk. The choice asks GPUI to prefer that GPU; if it cannot render
+the window, GPUI falls back to another compatible device.
 On a Wayland desktop, GPUI uses native Wayland when available and can use
 Xwayland as a fallback. Standalone X11 sessions are not a supported target.
 
@@ -199,8 +220,8 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`). The work
 1. Builds the app and signs it with the Developer ID.
 2. Notarizes and staples both the app and the DMG.
 3. Signs the DMG for Sparkle and writes the update feed (`appcast.xml`).
-4. Builds a Linux archive with the desktop launcher and SQL language servers.
-5. Publishes a GitHub release with the DMG, Linux archive, and update feed.
+4. Builds a Linux archive, Ubuntu DEB, and Fedora RPM with the desktop launcher and SQL language servers.
+5. Publishes a GitHub release with the DMG, Linux packages, and update feed.
 6. Updates the Homebrew cask.
 
 One-time setup: run `scripts/setup-release.sh`. The wizard walks you through the certificate, the notarization key, the update-signing key and the Homebrew token, and checks each one. After that, a release is one command:
