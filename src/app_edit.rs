@@ -1074,6 +1074,7 @@ impl TuskApp {
         }
         // New View draft: CREATE VIEW <name> AS <editor text>.
         let mut view_stmt: Option<(usize, Stmt)> = None;
+        let mut view_name: Option<String> = None;
         if let Some(ix) = tab_ix
             && let Some(WorkspaceTab::Sql(t)) = self.tabs.get(ix)
             && let Some(input) = &t.view_draft
@@ -1086,6 +1087,7 @@ impl TuskApp {
                 cx.notify();
                 return;
             }
+            view_name = Some(name.clone());
             view_stmt = Some((
                 ix,
                 Stmt::plain(format!(
@@ -1139,7 +1141,11 @@ impl TuskApp {
             return;
         }
         self.saving = true;
-        self.status_line = format!("Saving {} statement(s)…", stmts.len());
+        self.status_line = format!(
+            "Saving {} statement{}…",
+            stmts.len(),
+            if stmts.len() == 1 { "" } else { "s" }
+        );
         cx.notify();
         let n_stmts = stmts.len();
         let struct_changed = struct_state
@@ -1168,6 +1174,10 @@ impl TuskApp {
                                 this.ensure_rename_input(ix, window, cx);
                                 if let Some(WorkspaceTab::Sql(t)) = this.tabs.get_mut(ix) {
                                     t.view_draft = None;
+                                    // The draft tab now edits a real view: name it so.
+                                    if let Some(name) = &view_name {
+                                        t.title = name.clone();
+                                    }
                                 }
                             }
                             let schema = this.current_schema.clone();
@@ -1204,7 +1214,11 @@ impl TuskApp {
                         this.status_line.clear();
                         this.toast(
                             true,
-                            format!("Saved — {n_stmts} statement(s), {affected} row(s) affected · {ms} ms"),
+                            format!(
+                                "Saved — {n_stmts} statement{}, {} affected · {ms} ms",
+                                if n_stmts == 1 { "" } else { "s" },
+                                crate::sql::n_rows(affected as usize)
+                            ),
                         );
                     }
                     Err(e) => {
