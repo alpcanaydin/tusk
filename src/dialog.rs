@@ -36,6 +36,8 @@ pub struct ConnDialog {
     choosing: bool,
     /// Highlighted engine in the grid.
     picked: crate::engine::Engine,
+    /// "Import from URL": the URL field, shown once the button is pressed.
+    url: Option<Entity<gpui_kit::component::input::InputState>>,
     _subs: Vec<Subscription>,
 }
 
@@ -145,6 +147,7 @@ impl ConnDialog {
             group_select,
             choosing,
             picked,
+            url: None,
             _subs: vec![sub, ssl_sub, group_sub],
         }
     }
@@ -1060,18 +1063,44 @@ impl ConnDialog {
                     .border_color(border)
                     .children(tiles),
             )
+            .children(self.url.as_ref().map(|url| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().child(Input::new(url)))
+                    .child(
+                        Button::new("dlg-url-import")
+                            .label("Import")
+                            .primary()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
+                            ),
+                    )
+                    .child(
+                        Button::new("dlg-url-close")
+                            .icon(gpui_kit::assets::IconName::Close)
+                            .ghost()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.url = None;
+                                cx.notify();
+                            })),
+                    )
+            }))
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(
-                        Button::new("dlg-import-url")
-                            .label("Import from URL")
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.import_url(window, cx)),
-                            ),
-                    )
+                    .when(self.url.is_none(), |d| {
+                        d.child(
+                            Button::new("dlg-import-url")
+                                .label("Import from URL")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_url_field(window, cx)
+                                })),
+                        )
+                    })
                     .child(div().flex_1())
                     .child(
                         Button::new("dlg-cancel")
@@ -1103,7 +1132,9 @@ impl ConnDialog {
         if self.form.busy {
             return;
         }
-        if self.choosing {
+        if self.choosing && self.url.is_some() {
+            self.import_url(window, cx);
+        } else if self.choosing {
             let e = self.picked;
             self.choose_engine(e, window, cx);
         } else {
@@ -1111,21 +1142,42 @@ impl ConnDialog {
         }
     }
 
-    /// "Import from URL": a connection URL on the clipboard fills the form
+    /// "Import from URL": show the URL field (pre-filled when the clipboard
+    /// holds a connection URL). Import then fills the form from it
     /// (`postgresql://user@host:5432/db`, `mysql://…`, `redis://…`, …).
-    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = cx
+    fn show_url_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let clip = cx
             .read_from_clipboard()
             .and_then(|c| c.text())
+            .map(|t| t.trim().to_string())
+            .filter(|t| crate::engine::parse_url(t).is_some())
+            .unwrap_or_default();
+        let input = cx.new(|cx| {
+            let mut st = gpui_kit::component::input::InputState::new(window, cx)
+                .placeholder("postgresql://user@host:5432/database");
+            st.set_value(clip, window, cx);
+            st
+        });
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        self.url = Some(input);
+        cx.notify();
+    }
+
+    fn import_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self
+            .url
+            .as_ref()
+            .map(|u| u.read(cx).value().to_string())
             .unwrap_or_default();
         let Some(parsed) = crate::engine::parse_url(text.trim()) else {
             self.form.notice = Some((
                 false,
-                "Copy a connection URL (like mysql://user@host/db) first.".into(),
+                "Enter a connection URL like mysql://user@host/db.".into(),
             ));
             cx.notify();
             return;
         };
+        self.url = None;
         self.choose_engine(parsed.engine, window, cx);
         let set = |e: &Entity<gpui_kit::component::input::InputState>,
                    v: String,
