@@ -19,7 +19,7 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &Quit, cx| cx.quit());
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &OpenSettings, cx| crate::settings::SettingsWindow::open(cx));
-    cx.on_action(|_: &ShowAbout, _| crate::dock::show_about());
+    cx.on_action(|_: &ShowAbout, cx| crate::about::AboutWindow::open(cx));
     cx.on_action(|_: &ShowReleaseNotes, cx| crate::whats_new::open_release_notes(cx));
     cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
     cx.on_action(|_: &RestartToUpdate, _| crate::updater::restart_to_update());
@@ -179,7 +179,7 @@ pub fn refresh(cx: &mut App) {
         Menu::new("Window").items([
             MenuItem::action("Minimize", MinimizeWindow),
             MenuItem::action("Zoom", ZoomWindow),
-            MenuItem::action("Enter Full Screen", ToggleFullScreen),
+            // "Enter Full Screen" is in View: macOS adds it there itself.
             MenuItem::separator(),
             MenuItem::action("Bring All to Front", BringAllToFront),
         ]),

@@ -3,6 +3,7 @@ use gpui_kit::component::Root;
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 
+mod about;
 mod acp;
 mod acp_registry;
 mod actions;
