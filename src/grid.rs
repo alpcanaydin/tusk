@@ -1221,6 +1221,13 @@ impl CellEditHost for GridDelegate {
 }
 
 impl TableDelegate for GridDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No rows", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         self.columns.len()
     }

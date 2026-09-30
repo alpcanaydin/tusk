@@ -320,3 +320,22 @@ pub fn danger_item(
 pub fn selection(t: &gpui_kit::component::theme::Theme) -> Hsla {
     t.accent.opacity(0.18)
 }
+
+/// A table's "nothing here" state: one muted line, centered. Every grid-like
+/// view says what is missing ("No indexes", "No triggers"…) the same way.
+pub fn empty_state(text: impl Into<SharedString>, cx: &App) -> AnyElement {
+    use gpui_kit::component::theme::ActiveTheme as _;
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_color(cx.theme().muted_foreground)
+        .child(
+            div()
+                .text_sm()
+                .font_family(crate::settings::table_font())
+                .child(text.into()),
+        )
+        .into_any_element()
+}

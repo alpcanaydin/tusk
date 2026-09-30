@@ -156,6 +156,8 @@ pub struct QueryDelegate {
     history: crate::undo::History<ResultSnapshot>,
     /// Content-fitted column widths (set with the rows).
     widths: Vec<Pixels>,
+    /// What an empty result says ("No rows"; "No triggers" in that view).
+    pub empty_text: SharedString,
 }
 
 type ResultSnapshot = (
@@ -174,6 +176,7 @@ impl QueryDelegate {
             editing: None,
             history: Default::default(),
             widths: Vec::new(),
+            empty_text: "No rows".into(),
         }
     }
 
@@ -675,19 +678,7 @@ impl TableDelegate for QueryDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .text_color(cx.theme().muted_foreground)
-            .child(
-                div()
-                    .text_sm()
-                    .font_family(crate::settings::table_font())
-                    .child("No rows"),
-            )
-            .into_any_element()
+        crate::theme::empty_state(self.empty_text.clone(), cx)
     }
 
     fn cell_text(&self, row_ix: usize, col_ix: usize, _cx: &App) -> String {

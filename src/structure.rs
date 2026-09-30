@@ -581,6 +581,13 @@ impl StructureDelegate {
 }
 
 impl TableDelegate for StructureDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No columns", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         // A table being designed: name / type / nullable / default only.
         if self.create { 4 } else { FIELDS.len() }

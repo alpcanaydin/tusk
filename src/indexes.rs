@@ -562,6 +562,13 @@ impl IndexDelegate {
 }
 
 impl TableDelegate for IndexDelegate {
+    fn render_empty(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::theme::empty_state("No indexes", cx)
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         FIELDS.len()
     }
