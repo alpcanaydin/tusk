@@ -48,6 +48,8 @@ mod panels;
 mod rowdetail;
 #[path = "app_tools.rs"]
 mod tools;
+#[path = "app_tree.rs"]
+mod tree;
 #[path = "app_users.rs"]
 mod users_view;
 
@@ -541,7 +543,9 @@ impl TuskApp {
                             .checked(conn.name == active)
                             .on_click(move |_, window, cx| {
                                 let view = cx.global::<TuskHandle>().0.clone();
-                                view.update(cx, |this, cx| this.switch_connection(ix, window, cx));
+                                view.update(cx, |this, cx| {
+                                    this.switch_connection_guarded(ix, window, cx)
+                                });
                             }),
                     );
                 }
@@ -3140,6 +3144,9 @@ impl TuskApp {
                     )
             };
 
+        if crate::settings::connections_tree() {
+            return self.render_conn_tree(header.into_any_element(), list.into_any_element(), cx);
+        }
         div()
             .id("sidebar")
             .key_context("Sidebar")
