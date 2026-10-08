@@ -148,11 +148,26 @@ macOS releases are signed with a Developer ID and notarized by Apple, so they op
 
 The Linux packages include the SQL language servers. For backup and restore, install your distribution's PostgreSQL client tools.
 
+**Nix / NixOS (x86_64 Linux):** run directly or install with the repository's flake:
+
+```sh
+nix run github:alpcanaydin/tusk
+nix profile add github:alpcanaydin/tusk#tusk
+```
+
+The Nix package includes the SQL language servers, PostgreSQL client tools,
+desktop launcher and icons. See [Tusk with Nix](docs/nix.md) for NixOS and
+Home Manager configuration, desktop requirements and package maintenance.
+
 ### Updates
 
 On macOS, Tusk updates itself. It checks for a new version once a day and downloads it in the background. When the update is ready, a **Restart to Update** button appears in the top bar. If you don't click it, the update installs the next time you quit Tusk. You can also check right away with **Tusk ▸ Check for Updates…**. Updates are signed, and Tusk verifies each one before installing it. If you installed with Homebrew, `brew upgrade tusk` works too.
 
 On Windows and Linux there's no automatic update yet: download the new zip or package from the [Releases page](https://github.com/alpcanaydin/tusk/releases).
+
+For a Nix profile installation, use `nix profile upgrade tusk`; declarative
+NixOS and Home Manager installations update through their configuration's
+flake lock.
 
 ### Build from source
 
