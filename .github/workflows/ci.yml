@@ -132,16 +132,32 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test --locked
 
+  nix:
+    name: Nix (Linux)
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          github_access_token: ${{ github.token }}
+      - name: Build and check the Nix package
+        run: nix flake check --print-build-logs
+
   # The one check that the ruleset of main requires.
   gate:
     name: gate
-    needs: [changes, static, rust]
+    needs: [changes, static, rust, nix]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
-          # A push to main has no changes job; a docs-only change skips the Rust job.
-          allowed-skips: changes, rust
+          # A push to main has no changes job; docs-only changes skip Rust and Nix.
+          allowed-skips: changes, rust, nix
           jobs: ${{ toJSON(needs) }}
