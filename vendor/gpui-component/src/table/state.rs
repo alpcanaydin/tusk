@@ -849,6 +849,14 @@ where
         count.saturating_sub(1).max(1)
     }
 
+    /// Tusk patch: header rows can be taller than body rows (two-line
+    /// headers showing column comments); the delegate decides.
+    fn head_row_height(&self, cx: &App) -> Pixels {
+        self.delegate
+            .header_row_height(cx)
+            .unwrap_or_else(|| self.options.size.table_row_height())
+    }
+
     fn on_row_right_click(
         &mut self,
         _: &MouseDownEvent,
@@ -1924,6 +1932,8 @@ where
             self.calculate_visible_leaf_col_range(left_columns_count);
 
         let layout_len = self.header_layout.len();
+        // Tusk patch: two-line headers (column comments) are taller.
+        let head_row_height = self.head_row_height(cx);
 
         // Reset fixed head columns bounds, if no fixed columns are present
         if left_columns_count == 0 {
@@ -1984,7 +1994,7 @@ where
                             layout.iter().enumerate().map(|(_row_ix, row_cells)| {
                                 h_flex()
                                     .min_w_full()
-                                    .h(self.options.size.table_row_height())
+                                    .h(head_row_height)
                                     .border_b_1()
                                     .border_color(cx.theme().border)
                                     .children(row_cells.iter().filter_map(|cell| {
@@ -2045,7 +2055,7 @@ where
                             let is_leaf_row = row_ix + 1 == layout_len;
                             h_flex()
                                 .min_w_full()
-                                .h(self.options.size.table_row_height())
+                                .h(head_row_height)
                                 .border_b_1()
                                 .border_color(cx.theme().border)
                                 .map(|this| {
@@ -2629,12 +2639,12 @@ where
     fn render_vertical_scrollbar(
         &mut self,
         _: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         Some(
             div()
                 .absolute()
-                .top(self.options.size.table_row_height() * self.header_layout.len().max(1) as f32)
+                .top(self.head_row_height(cx) * self.header_layout.len().max(1) as f32)
                 .right_0()
                 .bottom_0()
                 .w(Scrollbar::width())

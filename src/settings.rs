@@ -107,6 +107,8 @@ pub struct Prefs {
     pub editor_uppercase_keywords: bool,
     // ---- data grid ----
     pub grid_stripes: bool,
+    /// Keep each column's comment in the header, below its name.
+    pub grid_show_column_comments: bool,
     pub null_text: String,
     // ---- safe mode ----
     /// Ask before DROP / TRUNCATE / ALTER and UPDATE / DELETE without WHERE.
@@ -184,6 +186,7 @@ impl Default for Prefs {
             editor_tab_size: 4,
             editor_uppercase_keywords: false,
             grid_stripes: true,
+            grid_show_column_comments: false,
             null_text: "NULL".to_string(),
             confirm_destructive: true,
             confirm_save: false,
@@ -884,6 +887,14 @@ impl SettingsWindow {
                     |p| p.grid_stripes,
                     |p, v| p.grid_stripes = v,
                     d.grid_stripes,
+                ))
+                .item(switch(
+                    "Show Column Comments",
+                    "Keep each column's comment in its header, below the name. \
+                     Long comments are truncated; hover a header to read it all.",
+                    |p| p.grid_show_column_comments,
+                    |p, v| p.grid_show_column_comments = v,
+                    d.grid_show_column_comments,
                 ))
                 .item(
                     SettingItem::new(
