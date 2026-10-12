@@ -19,6 +19,7 @@ use std::time::Instant;
 use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::component::theme::ActiveTheme as _;
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::Value;
@@ -1405,17 +1406,95 @@ impl TableDelegate for GridDelegate {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let col = &self.columns[col_ix];
+        let meta = self.metas.get(col_ix);
         let t = cx.theme();
-        // Name only (types live in the Structure view), medium weight;
-        // numeric columns right-align the header with their values.
+        let text = px(crate::settings::table_text());
+        let comment = meta
+            .and_then(|m| m.comment.as_deref())
+            .map(str::trim)
+            .filter(|c| !c.is_empty());
+        // Name (medium weight) + the column comment as a second line when
+        // the setting is on; numeric columns right-align with their values.
+        let name = div()
+            .text_size(text)
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(t.colors.foreground)
+            .text_ellipsis()
+            .child(col.name.clone());
+        let content = if crate::settings::get().grid_show_column_comments {
+            v_flex()
+                .child(name)
+                .when_some(comment, |this, c| {
+                    this.child(
+                        div()
+                            .text_size((text - px(1.)).max(px(9.)))
+                            .text_color(t.colors.muted_foreground)
+                            .text_ellipsis()
+                            .child(SharedString::from(c)),
+                    )
+                })
+                .into_any_element()
+        } else {
+            name.into_any_element()
+        };
+        // Hovering a header shows the column's info (type, nullability,
+        // key, full comment) — always available, no setting.
+        let tip = meta.map(|m| {
+            let mut rows: Vec<(SharedString, SharedString)> = vec![
+                ("Type".into(), m.sql_type.as_str().into()),
+                (
+                    "Nulls".into(),
+                    SharedString::from(if m.nullable { "allowed" } else { "not null" }),
+                ),
+            ];
+            if m.is_pk {
+                rows.push(("Key".into(), "Primary key".into()));
+            }
+            if let Some(fk) = &m.foreign_key {
+                rows.push(("References".into(), fk.as_str().into()));
+            }
+            (rows, m.comment.clone())
+        });
         div()
             .when(col.right_align, |this| this.w_full().text_right())
             .px_2()
-            .text_size(px(crate::settings::table_text()))
-            .font_weight(FontWeight::MEDIUM)
             .font_family(crate::settings::table_font())
-            .text_color(t.colors.foreground)
-            .child(col.name.clone())
+            .id(("col-th", col_ix))
+            .when_some(tip, |this, (rows, comment)| {
+                let name: SharedString = col.name.clone().into();
+                this.tooltip(move |window, cx| {
+                    let name = name.clone();
+                    let rows = rows.clone();
+                    let comment = comment.clone();
+                    gpui_kit::component::tooltip::Tooltip::element(move |_window, app| {
+                        let name = name.clone();
+                        let rows = rows.clone();
+                        let comment = comment.clone();
+                        v_flex()
+                            .gap_1()
+                            .max_w(px(380.))
+                            .child(div().font_weight(FontWeight::MEDIUM).child(name))
+                            .children(rows.into_iter().map(|(k, v)| {
+                                h_flex()
+                                    .gap_2()
+                                    .child(div().opacity(0.7).child(k))
+                                    .child(v)
+                            }))
+                            .when_some(comment, |this, c| {
+                                this.child(
+                                    div()
+                                        .pt_1()
+                                        .border_t_1()
+                                        .border_color(app.theme().border)
+                                        .opacity(0.85)
+                                        .child(c),
+                                )
+                            })
+                    })
+                    .build(window, cx)
+                })
+            })
+            .child(content)
     }
 
     fn render_tr(
@@ -1425,6 +1504,19 @@ impl TableDelegate for GridDelegate {
         _cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
         div().id(("grid-row", row_ix))
+    }
+
+    /// A second header line (column comments) needs more height; without
+    /// the setting, or without any comment in the table, the default.
+    fn header_row_height(&self, _cx: &App) -> Option<Pixels> {
+        if !crate::settings::get().grid_show_column_comments {
+            return None;
+        }
+        let has_comment = self
+            .metas
+            .iter()
+            .any(|m| m.comment.as_deref().is_some_and(|c| !c.trim().is_empty()));
+        has_comment.then(|| px(32. + crate::settings::table_text() * 1.3))
     }
 
     /// Deleted / inserted / edited rows keep their color when selected

@@ -85,6 +85,13 @@ pub trait TableDelegate: Sized + 'static {
             .child(self.column(col_ix, cx).name.clone())
     }
 
+    /// Tusk patch: the height of one header row, or None for the table's
+    /// row height. A delegate whose headers show a second line (column
+    /// comments) returns a taller value.
+    fn header_row_height(&self, _cx: &App) -> Option<Pixels> {
+        None
+    }
+
     /// Render the row at the given row and column.
     ///
     /// Not include the table head row.
