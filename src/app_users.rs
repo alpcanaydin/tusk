@@ -93,13 +93,14 @@ impl TuskApp {
             return;
         }
         self.close_tool_panels();
-        let input = |placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
+        let input = |placeholder: String, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
-        let name_input = input("role_name", window, cx);
-        let password = input("unchanged", window, cx);
-        let limit = input("-1 (no limit)", window, cx);
-        let valid = input("never expires", window, cx);
+        // The sheet is rebuilt on every open, so construction-time tr! is fine.
+        let name_input = input(tr!("users.name_ph"), window, cx);
+        let password = input(tr!("users.pw_unchanged"), window, cx);
+        let limit = input(tr!("users.limit_none"), window, cx);
+        let valid = input(tr!("users.never_expires"), window, cx);
         let subs = vec![
             cx.subscribe(&limit, |this, i, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change)
@@ -151,7 +152,7 @@ impl TuskApp {
                             this.select_role(ix, window, cx);
                         }
                     }
-                    Err(e) => this.toast(false, format!("Roles: {e}")),
+                    Err(e) => this.toast(false, tr!("users.roles_failed", error = e)),
                 }
                 cx.notify();
             });
@@ -219,7 +220,7 @@ impl TuskApp {
         };
         let name = u.name_input.read(cx).value().trim().to_string();
         if name.is_empty() {
-            self.toast(false, "Name the role first.");
+            self.toast(false, tr!("users.name_first"));
             cx.notify();
             return;
         }
@@ -257,10 +258,10 @@ impl TuskApp {
             let _ = this.update_in(cx, |this, window, cx| {
                 match r {
                     Ok(_) => {
-                        this.toast(true, format!("Saved role {name}"));
+                        this.toast(true, tr!("users.saved", name = name));
                         this.load_roles(Some(name), window, cx);
                     }
-                    Err(e) => this.toast(false, format!("Role not saved: {e}")),
+                    Err(e) => this.toast(false, tr!("users.not_saved", error = e)),
                 }
                 cx.notify();
             });
@@ -279,12 +280,17 @@ impl TuskApp {
         else {
             return;
         };
+        let (ask, detail, verb) = (
+            tr!("users.drop_q", name = name.clone()),
+            tr!("users.drop_detail"),
+            tr!("dialog.drop"),
+        );
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Critical,
-            &format!("Drop role “{name}”?"),
-            Some("Objects it owns must be reassigned or dropped first."),
-            "Drop",
+            &ask,
+            Some(&detail),
+            &verb,
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -295,10 +301,10 @@ impl TuskApp {
             let _ = this.update_in(cx, |this, window, cx| {
                 match r {
                     Ok(_) => {
-                        this.toast(true, format!("Dropped role {name}"));
+                        this.toast(true, tr!("users.dropped", name = name));
                         this.load_roles(None, window, cx);
                     }
-                    Err(e) => this.toast(false, format!("Drop role {name}: {e}")),
+                    Err(e) => this.toast(false, tr!("users.drop_failed", name = name, error = e)),
                 }
                 cx.notify();
             });
@@ -314,19 +320,18 @@ impl TuskApp {
         let (border, bg, fg, muted) = (t.border, t.popover, t.foreground, t.muted_foreground);
         let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
         let d = u.draft.clone();
-        let flag =
-            |id: &'static str, label: &'static str, on: bool, set: fn(&mut RoleAttrs, bool)| {
-                Checkbox::new(id)
-                    .label(label)
-                    .checked(on)
-                    .on_click(cx.listener(move |this, v: &bool, _, cx| {
-                        if let Some(u) = this.users.as_mut() {
-                            set(&mut u.draft, *v);
-                        }
-                        cx.notify();
-                    }))
-            };
-        let field = |label: &'static str, input: &Entity<InputState>| {
+        let flag = |id: &'static str, label: String, on: bool, set: fn(&mut RoleAttrs, bool)| {
+            Checkbox::new(id)
+                .label(label)
+                .checked(on)
+                .on_click(cx.listener(move |this, v: &bool, _, cx| {
+                    if let Some(u) = this.users.as_mut() {
+                        set(&mut u.draft, *v);
+                    }
+                    cx.notify();
+                }))
+        };
+        let field = |label: String, input: &Entity<InputState>| {
             div()
                 .flex()
                 .items_center()
@@ -361,7 +366,12 @@ impl TuskApp {
                     .child(Icon::new(IconName::User).size(px(13.)).text_color(muted))
                     .child(div().flex_1().truncate().child(r.name.clone()))
                     .when(r.superuser, |d| {
-                        d.child(div().text_caption().text_color(muted).child("super"))
+                        d.child(
+                            div()
+                                .text_caption()
+                                .text_color(muted)
+                                .child(tr!("users.super_badge")),
+                        )
                     })
                     .on_click(
                         cx.listener(move |this, _, window, cx| this.select_role(i, window, cx)),
@@ -374,10 +384,10 @@ impl TuskApp {
             .flex_col()
             .gap_3()
             .p_4()
-            .child(field("Role name", &u.name_input))
-            .child(field("Password", &u.password))
-            .child(field("Conn. limit", &u.limit))
-            .child(field("Valid until", &u.valid))
+            .child(field(tr!("users.role_name"), &u.name_input))
+            .child(field(tr!("dialog.password"), &u.password))
+            .child(field(tr!("users.conn_limit"), &u.limit))
+            .child(field(tr!("users.valid_until"), &u.valid))
             .child(
                 div()
                     .flex()
@@ -385,34 +395,45 @@ impl TuskApp {
                     .gap_x_4()
                     .gap_y_2()
                     .pt_1()
-                    .child(flag("r-login", "Can log in", d.login, |r, v| r.login = v))
-                    .child(flag("r-super", "Superuser", d.superuser, |r, v| {
-                        r.superuser = v
+                    .child(flag("r-login", tr!("users.can_login"), d.login, |r, v| {
+                        r.login = v
                     }))
                     .child(flag(
+                        "r-super",
+                        tr!("users.superuser"),
+                        d.superuser,
+                        |r, v| r.superuser = v,
+                    ))
+                    .child(flag(
                         "r-createdb",
-                        "Create databases",
+                        tr!("users.create_db"),
                         d.create_db,
                         |r, v| r.create_db = v,
                     ))
                     .child(flag(
                         "r-createrole",
-                        "Create roles",
+                        tr!("users.create_roles"),
                         d.create_role,
                         |r, v| r.create_role = v,
                     ))
                     .child(flag(
                         "r-inherit",
-                        "Inherit privileges",
+                        tr!("users.inherit"),
                         d.inherit,
                         |r, v| r.inherit = v,
                     ))
-                    .child(flag("r-repl", "Replication", d.replication, |r, v| {
-                        r.replication = v
-                    }))
-                    .child(flag("r-rls", "Bypass RLS", d.bypass_rls, |r, v| {
-                        r.bypass_rls = v
-                    })),
+                    .child(flag(
+                        "r-repl",
+                        tr!("users.replication"),
+                        d.replication,
+                        |r, v| r.replication = v,
+                    ))
+                    .child(flag(
+                        "r-rls",
+                        tr!("users.bypass_rls"),
+                        d.bypass_rls,
+                        |r, v| r.bypass_rls = v,
+                    )),
             )
             .when(!d.member_of.is_empty(), |f| {
                 f.child(
@@ -424,7 +445,7 @@ impl TuskApp {
                                 .w(px(110.))
                                 .text_sm()
                                 .text_color(muted)
-                                .child("Member of"),
+                                .child(tr!("users.member_of")),
                         )
                         .child(div().text_sm().text_color(fg).child(d.member_of.clone())),
                 )
@@ -475,11 +496,11 @@ impl TuskApp {
                                     .flex_1()
                                     .text_sm()
                                     .text_color(fg)
-                                    .child("User Management"),
+                                    .child(tr!("menu.tools.users")),
                             )
                             .child(
                                 Button::new("role-new")
-                                    .label("New Role")
+                                    .label(tr!("users.new_role"))
                                     .small()
                                     .outline()
                                     .on_click(
@@ -490,7 +511,7 @@ impl TuskApp {
                             )
                             .child(
                                 Button::new("role-drop")
-                                    .label("Drop")
+                                    .label(tr!("dialog.drop"))
                                     .small()
                                     .danger()
                                     .disabled(u.creating || u.selected.is_none())
@@ -500,7 +521,11 @@ impl TuskApp {
                             )
                             .child(
                                 Button::new("role-save")
-                                    .label(if u.creating { "Create" } else { "Save" })
+                                    .label(if u.creating {
+                                        tr!("dialog.create")
+                                    } else {
+                                        tr!("dialog.save")
+                                    })
                                     .small()
                                     .primary()
                                     .on_click(cx.listener(|this, _, window, cx| {

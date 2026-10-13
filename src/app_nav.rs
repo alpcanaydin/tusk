@@ -33,7 +33,7 @@ impl TuskApp {
         let schema = self.current_schema.clone();
         self.fetch_objects_for(&schema, cx);
         self.refresh_active_tab(cx);
-        self.toast_info("Reloaded");
+        self.toast_info(tr!("toast.reloaded"));
     }
 
     /// ⇧⌘R: open a fresh connection with the same profile; tabs stay.
@@ -41,12 +41,14 @@ impl TuskApp {
         let Some((conn, password)) = self.active_conn.clone() else {
             return;
         };
-        self.status_line = format!("Reconnecting to {}…", conn.name);
+        self.status_line = Some(StatusLine::Reconnecting {
+            name: conn.name.clone(),
+        });
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = db::connect(conn.clone(), password, None).await;
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
-                this.status_line.clear();
+                this.status_line = None;
                 match result {
                     Ok(c) => {
                         db::set_engine(c.pool.engine());
@@ -62,9 +64,9 @@ impl TuskApp {
                         let schema = this.current_schema.clone();
                         this.fetch_objects_for(&schema, cx);
                         this.refresh_active_tab(cx);
-                        this.toast(true, format!("Reconnected to {}", conn.name));
+                        this.toast(true, tr!("toast.reconnected", name = conn.name.clone()));
                     }
-                    Err(e) => this.toast(false, format!("Reconnect failed: {e}")),
+                    Err(e) => this.toast(false, tr!("toast.reconnect_failed", error = e)),
                 }
                 cx.notify();
             });
@@ -135,7 +137,7 @@ impl TuskApp {
         {
             let name = g.table.name.clone();
             self.close_tab_at(ix, cx);
-            self.toast_info(format!("Discarded new table “{name}”"));
+            self.toast_info(tr!("changes.discarded_draft", name = name));
             cx.notify();
             return;
         }
@@ -175,12 +177,11 @@ impl TuskApp {
             None => {}
         }
         if n == 0 {
-            self.toast_info("No changes to discard.");
+            self.toast_info(tr!("changes.none_discard"));
+        } else if n == 1 {
+            self.toast_info(tr!("changes.discarded_one", count = n));
         } else {
-            self.toast_info(format!(
-                "Discarded {n} change{}",
-                if n == 1 { "" } else { "s" }
-            ));
+            self.toast_info(tr!("changes.discarded_many", count = n));
         }
         cx.notify();
     }
@@ -260,7 +261,7 @@ impl TuskApp {
     pub(super) fn preview_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let sql = self.pending_sql(cx);
         if sql.is_empty() {
-            self.toast_info("No changes to preview.");
+            self.toast_info(tr!("changes.none_preview"));
             cx.notify();
             return;
         }
@@ -333,7 +334,7 @@ impl TuskApp {
                             .border_color(border)
                             .text_sm()
                             .text_color(fg)
-                            .child("Preview changes"),
+                            .child(tr!("changes.preview")),
                     )
                     .child(
                         div().flex_1().min_h_0().child(
@@ -355,7 +356,7 @@ impl TuskApp {
                             .border_color(border)
                             .child(
                                 Button::new("preview-cancel")
-                                    .label("Cancel")
+                                    .label(tr!("common.cancel"))
                                     .small()
                                     .outline()
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -365,7 +366,7 @@ impl TuskApp {
                             )
                             .child(
                                 Button::new("preview-commit")
-                                    .label("Commit")
+                                    .label(tr!("menu.edit.commit"))
                                     .small()
                                     .primary()
                                     .on_click(cx.listener(|this, _, window, cx| {

@@ -41,6 +41,8 @@ tokio-postgres-rustls = "0.14.0"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "1"
 serde_norway = "0.9"
+rust-i18n = "4.2.4"
+sys-locale = "0.3.2"
 
 # Local patch of gpui-component 0.6.6: Zed-style LSP completion rows
 # (kind glyph, kind-colored label, bold match, non-italic detail).

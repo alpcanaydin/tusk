@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::acp::{self, AcpConnection, Incoming, RpcError};
 use crate::acp_registry::AgentSpec;
+use crate::tr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Status {
@@ -248,8 +249,8 @@ fn block_text(b: &Value) -> String {
                 s(&r["uri"])
             }
         }
-        Some("image") => "*(image)*".into(),
-        Some("audio") => "*(audio)*".into(),
+        Some("image") => tr!("agent.content.image"),
+        Some("audio") => tr!("agent.content.audio"),
         _ => String::new(),
     }
 }
@@ -348,7 +349,7 @@ impl AgentThread {
         let mut t = Self {
             agent_name: spec.name.clone(),
             spec,
-            status: Status::Starting("Starting…".into()),
+            status: Status::Starting(tr!("agent.status.starting")),
             conn: None,
             session_id: None,
             caps: Value::Null,
@@ -381,9 +382,9 @@ impl AgentThread {
         let spec = self.spec.clone();
         let cwd = self.cwd.clone();
         self.status = Status::Starting(if crate::acp_registry::installed(&spec) {
-            format!("Starting {}…", spec.name)
+            tr!("agent.status.starting_agent", agent = spec.name)
         } else {
-            format!("Installing {}…", spec.name)
+            tr!("agent.status.installing", agent = spec.name)
         });
         let task = cx.spawn(async move |this, cx| {
             let resolved = cx
@@ -408,7 +409,7 @@ impl AgentThread {
             let ok = this.update(cx, |t, cx| {
                 t.conn = Some(conn.clone());
                 t.program = Some(cmd.clone());
-                t.status = Status::Starting("Connecting…".into());
+                t.status = Status::Starting(tr!("agent.status.connecting"));
                 cx.notify();
             });
             if ok.is_err() {
@@ -508,7 +509,7 @@ impl AgentThread {
         let Some(conn) = self.conn.clone() else {
             return;
         };
-        self.status = Status::Starting("Opening a chat…".into());
+        self.status = Status::Starting(tr!("agent.status.opening_chat"));
         cx.notify();
         let params =
             json!({ "cwd": self.cwd.display().to_string(), "mcpServers": [self.mcp.clone()] });
@@ -583,10 +584,7 @@ impl AgentThread {
                 .creation_flags(CREATE_NEW_CONSOLE)
                 .spawn();
             self.entries.push(Entry::Notice {
-                text: format!(
-                    "Finish signing in to {} in the console window, then press Retry.",
-                    self.agent_name
-                ),
+                text: tr!("agent.notice.finish_console", agent = self.agent_name),
                 error: false,
             });
             self.changed(cx);
@@ -615,10 +613,7 @@ impl AgentThread {
                 .arg(script)
                 .spawn();
             self.entries.push(Entry::Notice {
-                text: format!(
-                    "Finish signing in to {} in Terminal, then press Retry.",
-                    self.agent_name
-                ),
+                text: tr!("agent.notice.finish_terminal", agent = self.agent_name),
                 error: false,
             });
             self.changed(cx);
@@ -627,7 +622,7 @@ impl AgentThread {
         let Some(conn) = self.conn.clone() else {
             return;
         };
-        self.status = Status::Starting(format!("Signing in with {}…", method.name));
+        self.status = Status::Starting(tr!("agent.status.signing_in", method = method.name));
         cx.notify();
         let id = method.id.clone();
         let task = cx.spawn(async move |this, cx| {
@@ -698,14 +693,14 @@ impl AgentThread {
                 match r {
                     Ok(r) => {
                         let note = match r["stopReason"].as_str() {
-                            Some("max_tokens") => Some("The reply hit the token limit."),
-                            Some("max_turn_requests") => Some("The agent hit its turn limit."),
-                            Some("refusal") => Some("The agent declined to continue."),
+                            Some("max_tokens") => Some(tr!("agent.notice.max_tokens")),
+                            Some("max_turn_requests") => Some(tr!("agent.notice.max_turns")),
+                            Some("refusal") => Some(tr!("agent.notice.refused")),
                             _ => None,
                         };
                         if let Some(n) = note {
                             t.entries.push(Entry::Notice {
-                                text: n.into(),
+                                text: n,
                                 error: false,
                             });
                         }
@@ -869,8 +864,8 @@ impl AgentThread {
                     title: x["title"]
                         .as_str()
                         .filter(|t| !t.is_empty())
-                        .unwrap_or("Untitled chat")
-                        .to_string(),
+                        .map(str::to_string)
+                        .unwrap_or_else(|| tr!("agent.session.untitled")),
                     updated: x["updatedAt"].as_str().map(str::to_string),
                 })
                 .collect()
@@ -894,7 +889,7 @@ impl AgentThread {
         self.usage = None;
         self.title = Some(title);
         self.session_id = Some(id.clone());
-        self.status = Status::Starting("Opening the chat…".into());
+        self.status = Status::Starting(tr!("agent.status.opening_session"));
         self.changed(cx);
         let params = json!({
             "sessionId": id,
@@ -908,9 +903,7 @@ impl AgentThread {
                     t.session_ready(&r, cx);
                     if !load {
                         t.entries.push(Entry::Notice {
-                            text:
-                                "Continuing this chat (the agent can't show its earlier messages)."
-                                    .into(),
+                            text: tr!("agent.notice.continuing"),
                             error: false,
                         });
                         t.changed(cx);
@@ -941,10 +934,11 @@ impl AgentThread {
             Incoming::Request { id, method, params } => self.request(id, &method, params, cx),
             Incoming::Exited { stderr } => {
                 if !matches!(self.status, Status::Failed(_)) {
+                    let exited = tr!("agent.status.exited", agent = self.agent_name);
                     let msg = if stderr.trim().is_empty() {
-                        format!("{} exited.", self.agent_name)
+                        exited
                     } else {
-                        format!("{} exited.\n\n{}", self.agent_name, stderr.trim())
+                        format!("{exited}\n\n{}", stderr.trim())
                     };
                     self.fail(msg, cx);
                 }
@@ -1116,7 +1110,10 @@ impl AgentThread {
             return;
         }
         self.entries.push(Entry::Tool(ToolCall {
-            title: u["title"].as_str().unwrap_or("Tool").to_string(),
+            title: u["title"]
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| tr!("agent.content.tool")),
             kind: u["kind"].as_str().unwrap_or("other").to_string(),
             status: u["status"].as_str().unwrap_or("pending").to_string(),
             content: content.unwrap_or_default(),

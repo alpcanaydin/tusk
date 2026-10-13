@@ -200,7 +200,7 @@ pub fn typed(text: Option<&str>, ty: &str) -> DbResult<Value> {
         },
         "B" => {
             let h = t.trim().trim_start_matches("\\x").trim_start_matches("0x");
-            let bytes = hex::decode(h).map_err(|_| "Binary values are hex".to_string())?;
+            let bytes = hex::decode(h).map_err(|_| crate::tr!("drivers.dynamo_binary"))?;
             json!({"B": base64::engine::general_purpose::STANDARD.encode(bytes)})
         }
         "M" | "L" | "mixed" => match parsed() {

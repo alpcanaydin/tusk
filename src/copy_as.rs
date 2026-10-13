@@ -36,6 +36,19 @@ impl CopyFormat {
             CopyFormat::Markdown => "Markdown",
         }
     }
+
+    /// Menu label in the current language. `label()` stays the canonical
+    /// English form (callers match on the enum, never on the text); format
+    /// names (TSV, CSV, JSON, Markdown) are not translated.
+    pub fn display_label(self) -> String {
+        match self {
+            CopyFormat::Tsv | CopyFormat::Csv | CopyFormat::Json | CopyFormat::Markdown => {
+                self.label().to_string()
+            }
+            CopyFormat::Insert => crate::tr!("copy_as.insert"),
+            CopyFormat::Update => crate::tr!("copy_as.update"),
+        }
+    }
 }
 
 /// Where the rows came from (for INSERT / UPDATE).

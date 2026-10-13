@@ -1,0 +1,1105 @@
+# Tusk 界面文案（简体中文）。key 必须与 en.yml 完全一致，缺失时回退英文。
+
+common:
+  cancel: 取消
+  discard: 放弃
+  run: 运行
+  undo: 撤销
+  redo: 重做
+  cut: 剪切
+  paste: 粘贴
+  select_all: 全选
+  new_group: 新建分组
+  new_group_n: 新建分组 %{n}
+  filter: 筛选
+  sort: 排序
+  close: 关闭
+  done: 完成
+  add: 添加
+  remove: 移除
+  copy: 复制
+  clear: 清除
+  refresh: 刷新
+  and: 、
+  file_name: 文件名：
+  customize: 自定义
+  token_date: 日期（YYYY-MM-DD）
+  token_time: 时间（HH-MM-SS）
+
+settings:
+  window:
+    title: 设置
+  language:
+    title: 语言
+    description: 界面语言。切换后立即生效，无需重启。
+    system: 跟随系统
+  page:
+    appearance: 外观
+    interface: 界面
+    data_grid: 数据表格
+    general: 通用
+    sql_editor: SQL 编辑器
+    safe_mode: 安全模式
+  group:
+    theme: 主题
+    ui_font: 界面字体
+    layout: 布局
+    table_font: 表格字体
+    display: 显示
+    startup: 启动与连接
+    editor: 编辑器
+    confirmations: 确认
+  appearance:
+    system: 跟随系统
+    light: 浅色
+    dark: 深色
+  mode:
+    title: 外观模式
+    description: 「跟随系统」将随桌面的浅色/深色外观自动切换。
+  accent:
+    title: 强调色
+    description: 用于按钮、焦点、光标和选框。选择「主题」时沿用主题自带的颜色。
+    teal: 青色
+    blue: 蓝色
+    violet: 紫色
+    magenta: 品红色
+    sky: 天蓝色
+    theme: 主题
+  light_theme:
+    title: 浅色主题
+    description: 浅色模式下使用。
+  dark_theme:
+    title: 深色主题
+    description: 深色模式下使用。
+  font_family:
+    title: 字体
+    ui_description: 用于侧边栏、标签页、标题栏、菜单和对话框。
+    data_description: 用于数据表格、结构视图和 SQL 编辑器。
+  font_size:
+    title: 字号
+    ui_description: 缩放整个界面。
+    data_description: 列宽会随之缩放。
+  sidebar_layout:
+    title: 侧边栏布局
+    description: 「仅对象」只列出当前连接的数据库；「连接树」按分组列出所有已保存的连接，并将当前连接的数据库对象嵌套在其下方。
+    objects: 仅对象
+    connections_tree: 连接树
+  reopen_last:
+    title: 重连上次连接
+    description: 应用启动时自动连接上次使用的数据库。
+  query_timeout:
+    title: 查询超时
+    description: 语句被取消前的等待秒数（0 表示永不超时）。仅对新连接生效。
+  gpu_device:
+    title: 图形设备
+    description: 用于渲染的 GPU。重启 Tusk 后生效。
+  gpu:
+    automatic: 自动
+  line_numbers:
+    title: 行号
+    description: 在左侧空白区显示行号。
+  soft_wrap:
+    title: 自动换行
+    description: 长行自动折行，而不是横向滚动。
+  tab_size:
+    title: 制表符宽度
+    description: 每级缩进包含的空格数。
+  uppercase_keywords:
+    title: 关键字大写
+    description: 自动补全时以大写插入 SQL 关键字。
+  stripes:
+    title: 隔行变色
+    description: 每隔一行交替显示底色。
+  null_display:
+    title: NULL 显示
+    description: 表格中 NULL 值的显示文本。
+  confirm_destructive:
+    title: 危险查询需确认
+    description: 执行 DROP、TRUNCATE、ALTER，或无 WHERE 的 UPDATE / DELETE 前先询问。
+  confirm_save:
+    title: 保存前确认
+    description: 保存待处理的更改前，或查询将写入数据库前先询问。
+
+menu:
+  title:
+    file: 文件
+    edit: 编辑
+    view: 视图
+    tools: 工具
+    connection: 连接
+    navigate: 导航
+    window: 窗口
+    help: 帮助
+  app:
+    about: 关于 Tusk
+    release_notes: 更新内容
+    settings: 设置…
+    command_palette: 命令面板…
+    restart_update: 重启并更新…
+    check_updates: 检查更新…
+    hide: 隐藏 Tusk
+    quit: 退出 Tusk
+  file:
+    new_connection: 新建连接…
+    open_connection: 打开连接…
+    new_sql: 新建 SQL 查询
+    open_sql: 打开…
+    save_as: 另存为…
+    open_table: 打开表…
+    backup: 备份数据库…
+    restore: 还原数据库…
+    export: 导出
+    export_tables: 导出表…
+    export_active_table: 导出当前表（选择列）…
+    import: 导入
+    import_csv: 从 CSV 导入…
+    import_json: 从 JSON 导入…
+    import_sql: 从 SQL 转储导入…
+    import_compose: 从 Docker Compose 导入连接…
+    close_tab: 关闭标签页
+    close_all_tabs: 关闭所有标签页
+  edit:
+    commit: 提交更改
+    discard: 放弃更改
+    preview: 预览更改
+    add_row: 新增行
+    duplicate_row: 复制行
+    copy_cells: 复制选中的单元格
+    paste_cells: 粘贴到选中的单元格
+    delete: 删除
+    line_comment: 切换行注释
+    block_comment: 切换块注释
+    increase_font: 放大字号
+    decrease_font: 缩小字号
+    transformations: 转换
+    make_upper: 转为大写
+    make_lower: 转为小写
+    capitalize: 首字母大写
+    filter: 筛选…
+  view:
+    tables: 表
+    views: 视图
+    functions: 函数
+    toggle_sidebar: 切换左侧栏
+    toggle_row_detail: 切换右侧栏（行详情）
+    toggle_ai: 切换 AI 对话
+    send_to_chat: 发送到对话
+    toggle_console: 切换控制台
+    history: 查询历史
+    problems: 问题
+    toggle_results: 切换查询结果面板
+    show_all_tabs: 显示所有标签页
+  tools:
+    processes: 进程列表
+    users: 用户管理
+    search: 在数据库中搜索…
+  connection:
+    new: 新建…
+    open_database: 打开数据库…
+    open_connection: 打开连接…
+    run_current: 运行当前查询
+    run_all: 运行全部查询
+    reload_workspace: 重新加载工作区
+    refresh_tab: 重新加载当前标签页
+    reconnect: 重新连接
+    disconnect: 断开连接
+  navigate:
+    open_anything: 打开任意内容…
+    command_palette: 命令面板…
+    new_tab: 新建标签页
+    close_tab: 关闭标签页
+    show_data: 显示表数据
+    show_structure: 显示表结构
+    go_back: 后退
+    go_forward: 前进
+    next_tab: 下一个标签页
+    prev_tab: 上一个标签页
+    split_right: 向右拆分面板
+    next_pane: 切换到下一个面板
+  window:
+    minimize: 最小化
+    zoom: 缩放
+    bring_all: 前置所有窗口
+  help:
+    github: Tusk 在 GitHub
+    report: 报告问题…
+
+palette:
+  connection:
+    new: "连接：新建…"
+    open: "连接：打开…"
+    import_compose: "连接：从 Docker Compose 导入…"
+    disconnect: "连接：断开连接"
+    quick_connect: "连接：快速连接"
+    migrate: "连接：从 TablePlus 迁移…"
+    connect_to: "连接：连接到 %{name}"
+    open_database: "连接：打开数据库…"
+    open_connection: "连接：打开连接…"
+    reload_workspace: "连接：重新加载工作区"
+    reconnect: "连接：重新连接"
+  database:
+    backup: "数据库：备份…"
+    restore: "数据库：还原…"
+    switch_to: "数据库：切换到 %{name}"
+  schema:
+    switch_to: "模式：切换到 %{name}"
+  ai:
+    send_to_chat: "AI：发送到对话"
+  app:
+    settings: "应用：设置"
+    check_updates: "应用：检查更新…"
+    about: "应用：关于 Tusk"
+    release_notes: "应用：更新内容"
+    hide: "应用：隐藏"
+    quit: "应用：退出"
+  query:
+    new_sql: "查询：新建 SQL 标签页"
+    run_current: "查询：运行当前"
+    run_all: "查询：运行全部"
+    export_result: "查询：导出结果…"
+  tab:
+    close: "标签页：关闭"
+    refresh: "标签页：刷新"
+    next: "标签页：下一个"
+    previous: "标签页：上一个"
+    close_all: "标签页：全部关闭"
+  changes:
+    save: "更改：提交"
+    delete_selection: "更改：删除选中内容"
+    preview: "更改：预览 SQL"
+    discard: "更改：放弃"
+  editor:
+    line_comment: "编辑器：切换行注释"
+    block_comment: "编辑器：切换块注释"
+    upper: "编辑器：转为大写"
+    lower: "编辑器：转为小写"
+    capitalize: "编辑器：首字母大写"
+  view:
+    increase_text: "视图：放大字号"
+    decrease_text: "视图：缩小字号"
+    reset_text: "视图：重置字号"
+    toggle_results: "视图：切换查询结果面板"
+    split_right: "视图：向右拆分面板"
+    next_pane: "视图：切换到下一个面板"
+    show_all_tabs: "视图：显示所有标签页"
+    toggle_ai: "视图：切换 AI 对话"
+    toggle_row_detail: "视图：切换行详情"
+    toggle_console: "视图：切换控制台"
+    toggle_problems: "视图：切换问题面板"
+    history: "视图：查询历史"
+    toggle_sidebar: "视图：切换侧边栏"
+    tables: "视图：表"
+    views: "视图：视图"
+    functions: "视图：函数"
+    open_structure: "视图：打开 %{name} 的结构"
+    export: "视图：导出 %{name}…"
+    copy_create: "视图：复制 %{name} 的 CREATE 语句"
+    open_select: "视图：打开 %{name} 的 SELECT 语句"
+    rename: "视图：重命名 %{name}…"
+    delete: "视图：删除 %{name}"
+    new: "视图：新建视图…"
+  grid:
+    copy_cells: "表格：复制选中的单元格"
+    paste_cells: "表格：粘贴到选中的单元格"
+    filters: "表格：切换筛选"
+    data: "表格：显示数据"
+    structure: "表格：显示结构"
+  file:
+    open_sql: "文件：打开 .sql 文件…"
+    save_as: "文件：将查询另存为…"
+  export:
+    tables: "导出：表…"
+    active_table: "导出：当前表（选择列）…"
+  import:
+    csv: "导入：从 CSV…"
+    json: "导入：从 JSON…"
+    sql: "导入：从 SQL 转储…"
+  tools:
+    users: "工具：用户管理"
+    search: "工具：在数据库中搜索…"
+    processes: "工具：进程列表"
+  table:
+    open: "表：打开…"
+    new: "表：新建表…"
+    import_into: "表：导入 CSV 到 %{name}…"
+    duplicate: "表：复制 %{name}（仅结构）"
+    duplicate_data: "表：复制 %{name}（结构 + 数据）"
+    truncate: "表：清空 %{name}…"
+    truncate_cascade: "表：清空 %{name}（级联）…"
+    open_structure: "表：打开 %{name} 的结构"
+    export: "表：导出 %{name}…"
+    copy_create: "表：复制 %{name} 的 CREATE 语句"
+    open_select: "表：打开 %{name} 的 SELECT 语句"
+    rename: "表：重命名 %{name}…"
+    delete: "表：删除 %{name}"
+  sidebar:
+    new_group: "侧边栏：新建分组…"
+    refresh: "侧边栏：刷新"
+  theme:
+    apply: "主题：%{name}（%{mode}）"
+    appearance: "主题：外观 %{mode}"
+    appearance_system: 跟随系统
+    appearance_light: 浅色
+    appearance_dark: 深色
+    mode_light: 浅色
+    mode_dark: 深色
+  name_current: "%{name}（当前）"
+  ph:
+    commands: 输入命令…
+    tables: 搜索表…
+    databases: 打开数据库…
+    connections: 打开连接…
+    tabs: 跳转到标签页…
+
+status:
+  not_connected: 未连接
+  connecting: 正在连接 %{name}…
+  reconnecting: 正在重新连接 %{name}…
+  duplicating: 正在复制 %{name}…
+  saving_one: 正在保存 %{count} 条语句…
+  saving_many: 正在保存 %{count} 条语句…
+  function_detail: "%{schema}.%{name}() — 函数详情页将随标签页一起上线（Phase 6）"
+  pending_save: "%{pending} — [cmd-s] 保存"
+
+titlebar:
+  no_connection: 无连接
+  restart_update: 重启并更新
+  update_install: 安装更新并重新启动
+  update_ready: "Tusk %{version} 已就绪：安装并重新启动"
+  endpoint_ssh: "%{endpoint}（经 ssh %{host}）"
+
+welcome:
+  title: 欢迎回到 Tusk
+  subtitle: 优雅而强大的数据库工具
+  get_started: 快速入门
+  recent_connections: 最近连接
+  migrate: 从 TablePlus 迁移…
+  import_compose: 从 Docker Compose 导入…
+  connecting: 正在连接…
+
+# 更新后首次启动的「新增功能」卡片（whats_new.rs）。版本号与发布链接保持原样。
+whats_new:
+  label: 新增功能
+  updated: Tusk 已更新到 %{version}
+  summary: 看看这个版本改了什么。
+  release_notes: 查看更新说明
+
+# 「关于」窗口。应用名与版本号保持原样。
+about:
+  version: 版本 %{version}
+
+conn:
+  incomplete_saved: 已保存的连接信息不完整 — 请编辑并填写完整。
+  testing: 正在测试连接…
+  test_ok: "连接成功 — %{version}"
+  credential_error: "%{store} 错误：%{error}"
+  keychain_mismatch: "%{store} 返回了不同的密码"
+  keychain_unreadable: 无法从 %{store} 读回密码（%{error}）
+  saved_warning: 已保存“%{name}” — 但 %{warning}；重启后将失效。
+  saved: 已保存“%{name}”。
+  save_failed: 保存失败：%{error}
+  connecting: 正在连接 %{name}…
+  reconnecting: 正在重新连接 %{name}…
+  connect_error: "%{name}：%{error}"
+  no_saved: 没有已保存的连接。
+  tableplus_error: "TablePlus 导入：%{error}"
+  saved_connect_warning: 已保存“%{name}” — 但%{warning}。
+  search_ph: 搜索连接…
+  new_dots: 新建连接…
+  manage_dots: 管理连接…
+  new_connection: 新建连接
+  no_match: 没有匹配的连接。
+  disconnect_q: 断开与“%{name}”的连接？
+  switch_q: 切换到“%{name}”？
+  work_discarded: 将放弃 %{work}。
+  delete_q: 删除“%{name}”？
+  delete_detail: 将移除已保存的连接配置及其存储的密码。
+  connection_dots: 连接…
+  group_item: 分组
+  new: 新建
+  edit_dots: 编辑…
+  copy_url: 复制为 URL
+  delete_dots: 删除…
+  title: 连接
+  all_connections: 所有连接
+  groups_label: 分组
+  empty_here: 此处没有连接
+  no_matches: 没有匹配项
+  manager_hint: 点击连接 · 右键查看更多
+  new_group_item: 新建分组
+  delete_group: 删除分组
+  rename_group: 重命名分组
+  no_group_item: 无分组
+  field:
+    account_id: 账户 ID
+    account: 账户
+    warehouse: 仓库
+    role: 角色
+    schema: 模式
+    project: 项目
+    dataset: 数据集
+    key_file: 密钥文件
+    region: 区域
+    access_key: 访问密钥
+    endpoint: 端点
+  ph:
+    cloudflare_account: Cloudflare 账户 ID
+    dataset: my_dataset（可选）
+    endpoint: http://localhost:8000（可选）
+    name: 我的数据库
+    password: 密码（存储于 %{store}）
+    folder: 无分组
+    ssh_secret: 存储于 %{store}
+    # 各引擎数据库输入框的占位文案（engine.rs）；其中的真实库名
+    # （FREEPDB1、0）保持原样。
+    database_service: 服务名（FREEPDB1）
+    database_keyspace: Keyspace（可选）
+    database_index: 数据库索引（0）
+    database_optional: 数据库（可选）
+  tag:
+    none: 无
+    local: 本地
+    development: 开发
+    testing: 测试
+    staging: 预发布
+    production: 生产
+
+toast:
+  connected_no_schemas: 已连接 — 未找到任何模式。
+  schema_list_failed: 已连接，但模式列表加载失败：%{error}
+  objects_failed: 对象列表加载失败：%{error}
+  open_database_failed: 无法打开 %{name}：%{error}
+  enter_password: "%{name}：请输入密码以连接。"
+  feature_unavailable: "%{engine} 不支持%{feature}。"
+  reloaded: 已重新加载
+  reconnected: 已重新连接到 %{name}
+  reconnect_failed: 重连失败：%{error}
+  indexes_failed: 索引加载失败：%{error}
+  triggers_failed: 触发器加载失败：%{error}
+  ddl_failed: DDL 加载失败：%{error}
+
+compose:
+  no_supported: 没有 Tusk 支持的数据库服务
+  nothing_to_import: 无可导入内容 — %{services}
+  detail: "Docker Compose：%{detail}"
+  no_file: 在 %{path} 中未找到 compose.yaml / docker-compose.yml
+  no_services: "compose 文件中没有 `services:`"
+  skip_no_image: "%{service}（未指定 image）"
+  skip_no_port: "%{service}（端口 %{port} 未发布）"
+  skip_imported: "%{service}（已导入）"
+  skip_name_taken: "%{service}（名称 %{name} 已被占用）"
+
+# 迁移 / 导入面板（app_migrate）：核对、导入、汇总。服务名、连接名、主机、
+# 端口、引擎名与原始失败原因都作为参数保留原样。
+migrate:
+  review_title: 把你的连接搬过来
+  importing_title: 正在导入…
+  done_title: 全部完成
+  tableplus_subtitle: 分组、标签、颜色、SSH 与已保存的密码都会一并迁移。
+  compose_subtitle: “%{project}”的数据库服务将进入 %{project} 分组，密码一并迁移。
+  progress: 已导入 %{done} / %{total}
+  done_summary: "%{connections}、%{passwords}已导入"
+  connections_one: "%{count} 个连接"
+  connections_many: "%{count} 个连接"
+  passwords_one: "%{count} 个密码"
+  passwords_many: "%{count} 个密码"
+  skipped: 已跳过：%{items}
+  import_one: 导入 %{count} 个连接
+  import_many: 导入 %{count} 个连接
+  open_connections: 打开连接管理
+  failed: "%{name}：%{error}"
+
+feature:
+  backup: 备份
+  restore: 还原
+  process_list: 进程列表
+  search_database: 在数据库中搜索
+  user_management: 用户管理
+
+sidebar:
+  loading: 正在加载对象…
+  empty: 此模式中没有 %{kind}。
+  header: "%{title}（%{count}）"
+  filter: 筛选
+  filter_ph: 筛选…
+  untitled: 未命名
+
+history:
+  search_ph: 搜索历史记录…
+
+tab:
+  no_table: 未打开表
+  no_table_hint: 在侧边栏中点击表，或按 [cmd-p] 快速打开。
+  close_question: 关闭此标签页？
+  draft_not_created: 新表尚未创建。
+  unsaved_one: 将放弃 %{count} 项未保存的更改。
+  unsaved_many: 将放弃 %{count} 项未保存的更改。
+  data: 数据
+  structure: 结构
+  index: 索引
+  triggers: 触发器
+  add_row: + 行
+  add_column: + 列
+  add_index: + 索引
+  add_trigger: + 触发器
+  cols_one: "%{count} 列"
+  cols_many: "%{count} 列"
+  indexes_one: "%{count} 个索引"
+  indexes_many: "%{count} 个索引"
+  triggers_count_one: "%{count} 个触发器"
+  triggers_count_many: "%{count} 个触发器"
+  row_range: "%{from}–%{to}（%{rows}）"
+  filtered: （已筛选）
+
+dialog:
+  run_dangerous: 运行危险语句？
+  run_write_one: 运行将写入数据库的语句？
+  run_write_many: 运行多条将写入数据库的语句？
+  more_lines: "\n… 另有 %{count} 条"
+  safe_mode_note: "%{detail}\n\n（安全模式 — 设置 ▸ 安全模式）"
+  new_connection: 新建连接
+  connection: "%{engine} 连接"
+  edit_connection: "编辑 %{engine} 连接"
+  name: 名称
+  status_color: 状态颜色
+  tag: 标签
+  group: 分组
+  no_group: 无分组
+  password: 密码
+  host_socket: 主机/套接字
+  port: 端口
+  user: 用户
+  service: 服务
+  keyspace: 键空间
+  database: 数据库
+  database_id: 数据库 ID
+  ssl_mode: SSL 模式
+  path: 路径
+  url: URL
+  auth_token: 认证令牌
+  api_token: API 令牌
+  access_token: 访问令牌
+  secret_key: 密钥
+  private_key: 私钥
+  server: 服务器
+  passphrase: 密码短语
+  use_ssh_key: 使用 SSH 密钥
+  ssh_key_hint: 留空则使用 ~/.ssh/id_ed25519 或 id_rsa。
+  file_created_hint: 若文件不存在将自动创建。
+  browse: 浏览…
+  store_in: 存储到 %{store}
+  back: 返回
+  over_ssh: 通过 SSH
+  save: 保存
+  test: 测试
+  connect: 连接
+  create: 创建
+  import: 导入
+  import_url: 从 URL 导入
+  enter_url: 请输入连接 URL，例如 mysql://user@host/db。
+  choose: 选择
+  delete: 删除
+  truncate: 清空
+  drop: 删除
+  disconnect: 断开连接
+  switch: 切换
+  save_changes: 将更改保存到数据库？
+  name_taken: 已存在名为“%{name}”的连接，请更换名称。
+  fill:
+    file: 请填写名称和数据库文件。
+    url_token: 请填写名称和服务器 URL。
+    cloudflare_d1: 请填写名称、账户 ID 和数据库 ID。
+    snowflake: 请填写名称、账户和用户。
+    bigquery: 请填写名称和项目。
+    dynamodb: 请填写名称和区域（或端点）。
+    server: 请填写名称、主机、端口、数据库和用户。
+
+editor:
+  placeholder: 编写 SQL…
+  ask_ai_fix: 让 AI 修复
+  run_all: 运行全部
+  run_current: 运行当前
+  run_hint: "[cmd-enter] 运行当前（或选中内容）· [cmd-shift-enter] 运行全部"
+  view_name: 视图名称
+  view_create_hint: "[cmd-s] 创建视图"
+  create_table_hint: "[cmd-s] 创建表"
+  select_first: 请先选择文本。
+  text_size: 文字大小 %{size}
+
+result:
+  no_rows: 没有行
+  row_count_one: "%{count} 行"
+  row_count_many: "%{count} 行"
+  tab_label: 结果 %{index}
+  ms_elapsed: "%{ms} 毫秒"
+  ms_truncated: "%{ms} 毫秒 · 已截断"
+  rows_ms: "%{rows} · %{ms} 毫秒"
+  rows_ms_truncated: "%{rows} · %{ms} 毫秒 · 截断于 %{limit} 行"
+  truncated_message: "%{rows}（截断于 %{limit} 行）"
+  read_only: 只读
+  editable_hint: 可编辑 — 双击单元格，按 %{key}-s 保存
+  completed_before: "%{error}\n\n出错前已完成：\n%{done}"
+
+sql:
+  run_hint: 按 [cmd-enter] 运行查询
+  running: 正在执行…
+  result_row: 结果行
+  no_triggers: 没有触发器
+
+grid:
+  edit_cell: 编辑单元格
+  set_null: 设为 NULL
+  set_empty_string: 设为空字符串
+  copy_value: 复制值
+  copy_column_name: 复制列名
+  copy_row_as: 按格式复制行
+  send_row_to_chat: 发送行到对话
+  undo_delete_row: 撤销删除行
+  delete_row: 删除行
+  ascending: 升序
+  descending: 降序
+  row_of: "%{table} 的一行"
+  bytea_preview: '\x%{hex}…（%{count} 字节）'
+  pasted_one: 已粘贴 %{count} 个单元格
+  pasted_many: 已粘贴 %{count} 个单元格
+
+filter:
+  raw_sql: 原始 SQL
+  value_ph: 值
+  apply: 应用
+  apply_all: 全部应用
+  export: 导出
+  toggle: 筛选
+  toggle_on: "筛选 •"
+  limit_offset: 限制 / 偏移
+  prev_page: 上一页
+  next_page: 下一页
+  page_hint: "[cmd-left] / [cmd-right] 上一页 / 下一页"
+  limit: 限制
+  offset: 偏移
+  go: 确定
+  default_sort: 默认筛选列排序
+  default_column: 默认筛选列
+  default_operator: 默认筛选运算符
+  default_state: 默认筛选状态
+  default_table_sort: 默认表排序
+  enabled: 已启用
+  disabled: 已禁用
+  sort_table_order: 按表顺序
+  sort_alphabetical: 按字母排序
+  col_first: 第一列
+  col_pk: 主键
+  tsort_pk_asc: 主键升序
+  tsort_pk_desc: 主键降序
+  tsort_none: 不排序
+  op:
+    eq: 等于
+    ne: 不等于
+    lt: 小于
+    gt: 大于
+    le: 小于等于
+    ge: 大于等于
+    is_null: 为空
+    is_not_null: 不为空
+    between: 介于
+    contains: 包含
+    not_contains: 不包含
+    has_prefix: 开头是
+    has_suffix: 结尾是
+  quick:
+    eq: 等于 '%{value}'
+    ne: 不等于 '%{value}'
+
+cell:
+  time: 时间
+  not_integer: “%{value}”不是整数（%{type}）。
+  not_number: “%{value}”不是数字（%{type}）。
+
+chat:
+  failed_query: 失败的查询
+  error: 错误
+
+# Pending-change / save flow of the tab views (batch 4b).
+changes:
+  none_save: 没有可保存的更改。
+  saved_one: 已保存 — %{count} 条语句，影响 %{rows} · %{ms} ms
+  saved_many: 已保存 — %{count} 条语句，影响 %{rows} · %{ms} ms
+  rolled_back: 保存失败（已回滚）：%{error}
+  name_table_first: 请先为新表命名。
+  name_view_first: 请先为视图命名并编写查询。
+  pending_one: "%{count} 项未保存的更改"
+  pending_many: "%{count} 项未保存的更改"
+  query_one: "%{count} 个未保存的查询"
+  query_many: "%{count} 个未保存的查询"
+  none_discard: 没有可放弃的更改。
+  discarded_one: 已放弃 %{count} 项更改
+  discarded_many: 已放弃 %{count} 项更改
+  discarded_draft: 已放弃新表“%{name}”
+  none_undo: 没有可撤销的操作。
+  none_redo: 没有可重做的操作。
+  none_preview: 没有可预览的更改。
+  preview: 预览更改
+
+# Table structure editor (structure view + table header labels).
+structure:
+  col_name: 列名
+  data_type: 数据类型
+  nullable: 可空
+  col_default: 默认值
+  fk: 外键
+  comment: 注释
+  primary: 主键
+  none: 无
+  no_columns: 没有列
+  validation: 请为每个新列填写名称和数据类型。
+  add_column: 添加列
+  keep_column: 保留列
+  delete_column: 删除列
+
+# Index editor (index view of a table tab).
+indexes:
+  name: 索引名
+  algorithm: 算法
+  unique: 唯一
+  condition: 条件
+  include: 包含列
+  no_indexes: 没有索引
+  validation: 请为每个新索引至少指定一列。
+
+# 引擎无法用 DDL 表达的结构 / 索引修改（ddl.rs）。引擎名、SQL 关键字
+# （NOT NULL）与列标识符保持原样。
+ddl:
+  no_comments: "%{engine} 的列不支持注释"
+  sqlite_retype: SQLite 无法就地修改 %{column} 的类型、可空性或默认值 — 请重命名、添加或删除列，或重建该表。
+  cassandra_columns: Cassandra 的列只能新增、删除，或（键列）重命名。
+  cassandra_pk: Cassandra 表需要主键：请标记它作为键的列。
+  cassandra_unique_index: Cassandra 的二级索引不能设为唯一。
+  cassandra_rename: Cassandra 表无法重命名。
+  bigquery_not_null: BigQuery 无法在建表之后把列改为 NOT NULL。
+  snowflake_default: Snowflake 只能在新增列时设置默认值。
+  redshift_nullable: Redshift 无法修改列的可空性。
+  redshift_default: Redshift 无法修改列的默认值。
+  no_index_support: "%{engine} 没有可创建的索引"
+  no_partial_index: "%{engine} 不支持部分索引"
+
+# Sidebar object list: context menus, groups, import / duplicate / truncate.
+objects:
+  open: 打开
+  select: 查询
+  open_structure: 打开结构
+  copy_name: 复制名称
+  copy_script_as: 复制脚本为
+  open_script_editor: 在编辑器中打开脚本
+  new_query: 新建查询
+  new_table_dots: 新建表…
+  new_view_dots: 新建视图…
+  new_table: 新建表
+  new_view: 新建视图
+  new_function: 新建函数/存储过程
+  export_dots: 导出…
+  import_csv_dots: 从 CSV 导入…
+  move_to_group: 移动到分组
+  rename_dots: 重命名…
+  dup_structure: 仅结构
+  dup_data: 结构和数据
+  duplicate: 副本
+  truncate_dots: 清空…
+  truncate_cascade_dots: 清空（级联）…
+  truncate_q: 清空“%{name}”？
+  truncate_detail: 将删除该表的所有行。此操作无法撤销。
+  truncate_cascade_detail: 将删除该表的所有行，以及其他表中引用这些行的所有行（CASCADE）。此操作无法撤销。
+  truncated: 已清空 %{name}
+  truncate_failed: 清空失败：%{error}
+  script_failed: 脚本生成失败：%{error}
+  copied_script: 已复制 %{name} 的 %{label} 脚本
+  created: 已创建 %{name}
+  duplicate_failed: 创建副本失败：%{error}
+  imported: 已向 %{name} 导入 %{rows}
+  import_failed: 导入失败：%{error}
+  rename_group: 重命名分组
+  delete_group: 删除分组
+  new_group_dots: 新建分组…
+  no_group: 无分组
+  design_unavailable: 暂不支持为 %{engine} 设计表——请在查询标签页中使用 CREATE TABLE。
+  csv_no_header: CSV 文件没有标题行。
+  json_not_array: 不是 JSON 对象数组：%{error}
+
+# User management tool (roles).
+users:
+  roles_failed: 读取角色失败：%{error}
+  name_first: 请先为角色命名。
+  saved: 已保存角色 %{name}
+  not_saved: 角色未保存：%{error}
+  drop_q: 删除角色“%{name}”？
+  drop_detail: 需先重新分配或删除其拥有的对象。
+  dropped: 已删除角色 %{name}
+  drop_failed: 删除角色 %{name} 失败：%{error}
+  role_name: 角色名
+  conn_limit: 连接数限制
+  valid_until: 有效期
+  can_login: 可登录
+  superuser: 超级用户
+  create_db: 可创建数据库
+  create_roles: 可创建角色
+  inherit: 继承权限
+  replication: 复制
+  bypass_rls: 绕过 RLS
+  member_of: 所属角色
+  new_role: 新建角色
+  pw_unchanged: 未更改
+  limit_none: -1（无限制）
+  never_expires: 永不过期
+  name_ph: 角色名称
+  super_badge: 超级
+
+# Process list and search-in-database tools.
+tools:
+  list_failed: 获取进程列表失败：%{error}
+  select_first: 请先选择一个进程。
+  kill_q: 终止会话 %{pid}？
+  cancel_q: 取消会话 %{pid} 的查询？
+  cancel_query: 取消查询
+  kill: 终止
+  signalled: 已向会话 %{pid} 发送信号
+  kill_failed: 终止会话 %{pid} 失败：%{error}
+  cancel_failed: 取消会话 %{pid} 的查询失败：%{error}
+  search_ph: 在所有表中搜索…
+  searching: 正在搜索…
+  search_hint: 按回车可在当前模式的所有表和视图的行中搜索。
+  search_none: 没有包含“%{query}”的行。
+  found_one: 在 %{count} 个表中找到“%{query}”。
+  found_many: 在 %{count} 个表中找到“%{query}”。
+
+# Bottom panel (console / history / problems).
+panels:
+  console: 控制台
+  history: 历史
+  console_empty: Tusk 发送的每条语句都会显示在这里。
+  no_problems: 打开的查询中没有问题。
+  history_empty: 您在此连接上运行的查询会显示在这里。
+  history_none: 没有匹配的查询。
+  run_new_tab: 在新标签页中运行
+  open_new_tab: 在新标签页中打开
+  remove_history: 从历史中移除
+  copy_error: 复制（含错误）
+  clear_history_q: 清除查询历史？
+  clear_history_detail: 将移除“%{conn}”上运行的所有查询。
+  all: 全部
+  meta: 元数据
+
+# Row detail panel (right sidebar).
+rowdetail:
+  row: 行
+  title: “%{table} · 第 %{row} 行”
+  narrow: 收窄
+  wide: 加宽
+  hint: 在数据网格中选择一行以在此查看。
+  format: 格式化
+  invalid_json: JSON 无效：%{error}
+  not_saved: 未保存 — JSON 无效：%{error}
+  cant_format: 无法格式化：JSON 无效。
+  panel: 行详情
+  time: 时间
+
+# "Copy Row As" 子菜单：SQL 动词短语；格式名保持原样。
+copy_as:
+  insert: SQL 插入
+  update: SQL 更新
+
+# SQL 补全弹窗的类型标签；API 术语（db、cursor、collection）与
+# 语言名（PartiQL、CQL）保持英文。
+complete:
+  table: 表
+  view: 视图
+  function: 函数
+
+# 主题里带文案的部分：在本平台文件管理器中显示已写出文件的按钮（theme.rs）。
+theme:
+  reveal_macos: 在访达中显示
+  reveal_windows: 在文件资源管理器中显示
+  reveal_linux: 在文件夹中显示
+
+# 备份 / 还原窗口（文件 ▸ 备份数据库 / 还原数据库）。客户端工具名
+# （pg_dump / psql）、选项参数与 `{database}_{date}` 模板保持原样。
+backup:
+  search_db_ph: 搜索数据库…
+  pick_first: 请先选择连接和数据库。
+  no_tools: 此构建缺少 PostgreSQL 客户端工具。
+  running: 正在备份 %{database}…
+  saved_to: 备份已保存到 %{path}
+  restore_q: 要还原到“%{database}”吗？
+  restoring_into: 正在还原到 %{database}…
+  restored_into: 已还原到 %{database}
+  create_db_q: 创建数据库“%{name}”？
+  create_db_detail: 如需使用其他名称，请先在数据库搜索框中输入。
+  password_for: “%{name}”的密码
+  no_client_tools: 未找到客户端工具
+  choose_version: 选择版本
+  add_option: 添加选项…
+  options_none: 选项…
+  gzip: 使用 Gzip 压缩文件
+  new_database: 新建数据库
+  start_backup: 开始备份…
+  start_restore: 开始还原…
+  title_backup: 备份数据库
+  title_restore: 还原数据库
+  tool_not_found: 在 %{dir} 中未找到 %{tool}
+  tool_exited: "%{tool} 退出，状态码 %{status}"
+  psql_missing: 未找到 psql；请安装 PostgreSQL 客户端工具或设置 TUSK_PG_BIN
+  token_conn: 连接名称
+  token_db: 数据库名称
+
+# 导出窗口（文件 ▸ 导出）。格式名（CSV / JSON / SQL）、分隔符字符、
+# 换行转义与 {table}/{date}/{time} 占位符保持原样。
+export:
+  not_connected: 未连接。
+  here: 导出到此
+  running: 正在导出…
+  done: 已导出 %{rows}至 %{path}
+  title_filter: 导出筛选结果
+  title_table: 导出 %{name}
+  title_tables: 导出 %{count} 张表
+  title_result: 导出查询结果
+  tables_label: 要导出的表
+  all_fields: 全部字段
+  fields_of: 已选 %{picked}/%{total} 个字段
+  fields_label: 选择要导出的字段
+  query_label: 导出查询
+  result_note: 来自 %{title} 的行，与当前显示一致
+  null_empty: 将 NULL 转为空值
+  lb_space: 将换行符转为空格
+  header_row: 首行显示字段名称
+  delimiter: 分隔符
+  tab: 制表符
+  quoting: 引号
+  quote_if_needed: 按需添加引号
+  quote_all: 所有字段添加引号
+  quote_never: 不添加引号
+  line_break: 换行符
+  decimal: 小数点
+  pretty: 美化输出
+  include_drop: 包含 DROP TABLE 语句
+  include_create: 包含 CREATE TABLE 语句
+  include_data: 包含数据（INSERT）
+  rows_per_insert: 每条 INSERT 的行数
+  tables_dots: 导出 %{count} 张表…
+  token_table: 表名称
+
+# 文件菜单的打开 / 另存为 / 导入 / 导出面板（app_files）。建议文件名与
+# "路径: 系统错误" 原因保持原样，仅散文文案有 key。
+files:
+  save_query_hint: 请先打开一个查询标签页，再将其保存为文件。
+  import_target_hint: 请先打开或选中要导入到的表。
+  run_dump_q: 要在 %{database} 上运行 %{file} 吗？
+  run_dump_detail: 文件中的每条语句将在同一个事务中执行。
+  ran: 已运行 %{name}
+  import_rolled_back: 导入失败（已回滚）：%{error}
+  saved: 已保存 %{path}
+  export_table_hint: 请先打开要导出的表。
+
+# AI 面板（agent.rs / app_agent.rs / acp.rs / acp_registry.rs）。智能体名称
+# （Claude、Codex 等）、ACP/MCP 协议文本、工具载荷以及来自智能体进程的原始
+# 错误原因保持原样，仅作为参数嵌入。
+agent:
+  status:
+    starting: 正在启动…
+    starting_agent: 正在启动 %{agent}…
+    installing: 正在安装 %{agent}…
+    connecting: 正在连接…
+    opening_chat: 正在开启对话…
+    opening_session: 正在打开对话…
+    signing_in: 正在通过 %{method} 登录…
+    exited: "%{agent} 已退出。"
+    failed_start: "%{agent} 无法启动"
+  notice:
+    max_tokens: 回复达到了令牌上限。
+    max_turns: 智能体达到了回合上限。
+    refused: 智能体拒绝继续。
+    continuing: 继续此对话（该智能体无法显示较早的消息）。
+    finish_console: 请在控制台窗口中完成 %{agent} 的登录，然后点击「重试」。
+    finish_terminal: 请在 Terminal 中完成 %{agent} 的登录，然后点击「重试」。
+  content:
+    image: "*（图片）*"
+    audio: "*（音频）*"
+    tool: 工具
+  error:
+    agent_exited: 智能体已退出
+    no_stdin: 无标准输入
+    no_stdout: 无标准输出
+    no_stderr: 无标准错误
+    no_message: 错误
+  install:
+    needs_uv: "%{agent} 需要安装 uv（uvx）"
+    needs_node: "%{agent} 需要 Node.js——请从 nodejs.org 安装后重试"
+    npm_failed: "npm 安装 %{package} 失败：\n%{error}"
+    checksum_failed: "%{agent} 的下载未通过校验和检查"
+    unpack_failed: 解包 %{file} 失败
+    no_executable: "%{package} 没有可执行文件"
+    download_failed: 下载失败：%{url}
+  session:
+    untitled: 未命名对话
+  panel:
+    ai_chat: AI 对话
+    new_chat: 新建对话
+    new_chat_with: 与 %{agent} 新建对话
+    new_chat_named: 新对话 · %{agent}
+    custom_agents: 自定义智能体
+    installed: 已安装
+    acp_registry: ACP 注册表
+    history: 历史记录
+    chat_history: 对话历史
+    no_agents: 没有可用的智能体。
+    no_history: 还没有较早的对话。
+    no_history_agent: 该智能体不保存对话历史。
+    empty_title: 与 %{agent} 对话
+    empty_hint: 它能读取数据库结构，并把查询写入标签页；是否运行由你决定。
+    sign_in: 登录 %{agent}
+    retry: 重试
+    plan: 计划 %{done}/%{total}
+    working: 正在处理…
+    thinking: 思考中
+    thought: 思考过程
+    stop: 停止
+    send: 发送
+    search_ph: 搜索…
+    no_match: 无匹配项
+    placeholder: 询问数据或生成查询…（/ 命令 · @ 表）
+  attach:
+    query: 查询“%{name}”
+    selection: 来自“%{name}”的选区
+    row: "%{table} 的行"
+  tool:
+    wrote_query: 已将查询写入新标签页
+    updated_query: 已更新打开的查询
+    saw_context: 已查看连接信息
+    listed_tables: 已列出数据表
+    read_structure: 已读取 %{table} 的结构
+    a_table: 某张表
+    read_open_query: 已读取打开的查询
+    open_in_tab: 在查询标签页中打开
+  toast:
+    query_empty: 查询为空。
+    tools_unavailable: AI 工具不可用：%{error}
+    wrote_to_tab: AI 已将查询写入“%{title}”，请检查后运行
+  chat:
+    attach_only: 请查看附加的内容。
+  time:
+    now: 刚刚
+    minutes: "%{count} 分钟前"
+    hours: "%{count} 小时前"
+    days: "%{count} 天前"
+
+db:
+  load_notice_kept: 无法读取 %{name}(%{error})。文件已保留为 %{backup}。
+  load_notice_sideline: 无法读取 %{name}(%{error}),也未能将其移出(%{err})。
+
+drivers:
+  snowflake_account: 请填写账户
+  snowflake_auth: 请输入访问令牌,或选择私钥
+  bigquery_key: 请选择服务账号密钥文件(或先运行 gcloud auth application-default login)。
+  bigquery_project: 请填写项目
+  bigquery_token: OAuth 响应中没有访问令牌
+  http_timeout: 服务器未及时响应。
+  redis_close: Redis 只能关闭客户端连接。
+  mongo_missing: 未找到该文档(可能已在别处改动或删除?)
+  dynamo_binary: 二进制值须为十六进制

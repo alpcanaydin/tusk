@@ -192,12 +192,15 @@ impl TuskApp {
                 let ed = t.editor.read(cx);
                 let sel = ed.selected_text().to_string();
                 let (label, text) = if sel.trim().is_empty() {
-                    (format!("Query \"{}\"", t.title), ed.text().to_string())
+                    (
+                        tr!("agent.attach.query", name = t.title),
+                        ed.text().to_string(),
+                    )
                 } else {
-                    (format!("Selection from \"{}\"", t.title), sel)
+                    (tr!("agent.attach.selection", name = t.title), sel)
                 };
                 if text.trim().is_empty() {
-                    self.toast_info("The query is empty.");
+                    self.toast_info(tr!("agent.toast.query_empty"));
                     cx.notify();
                     return;
                 }
@@ -217,9 +220,13 @@ impl TuskApp {
                     })
                     .flatten();
                 match row {
-                    Some(json) => {
-                        self.send_to_chat(format!("Row of {name}"), json, "json", window, cx)
-                    }
+                    Some(json) => self.send_to_chat(
+                        tr!("agent.attach.row", table = name),
+                        json,
+                        "json",
+                        window,
+                        cx,
+                    ),
                     None => self.send_table_to_chat(kind, schema, name, window, cx),
                 }
             }
@@ -312,7 +319,7 @@ impl TuskApp {
                     });
                     self.ai._tasks.push(t);
                 }
-                Err(e) => self.toast(false, format!("AI tools unavailable: {e}")),
+                Err(e) => self.toast(false, tr!("agent.toast.tools_unavailable", error = e)),
             }
         }
         if self.ai.input.is_none() {
@@ -320,7 +327,9 @@ impl TuskApp {
                 TextareaState::new(window, cx)
                     .auto_grow(2, 10)
                     .submit_on_enter(true)
-                    .placeholder("Ask about your data, or for a query…  (/ commands · @ tables)")
+                    // Kept across language switches: also set in
+                    // `sync_localized_placeholders`.
+                    .placeholder(tr!("agent.panel.placeholder"))
             });
             let sub =
                 cx.subscribe_in(
@@ -357,6 +366,18 @@ impl TuskApp {
         let mut l = acp_registry::custom_specs(&crate::settings::get().agent_servers);
         l.extend(registry);
         l
+    }
+
+    /// The AI composer is built once per main window, so its placeholder
+    /// lives outside the render pass: `sync_localized_placeholders` calls
+    /// this after a language switch.
+    pub(super) fn sync_ai_placeholder(&self, window: &mut Window, cx: &mut App) {
+        let Some(input) = &self.ai.input else {
+            return;
+        };
+        input.update(cx, |s, cx| {
+            s.set_placeholder(tr!("agent.panel.placeholder"), window, cx)
+        });
     }
 
     fn start_agent(&mut self, spec: AgentSpec, cx: &mut Context<Self>) {
@@ -513,7 +534,7 @@ impl TuskApp {
             }));
         }
         if text.is_empty() {
-            text = "Take a look at the attached.".into();
+            text = tr!("agent.chat.attach_only");
         }
         let shown = if labels.is_empty() {
             text.clone()
@@ -697,9 +718,7 @@ impl TuskApp {
                     Some(WorkspaceTab::Sql(t)) => t.title.clone(),
                     _ => String::new(),
                 };
-                self.toast_info(format!(
-                    "AI wrote a query to \"{title}\" — review and run it"
-                ));
+                self.toast_info(tr!("agent.toast.wrote_to_tab", title = title));
                 cx.notify();
                 let _ = reply.send(Ok(format!(
                     "The query is in the tab \"{title}\". It has NOT been run: the user reviews and runs it."
@@ -838,7 +857,7 @@ impl TuskApp {
             // The sparkles fill their box: a size down to match the others.
             .child(Icon::new(IconName::Sparkles).size(px(11.)))
             .tooltip(|window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new("AI Chat")
+                gpui_kit::component::tooltip::Tooltip::new(tr!("agent.panel.ai_chat"))
                     .key_binding(crate::kbd::tip("cmd-l"))
                     .build(window, cx)
             })
@@ -863,7 +882,7 @@ impl TuskApp {
                 .p_4()
                 .text_size(px(crate::settings::ui_text()))
                 .text_color(muted)
-                .child("No agents available.")
+                .child(tr!("agent.panel.no_agents"))
                 .into_any_element();
         };
         let thread = thread_e.read(cx);
@@ -879,12 +898,12 @@ impl TuskApp {
             .ghost()
             .xsmall()
             .icon(IconName::Plus)
-            .tooltip("New Chat")
+            .tooltip(tr!("agent.panel.new_chat"))
             .dropdown_menu(move |mut menu: PopupMenu, _, _| {
                 menu = menu.max_h(px(460.)).scrollable(true).min_w(px(240.));
                 let cur = current_spec.clone();
                 menu = menu.item(
-                    PopupMenuItem::new(format!("New Chat with {}", cur.name))
+                    PopupMenuItem::new(tr!("agent.panel.new_chat_with", agent = cur.name))
                         .icon(agent_icon(&cur))
                         .on_click(|_, _, cx| with_app(cx, |app, cx| app.new_ai_chat(cx))),
                 );
@@ -903,9 +922,9 @@ impl TuskApp {
                     .cloned()
                     .collect();
                 for (label, list) in [
-                    ("Custom Agents", custom),
-                    ("Installed", installed),
-                    ("ACP Registry", others),
+                    (tr!("agent.panel.custom_agents"), custom),
+                    (tr!("agent.panel.installed"), installed),
+                    (tr!("agent.panel.acp_registry"), others),
                 ] {
                     if list.is_empty() {
                         continue;
@@ -968,11 +987,11 @@ impl TuskApp {
                     .text_size(px(crate::settings::ui_text()))
                     .text_color(fg)
                     .child(if history_on {
-                        "History".to_string()
+                        tr!("agent.panel.history")
                     } else {
-                        title
-                            .clone()
-                            .unwrap_or_else(|| format!("New Chat · {agent_name}"))
+                        title.clone().unwrap_or_else(|| {
+                            tr!("agent.panel.new_chat_named", agent = agent_name)
+                        })
                     }),
             )
             .children(header_usage)
@@ -983,7 +1002,7 @@ impl TuskApp {
                     .xsmall()
                     .icon(Icon::default().data(include_bytes!("../assets/icons/ui/history.svg")))
                     .selected(history_on)
-                    .tooltip("Chat History")
+                    .tooltip(tr!("agent.panel.chat_history"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.ai.history_open = !this.ai.history_open;
                         if this.ai.history_open {
@@ -997,7 +1016,7 @@ impl TuskApp {
                     .ghost()
                     .xsmall()
                     .icon(IconName::Close)
-                    .tooltip("Close")
+                    .tooltip(tr!("common.close"))
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_ai_panel(window, cx))),
             );
 
@@ -1008,9 +1027,9 @@ impl TuskApp {
             if sessions.is_empty() {
                 return centered(
                     if listable {
-                        "No earlier chats yet."
+                        tr!("agent.panel.no_history")
                     } else {
-                        "This agent doesn't keep a chat history."
+                        tr!("agent.panel.no_history_agent")
                     },
                     muted,
                 );
@@ -1063,127 +1082,139 @@ impl TuskApp {
             h
         } else {
             match &status {
-            Status::Starting(msg) if empty => centered(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(Icon::new(IconName::LoaderCircle).size(px(14.)).text_color(muted))
-                    .child(msg.clone()),
-                muted,
-            ),
-            Status::Failed(msg) => {
-                let msg = msg.clone();
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .p_4()
-                    .child(
-                        div()
-                            .text_size(px(crate::settings::ui_text()))
-                            .text_color(t.red)
-                            .child(format!("{agent_name} couldn't start")),
-                    )
-                    .child(
-                        div()
-                            .id("ai-fail-detail")
-                            .max_h(px(260.))
-                            .overflow_y_scroll()
-                            .text_caption()
-                            .font_family(crate::settings::table_font())
-                            .text_color(muted)
-                            .child(msg),
-                    )
-                    .child(
-                        Button::new("ai-retry")
-                            .outline()
-                            .small()
-                            .label("Retry")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(t) = &this.ai.thread {
-                                    t.update(cx, |t, cx| t.retry(cx));
-                                }
-                            })),
-                    )
-                    .into_any_element()
-            }
-            Status::AuthRequired => {
-                let methods = thread.auth_methods.clone();
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .p_4()
-                    .child(
-                        div()
-                            .text_size(px(crate::settings::ui_text()))
-                            .text_color(fg)
-                            .child(format!("Sign in to {agent_name}")),
-                    )
-                    .children(methods.into_iter().enumerate().map(|(i, m)| {
-                        let desc = m.description.clone();
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(
-                                Button::new(("ai-auth", i))
-                                    .outline()
-                                    .small()
-                                    .icon(IconName::LogIn)
-                                    .label(m.name.clone())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let m = m.clone();
-                                        if let Some(t) = &this.ai.thread {
-                                            t.update(cx, |t, cx| t.authenticate(&m, cx));
-                                        }
-                                    })),
-                            )
-                            .when(!desc.is_empty(), |d| d.child(div().text_caption().text_color(muted).child(desc)))
-                    }))
-                    .child(
-                        Button::new("ai-auth-retry")
-                            .ghost()
-                            .small()
-                            .label("Retry")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(t) = &this.ai.thread {
-                                    t.update(cx, |t, cx| t.retry(cx));
-                                }
-                            })),
-                    )
-                    .into_any_element()
-            }
-            _ if empty => centered(
-                div()
-                    .max_w(px(300.))
-                    .text_center()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap_2()
-                    .child(agent_icon(&thread.spec).size(px(22.)).text_color(muted))
-                    .child(div().text_color(fg).child(format!("Chat with {agent_name}")))
-                    .child(
-                        "It can read your database's structure and write queries into a tab. Running them stays with you.",
-                    ),
-                muted,
-            ),
-            _ => {
-                let Some(sc) = self.ai.scroller.clone() else { return div().into_any_element() };
-                let th = thread_e.clone();
-                MessageScroller::new("ai-messages", sc, move |ix, window, cx| render_entry(&th, ix, window, cx))
+                Status::Starting(msg) if empty => centered(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            Icon::new(IconName::LoaderCircle)
+                                .size(px(14.))
+                                .text_color(muted),
+                        )
+                        .child(msg.clone()),
+                    muted,
+                ),
+                Status::Failed(msg) => {
+                    let msg = msg.clone();
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .p_4()
+                        .child(
+                            div()
+                                .text_size(px(crate::settings::ui_text()))
+                                .text_color(t.red)
+                                .child(tr!("agent.status.failed_start", agent = agent_name)),
+                        )
+                        .child(
+                            div()
+                                .id("ai-fail-detail")
+                                .max_h(px(260.))
+                                .overflow_y_scroll()
+                                .text_caption()
+                                .font_family(crate::settings::table_font())
+                                .text_color(muted)
+                                .child(msg),
+                        )
+                        .child(
+                            Button::new("ai-retry")
+                                .outline()
+                                .small()
+                                .label(tr!("agent.panel.retry"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(t) = &this.ai.thread {
+                                        t.update(cx, |t, cx| t.retry(cx));
+                                    }
+                                })),
+                        )
+                        .into_any_element()
+                }
+                Status::AuthRequired => {
+                    let methods = thread.auth_methods.clone();
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_4()
+                        .child(
+                            div()
+                                .text_size(px(crate::settings::ui_text()))
+                                .text_color(fg)
+                                .child(tr!("agent.panel.sign_in", agent = agent_name)),
+                        )
+                        .children(methods.into_iter().enumerate().map(|(i, m)| {
+                            let desc = m.description.clone();
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(
+                                    Button::new(("ai-auth", i))
+                                        .outline()
+                                        .small()
+                                        .icon(IconName::LogIn)
+                                        .label(m.name.clone())
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            let m = m.clone();
+                                            if let Some(t) = &this.ai.thread {
+                                                t.update(cx, |t, cx| t.authenticate(&m, cx));
+                                            }
+                                        })),
+                                )
+                                .when(!desc.is_empty(), |d| {
+                                    d.child(div().text_caption().text_color(muted).child(desc))
+                                })
+                        }))
+                        .child(
+                            Button::new("ai-auth-retry")
+                                .ghost()
+                                .small()
+                                .label(tr!("agent.panel.retry"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(t) = &this.ai.thread {
+                                        t.update(cx, |t, cx| t.retry(cx));
+                                    }
+                                })),
+                        )
+                        .into_any_element()
+                }
+                _ if empty => centered(
+                    div()
+                        .max_w(px(300.))
+                        .text_center()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_2()
+                        .child(agent_icon(&thread.spec).size(px(22.)).text_color(muted))
+                        .child(
+                            div()
+                                .text_color(fg)
+                                .child(tr!("agent.panel.empty_title", agent = agent_name)),
+                        )
+                        .child(tr!("agent.panel.empty_hint")),
+                    muted,
+                ),
+                _ => {
+                    let Some(sc) = self.ai.scroller.clone() else {
+                        return div().into_any_element();
+                    };
+                    let th = thread_e.clone();
+                    MessageScroller::new("ai-messages", sc, move |ix, window, cx| {
+                        render_entry(&th, ix, window, cx)
+                    })
                     .jump_button(true)
                     .with_content_style(StyleRefinement::default().py(px(10.)))
                     // Rows space themselves (tight between tool calls).
                     .with_row_style(StyleRefinement::default().pb(px(0.)))
                     .size_full()
                     .into_any_element()
+                }
             }
-        }
         };
 
         // ---- plan ----
@@ -1220,7 +1251,7 @@ impl TuskApp {
                             .size(px(12.)),
                         )
                         .child(Icon::new(IconName::ListTodo).size(px(12.)))
-                        .child(format!("Plan {done}/{}", plan.len()))
+                        .child(tr!("agent.panel.plan", done = done, total = plan.len()))
                         .when(!open, |d| {
                             d.child(
                                 div()
@@ -1461,14 +1492,14 @@ impl TuskApp {
                 .ghost()
                 .xsmall()
                 .icon(IconName::CircleStop)
-                .tooltip("Stop")
+                .tooltip(tr!("agent.panel.stop"))
                 .on_click(cx.listener(|this, _, _, cx| this.ai_cancel(cx)))
         } else {
             Button::new("ai-send")
                 .ghost()
                 .xsmall()
                 .icon(IconName::ArrowUp)
-                .tooltip("Send")
+                .tooltip(tr!("agent.panel.send"))
                 .disabled(!ready)
                 .on_click(cx.listener(|this, _, window, cx| this.ai_submit(window, cx)))
         };
@@ -1483,7 +1514,7 @@ impl TuskApp {
                 .text_caption()
                 .text_color(muted)
                 .child(
-                    gpui_kit::component::shimmer::ShimmerText::new("Working…")
+                    gpui_kit::component::shimmer::ShimmerText::new(tr!("agent.panel.working"))
                         .id("ai-working")
                         .highlight_color(fg),
                 )
@@ -1493,7 +1524,7 @@ impl TuskApp {
                         .id("ai-stop-link")
                         .cursor_pointer()
                         .hover(|d| d.text_color(fg))
-                        .child("Stop")
+                        .child(tr!("agent.panel.stop"))
                         .on_click(cx.listener(|this, _, _, cx| this.ai_cancel(cx))),
                 )
         });
@@ -1663,7 +1694,8 @@ fn agent_icon(spec: &AgentSpec) -> Icon {
     }
 }
 
-/// `2026-09-24T10:00:00Z` → "3h ago" / "Sep 21".
+/// `2026-09-24T10:00:00Z` → "3h ago" / "Sep 21". Called while rendering the
+/// history list, so its words are translated at display time.
 fn relative_time(ts: &str) -> String {
     let Ok(t) = chrono::DateTime::parse_from_rfc3339(ts) else {
         return ts.get(..10).unwrap_or(ts).to_string();
@@ -1672,10 +1704,10 @@ fn relative_time(ts: &str) -> String {
         .num_seconds()
         .max(0);
     match secs {
-        0..60 => "now".into(),
-        60..3600 => format!("{}m ago", secs / 60),
-        3600..86400 => format!("{}h ago", secs / 3600),
-        86400..604800 => format!("{}d ago", secs / 86400),
+        0..60 => tr!("agent.time.now"),
+        60..3600 => tr!("agent.time.minutes", count = secs / 60),
+        3600..86400 => tr!("agent.time.hours", count = secs / 3600),
+        86400..604800 => tr!("agent.time.days", count = secs / 86400),
         _ => t.format("%b %-d").to_string(),
     }
 }
@@ -1762,7 +1794,7 @@ fn render_entry(
                                     .ghost()
                                     .xsmall()
                                     .icon(IconName::ArrowUpRight)
-                                    .tooltip("Open in a query tab")
+                                    .tooltip(tr!("agent.tool.open_in_tab"))
                                     .on_click(move |_, window, cx| {
                                         let sql = sql.clone();
                                         let view = cx.global::<TuskHandle>().0.clone();
@@ -1800,12 +1832,12 @@ fn render_entry(
                     )
                     .child(Icon::new(IconName::Brain).size(px(12.)))
                     .child(if thinking {
-                        gpui_kit::component::shimmer::ShimmerText::new("Thinking")
+                        gpui_kit::component::shimmer::ShimmerText::new(tr!("agent.panel.thinking"))
                             .id(("ai-thinking", ix))
                             .highlight_color(fg)
                             .into_any_element()
                     } else {
-                        "Thought".into_any_element()
+                        tr!("agent.panel.thought").into_any_element()
                     })
                     .on_click(move |_, _, cx| th_e.update(cx, |t, cx| t.toggle_entry(ix, cx))),
             )
@@ -1849,15 +1881,18 @@ fn render_entry(
             };
             let tusk = tusk_tool(&tc.title);
             let title = match tusk {
-                Some("open_sql_tab") => "Wrote a query to a new tab".to_string(),
-                Some("replace_active_query") => "Updated the open query".to_string(),
-                Some("get_context") => "Looked at the connection".to_string(),
-                Some("list_tables") => "Listed the tables".to_string(),
-                Some("describe_table") => format!(
-                    "Read the structure of {}",
-                    tc.raw_input["table"].as_str().unwrap_or("a table")
-                ),
-                Some("get_active_query") => "Read the open query".to_string(),
+                Some("open_sql_tab") => tr!("agent.tool.wrote_query"),
+                Some("replace_active_query") => tr!("agent.tool.updated_query"),
+                Some("get_context") => tr!("agent.tool.saw_context"),
+                Some("list_tables") => tr!("agent.tool.listed_tables"),
+                Some("describe_table") => {
+                    let fallback = tr!("agent.tool.a_table");
+                    tr!(
+                        "agent.tool.read_structure",
+                        table = tc.raw_input["table"].as_str().unwrap_or(&fallback)
+                    )
+                }
+                Some("get_active_query") => tr!("agent.tool.read_open_query"),
                 _ => tc.title.clone(),
             };
             let expanded = tc.expanded || tc.permission.is_some();
@@ -2092,7 +2127,10 @@ impl OptionPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder("Search…"));
+        // The picker entity is rebuilt every time it opens, so a
+        // construction-time translation re-reads the locale each open.
+        let query =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr!("agent.panel.search_ph")));
         let _sub = cx.subscribe_in(
             &query,
             window,
@@ -2231,7 +2269,7 @@ impl Render for OptionPicker {
                     .p_2()
                     .text_caption()
                     .text_color(muted)
-                    .child("No match")
+                    .child(tr!("agent.panel.no_match"))
                     .into_any_element()
             } else {
                 list.into_any_element()

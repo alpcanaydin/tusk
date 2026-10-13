@@ -40,6 +40,7 @@ mise exec -- actionlint && mise exec -- shellcheck --severity=warning scripts/*.
 - The PR title becomes the commit message on `main` (we squash-merge), so write it as a short sentence in the imperative: "Add a CSV export for query results".
 - The **gate** check has to pass: format, clippy, tests, the workflow linters and a secret scan.
 - For UI changes, add a screenshot or a short recording.
+- User-facing strings are translated: see [Internationalization](docs/i18n.md) for the rules and for adding a language.
 
 ## Releases
 

@@ -19,6 +19,7 @@ use serde_json::Value;
 
 use crate::copy_as::{CopyFormat, Target, format_rows, plain};
 use crate::db::{WhereClause, quote_ident};
+use crate::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Format {
@@ -54,11 +55,13 @@ pub enum Quote {
 }
 
 impl Quote {
-    fn label(self) -> &'static str {
+    /// Display label; the enum itself is the stored value, the text is
+    /// per-language.
+    fn label(self) -> String {
         match self {
-            Quote::IfNeeded => "Quote if needed",
-            Quote::Always => "Quote all fields",
-            Quote::Never => "Never quote",
+            Quote::IfNeeded => tr!("export.quote_if_needed"),
+            Quote::Always => tr!("export.quote_all"),
+            Quote::Never => tr!("export.quote_never"),
         }
     }
 }
@@ -442,7 +445,9 @@ impl ExportWindow {
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
-            Source::Result { title, .. } => format!("-- the rows of {title}, as shown"),
+            Source::Result { title, .. } => {
+                format!("-- {}", tr!("export.result_note", title = title.clone()))
+            }
         }
     }
 
@@ -475,7 +480,7 @@ impl ExportWindow {
                 files: false,
                 directories: true,
                 multiple: false,
-                prompt: Some("Export Here".into()),
+                prompt: Some(tr!("export.here").into()),
             }))
         } else {
             let name = format!("{}.{ext}", fill(&first));
@@ -501,7 +506,7 @@ impl ExportWindow {
             let _ = weak.update(cx, |this: &mut ExportWindow, cx| {
                 this.busy = true;
                 this.saved = None;
-                this.notice = Some((true, "Exporting…".into()));
+                this.notice = Some((true, tr!("export.running")));
                 cx.notify();
             });
             let result = run_export(pool, source, opts, fields, target.clone(), many, fill).await;
@@ -510,7 +515,14 @@ impl ExportWindow {
                 this.notice = Some(match result {
                     Ok(n) => {
                         this.saved = Some(target.clone());
-                        (true, format!("Exported {n} rows to {}", target.display()))
+                        (
+                            true,
+                            tr!(
+                                "export.done",
+                                rows = crate::sql::n_rows(n),
+                                path = target.display().to_string()
+                            ),
+                        )
                     }
                     Err(e) => (false, e),
                 });
@@ -551,7 +563,7 @@ async fn run_export(
             filter,
             ..
         } => {
-            let pool = pool.ok_or("Not connected.")?;
+            let pool = pool.ok_or_else(|| tr!("export.not_connected"))?;
             let mut total = 0;
             for table in &picked {
                 let (columns, rows) =
@@ -593,7 +605,7 @@ async fn run_export(
 }
 
 /// `label  [control]` row of the options card (label right-aligned).
-fn opt_row(label: &'static str, control: impl IntoElement, fg: Hsla) -> Div {
+fn opt_row(label: String, control: impl IntoElement, fg: Hsla) -> Div {
     div()
         .flex()
         .items_center()
@@ -624,16 +636,20 @@ impl ExportWindow {
             t.accent,
         );
         let (ok_c, err_c) = (t.green, t.red);
-        let label = |s: &str| div().text_sm().text_color(fg).pb_1().child(s.to_string());
+        let label = |s: String| div().text_sm().text_color(fg).pb_1().child(s);
         let view = cx.entity();
 
         let title = match &self.source {
             Source::Tables { picked, filter, .. } if picked.len() == 1 && filter.is_some() => {
-                "Export filter result".to_string()
+                tr!("export.title_filter")
             }
-            Source::Tables { picked, .. } if picked.len() == 1 => format!("Export {}", picked[0]),
-            Source::Tables { picked, .. } => format!("Export {} tables", picked.len()),
-            Source::Result { .. } => "Export query result".to_string(),
+            Source::Tables { picked, .. } if picked.len() == 1 => {
+                tr!("export.title_table", name = picked[0].clone())
+            }
+            Source::Tables { picked, .. } => {
+                tr!("export.title_tables", count = picked.len())
+            }
+            Source::Result { .. } => tr!("export.title_result"),
         };
 
         // File name + Customize (placeholders).
@@ -642,17 +658,22 @@ impl ExportWindow {
             .flex()
             .items_center()
             .gap_2()
-            .child(div().text_sm().text_color(fg).child("File name:"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(fg)
+                    .child(tr!("common.file_name")),
+            )
             .child(div().flex_1().child(Input::new(&self.file_name).small()))
             .child(
                 Button::new("exp-customize")
-                    .label("Customize")
+                    .label(tr!("common.customize"))
                     .small()
                     .dropdown_menu(move |mut menu, _, _| {
                         for (l, tok) in [
-                            ("Table name", "{table}"),
-                            ("Date (YYYY-MM-DD)", "{date}"),
-                            ("Time (HH-MM-SS)", "{time}"),
+                            (tr!("export.token_table"), "{table}"),
+                            (tr!("common.token_date"), "{date}"),
+                            (tr!("common.token_time"), "{time}"),
                         ] {
                             let v = v.clone();
                             menu =
@@ -705,7 +726,7 @@ impl ExportWindow {
                 div()
                     .flex()
                     .flex_col()
-                    .child(label("Tables to export"))
+                    .child(label(tr!("export.tables_label")))
                     .child(
                         div()
                             .id("exp-tables")
@@ -760,9 +781,13 @@ impl ExportWindow {
                 );
             }
             let hint = if self.fields.is_empty() {
-                "All fields".to_string()
+                tr!("export.all_fields")
             } else {
-                format!("{} of {} fields", self.fields.len(), self.columns.len())
+                tr!(
+                    "export.fields_of",
+                    picked = self.fields.len(),
+                    total = self.columns.len()
+                )
             };
             div()
                 .flex()
@@ -772,7 +797,7 @@ impl ExportWindow {
                         .flex()
                         .items_center()
                         .justify_between()
-                        .child(label("Select fields to export"))
+                        .child(label(tr!("export.fields_label")))
                         .child(div().text_caption().text_color(muted).child(hint)),
                 )
                 .child(
@@ -793,21 +818,25 @@ impl ExportWindow {
             None
         };
 
-        let query = div().flex().flex_col().child(label("Export query")).child(
-            div()
-                .id("exp-query")
-                .max_h(px(64.))
-                .overflow_y_scroll()
-                .p_2()
-                .rounded(crate::theme::RADIUS_MD)
-                .border_1()
-                .border_color(border)
-                .bg(card)
-                .text_caption()
-                .font_family(crate::settings::table_font())
-                .text_color(muted)
-                .child(self.export_query()),
-        );
+        let query = div()
+            .flex()
+            .flex_col()
+            .child(label(tr!("export.query_label")))
+            .child(
+                div()
+                    .id("exp-query")
+                    .max_h(px(64.))
+                    .overflow_y_scroll()
+                    .p_2()
+                    .rounded(crate::theme::RADIUS_MD)
+                    .border_1()
+                    .border_color(border)
+                    .bg(card)
+                    .text_caption()
+                    .font_family(crate::settings::table_font())
+                    .text_color(muted)
+                    .child(self.export_query()),
+            );
 
         // Format tabs.
         let mut tabs = div()
@@ -839,7 +868,7 @@ impl ExportWindow {
         }
 
         let o = self.opts.clone();
-        let check = |id: &'static str, text: &'static str, on: bool, f: fn(&mut Options, bool)| {
+        let check = |id: &'static str, text: String, on: bool, f: fn(&mut Options, bool)| {
             Checkbox::new(id)
                 .label(text)
                 .checked(on)
@@ -850,7 +879,9 @@ impl ExportWindow {
                     }),
                 )
         };
-        let pick = |id: &'static str, current: String, options: Vec<(&'static str, SetOpt)>| {
+        // (display label, setter): the setters pick the stored values, the
+        // labels are per-language; delimiter chars / escapes stay canonical.
+        let pick = |id: &'static str, current: String, options: Vec<(String, SetOpt)>| {
             let v = cx.entity();
             Button::new(id)
                 .label(current)
@@ -873,7 +904,7 @@ impl ExportWindow {
         let options: AnyElement = match o.format {
             Format::Csv => {
                 let delim = match o.delimiter {
-                    '\t' => "Tab".to_string(),
+                    '\t' => tr!("export.tab"),
                     c => c.to_string(),
                 };
                 div()
@@ -882,67 +913,70 @@ impl ExportWindow {
                     .gap_2()
                     .child(check(
                         "exp-null",
-                        "Convert NULL to EMPTY",
+                        tr!("export.null_empty"),
                         o.null_empty,
                         |o, v| o.null_empty = v,
                     ))
                     .child(check(
                         "exp-lb",
-                        "Convert line break to space",
+                        tr!("export.lb_space"),
                         o.line_break_space,
                         |o, v| o.line_break_space = v,
                     ))
                     .child(check(
                         "exp-header",
-                        "Put field names in the first row",
+                        tr!("export.header_row"),
                         o.header,
                         |o, v| o.header = v,
                     ))
                     .child(div().h(px(4.)))
                     .child(opt_row(
-                        "Delimiter",
+                        tr!("export.delimiter"),
                         pick(
                             "exp-delim",
                             delim,
                             vec![
-                                (",", |o| o.delimiter = ','),
-                                (";", |o| o.delimiter = ';'),
-                                ("Tab", |o| o.delimiter = '\t'),
-                                ("|", |o| o.delimiter = '|'),
+                                (",".into(), |o| o.delimiter = ','),
+                                (";".into(), |o| o.delimiter = ';'),
+                                (tr!("export.tab"), |o| o.delimiter = '\t'),
+                                ("|".into(), |o| o.delimiter = '|'),
                             ],
                         ),
                         fg,
                     ))
                     .child(opt_row(
-                        "Quoting",
+                        tr!("export.quoting"),
                         pick(
                             "exp-quote",
-                            o.quote.label().into(),
+                            o.quote.label(),
                             vec![
-                                ("Quote if needed", |o| o.quote = Quote::IfNeeded),
-                                ("Quote all fields", |o| o.quote = Quote::Always),
-                                ("Never quote", |o| o.quote = Quote::Never),
+                                (tr!("export.quote_if_needed"), |o| o.quote = Quote::IfNeeded),
+                                (tr!("export.quote_all"), |o| o.quote = Quote::Always),
+                                (tr!("export.quote_never"), |o| o.quote = Quote::Never),
                             ],
                         ),
                         fg,
                     ))
                     .child(opt_row(
-                        "Line break",
+                        tr!("export.line_break"),
                         pick(
                             "exp-nl",
                             if o.crlf { "\\r\\n" } else { "\\n" }.into(),
-                            vec![("\\n", |o| o.crlf = false), ("\\r\\n", |o| o.crlf = true)],
+                            vec![
+                                ("\\n".into(), |o| o.crlf = false),
+                                ("\\r\\n".into(), |o| o.crlf = true),
+                            ],
                         ),
                         fg,
                     ))
                     .child(opt_row(
-                        "Decimal",
+                        tr!("export.decimal"),
                         pick(
                             "exp-dec",
                             if o.decimal_comma { "," } else { "." }.into(),
                             vec![
-                                (".", |o| o.decimal_comma = false),
-                                (",", |o| o.decimal_comma = true),
+                                (".".into(), |o| o.decimal_comma = false),
+                                (",".into(), |o| o.decimal_comma = true),
                             ],
                         ),
                         fg,
@@ -953,9 +987,12 @@ impl ExportWindow {
                 .flex()
                 .flex_col()
                 .gap_2()
-                .child(check("exp-pretty", "Pretty print", o.pretty, |o, v| {
-                    o.pretty = v
-                }))
+                .child(check(
+                    "exp-pretty",
+                    tr!("export.pretty"),
+                    o.pretty,
+                    |o, v| o.pretty = v,
+                ))
                 .into_any_element(),
             Format::Sql => div()
                 .flex()
@@ -963,33 +1000,33 @@ impl ExportWindow {
                 .gap_2()
                 .child(check(
                     "exp-drop",
-                    "Include DROP TABLE statement",
+                    tr!("export.include_drop"),
                     o.sql_drop,
                     |o, v| o.sql_drop = v,
                 ))
                 .child(check(
                     "exp-create",
-                    "Include CREATE TABLE statement",
+                    tr!("export.include_create"),
                     o.sql_create,
                     |o, v| o.sql_create = v,
                 ))
                 .child(check(
                     "exp-data",
-                    "Include content (INSERT)",
+                    tr!("export.include_data"),
                     o.sql_data,
                     |o, v| o.sql_data = v,
                 ))
                 .child(div().h(px(4.)))
                 .child(opt_row(
-                    "Rows / INSERT",
+                    tr!("export.rows_per_insert"),
                     pick(
                         "exp-batch",
                         o.sql_batch.to_string(),
                         vec![
-                            ("1", |o| o.sql_batch = 1),
-                            ("100", |o| o.sql_batch = 100),
-                            ("500", |o| o.sql_batch = 500),
-                            ("1000", |o| o.sql_batch = 1000),
+                            ("1".into(), |o| o.sql_batch = 1),
+                            ("100".into(), |o| o.sql_batch = 100),
+                            ("500".into(), |o| o.sql_batch = 500),
+                            ("1000".into(), |o| o.sql_batch = 1000),
                         ],
                     ),
                     fg,
@@ -1084,22 +1121,22 @@ impl ExportWindow {
                     )))
                     .children(self.saved.clone().map(|path| {
                         Button::new("exp-reveal")
-                            .label(crate::theme::REVEAL_LABEL)
+                            .label(crate::theme::reveal_label())
                             .small()
                             .on_click(move |_, _, cx| cx.reveal_path(&path))
                     }))
                     .child(
                         Button::new("exp-cancel")
-                            .label("Cancel")
+                            .label(tr!("common.cancel"))
                             .small()
                             .on_click(|_, window, _| window.remove_window()),
                     )
                     .child(
                         Button::new("exp-go")
                             .label(if n > 1 {
-                                format!("Export {n} Tables…")
+                                tr!("export.tables_dots", count = n)
                             } else {
-                                "Export…".into()
+                                tr!("objects.export_dots")
                             })
                             .small()
                             .primary()

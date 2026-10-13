@@ -24,6 +24,7 @@ use crate::grid::{self, GridDelegate};
 use crate::icons::DbIcon;
 use crate::palette::{PaletteMode, PaletteOverlay};
 use crate::structure::{self, StructureDelegate};
+use crate::tr;
 
 #[path = "app_agent.rs"]
 mod agent_panel;
@@ -124,11 +125,22 @@ impl SidebarPanel {
         SidebarPanel::Functions,
     ];
 
-    fn title(self) -> &'static str {
+    /// Stable English slug for element ids (never translated: ids must not
+    /// move when the language switches).
+    fn slug(self) -> &'static str {
         match self {
-            SidebarPanel::Tables => "Tables",
-            SidebarPanel::Views => "Views",
-            SidebarPanel::Functions => "Functions",
+            SidebarPanel::Tables => "tables",
+            SidebarPanel::Views => "views",
+            SidebarPanel::Functions => "functions",
+        }
+    }
+
+    /// Display title (translated at render time).
+    fn title(self) -> String {
+        match self {
+            SidebarPanel::Tables => tr!("menu.view.tables"),
+            SidebarPanel::Views => tr!("menu.view.views"),
+            SidebarPanel::Functions => tr!("menu.view.functions"),
         }
     }
 
@@ -212,9 +224,43 @@ impl WorkspaceTab {
 /// Pending sidebar changes (drops, renames) as an undo snapshot.
 type SidebarPending = (Vec<(TableKind, String)>, Vec<((TableKind, String), String)>);
 
+/// Status bar line: a key + args, translated at render time so a language
+/// switch is reflected without rebuilding anything.
+pub enum StatusLine {
+    NotConnected,
+    Connecting { name: String },
+    Reconnecting { name: String },
+    Duplicating { name: String },
+    Saving { count: usize },
+    FunctionDetail { schema: String, name: String },
+}
+
+impl StatusLine {
+    fn text(&self) -> String {
+        match self {
+            StatusLine::NotConnected => tr!("status.not_connected"),
+            StatusLine::Connecting { name } => tr!("status.connecting", name = name),
+            StatusLine::Reconnecting { name } => tr!("status.reconnecting", name = name),
+            StatusLine::Duplicating { name } => tr!("status.duplicating", name = name),
+            // rust-i18n has no plural forms: pick the one / many key by count.
+            StatusLine::Saving { count } => {
+                if *count == 1 {
+                    tr!("status.saving_one", count = count)
+                } else {
+                    tr!("status.saving_many", count = count)
+                }
+            }
+            StatusLine::FunctionDetail { schema, name } => {
+                tr!("status.function_detail", schema = schema, name = name)
+            }
+        }
+    }
+}
+
 pub struct TuskApp {
     screen: AppScreen,
-    status_line: String,
+    /// Transient status bar message; None renders empty (the old `clear()`).
+    status_line: Option<StatusLine>,
     /// Toasts waiting for the next frame (pushed where a `Window` is at hand).
     toasts: Vec<(Option<bool>, String)>,
     form: ConnectionForm,
@@ -352,7 +398,7 @@ impl TuskApp {
         Self::watch_console(cx);
         Self {
             screen: AppScreen::Connection,
-            status_line: "Not connected".to_string(),
+            status_line: Some(StatusLine::NotConnected),
             // A connections.json that couldn't be read was set aside at load.
             toasts: db::take_load_notice()
                 .map(|m| (Some(false), m))
@@ -453,7 +499,7 @@ impl TuskApp {
                         .text_sm()
                         .font_family(crate::settings::ui_font())
                         .text_color(muted)
-                        .child("No connection"),
+                        .child(tr!("titlebar.no_connection")),
                 )
                 .child(div().pr_2().children(
                     crate::updater::ready(cx).map(|v| Self::render_update_button(v, cx)),
@@ -525,7 +571,11 @@ impl TuskApp {
             .active_conn
             .as_ref()
             .map(|(c, _)| match &c.ssh {
-                Some(ssh) => format!("{} via ssh {}", c.endpoint(), ssh.host),
+                Some(ssh) => tr!(
+                    "titlebar.endpoint_ssh",
+                    endpoint = c.endpoint(),
+                    host = ssh.host
+                ),
                 None => c.endpoint(),
             })
             .unwrap_or_default();
@@ -578,24 +628,30 @@ impl TuskApp {
                 }
                 menu.separator()
                     .item(
-                        PopupMenuItem::new("New Connection…").on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(NewConnection), cx);
-                        }),
+                        PopupMenuItem::new(tr!("menu.file.new_connection")).on_click(
+                            |_, window, cx| {
+                                window.dispatch_action(Box::new(NewConnection), cx);
+                            },
+                        ),
                     )
                     .item(
-                        PopupMenuItem::new("Backup Database…").on_click(|_, window, cx| {
+                        PopupMenuItem::new(tr!("menu.file.backup")).on_click(|_, window, cx| {
                             window.dispatch_action(Box::new(BackupDatabase), cx);
                         }),
                     )
                     .item(
-                        PopupMenuItem::new("Restore Database…").on_click(|_, window, cx| {
+                        PopupMenuItem::new(tr!("menu.file.restore")).on_click(|_, window, cx| {
                             window.dispatch_action(Box::new(RestoreDatabase), cx);
                         }),
                     )
                     .separator()
-                    .item(PopupMenuItem::new("Disconnect").on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(Disconnect), cx);
-                    }))
+                    .item(
+                        PopupMenuItem::new(tr!("menu.connection.disconnect")).on_click(
+                            |_, window, cx| {
+                                window.dispatch_action(Box::new(Disconnect), cx);
+                            },
+                        ),
+                    )
             });
 
         TitleBar::new()
@@ -634,9 +690,9 @@ impl TuskApp {
         let t = cx.theme();
         let accent = t.accent;
         let tip = if version.is_empty() {
-            "Install the update and relaunch".to_string()
+            tr!("titlebar.update_install")
         } else {
-            format!("Tusk {version} is ready: install and relaunch")
+            tr!("titlebar.update_ready", version = version)
         };
         div()
             .id("status-update")
@@ -653,7 +709,7 @@ impl TuskApp {
             .bg(accent.opacity(0.14))
             .hover(|d| d.bg(accent.opacity(0.24)))
             .child(Icon::new(IconName::ArrowDownToLine).size(px(12.)))
-            .child("Restart to Update")
+            .child(tr!("titlebar.restart_update"))
             .tooltip(move |window, cx| {
                 gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
             })
@@ -681,7 +737,7 @@ impl TuskApp {
                 .font_family(crate::settings::ui_font())
                 .text_color(rgb(crate::theme::EDITED))
                 .child(crate::kbd::rich_colored(
-                    &format!("{p} — [cmd-s] to save"),
+                    &tr!("status.pending_save", pending = p),
                     rgb(crate::theme::EDITED).into(),
                 ))
         });
@@ -710,7 +766,12 @@ impl TuskApp {
                             .font_family(crate::settings::ui_font())
                             .text_color(t.colors.muted_foreground)
                             .truncate()
-                            .child(self.status_line.clone()),
+                            .child(
+                                self.status_line
+                                    .as_ref()
+                                    .map(|s| s.text())
+                                    .unwrap_or_default(),
+                            ),
                     ),
             )
             .children(pending)
@@ -752,9 +813,11 @@ impl TuskApp {
                                             .child("SQL"),
                                     )
                                     .tooltip(|window, cx| {
-                                        gpui_kit::component::tooltip::Tooltip::new("New SQL Query")
-                                            .key_binding(crate::kbd::tip("cmd-t"))
-                                            .build(window, cx)
+                                        gpui_kit::component::tooltip::Tooltip::new(tr!(
+                                            "menu.file.new_sql"
+                                        ))
+                                        .key_binding(crate::kbd::tip("cmd-t"))
+                                        .build(window, cx)
                                     })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_sql_tab(window, cx)
@@ -792,7 +855,7 @@ impl TuskApp {
             let active = self.sidebar_open && self.sidebar_panel == panel;
             row = row.child(
                 div()
-                    .id(SharedString::from(format!("panel-{}", panel.title())))
+                    .id(SharedString::from(format!("panel-{}", panel.slug())))
                     .w(px(22.))
                     .h(px(20.))
                     .flex()
@@ -850,10 +913,7 @@ impl TuskApp {
         let (conn, typed) = self.form.read_form(cx);
         let password = crate::conn::ConnectionForm::password_or_keychain(&conn.name, typed);
         if !conn.is_valid() {
-            self.form.notice = Some((
-                false,
-                "The saved connection is incomplete — edit it and fill in its fields.".to_string(),
-            ));
+            self.form.notice = Some((false, tr!("conn.incomplete_saved")));
             cx.notify();
             return None;
         }
@@ -867,14 +927,14 @@ impl TuskApp {
             return;
         };
         self.form.busy = true;
-        self.form.notice = Some((true, "Testing connection…".to_string()));
+        self.form.notice = Some((true, tr!("conn.testing")));
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = db::test_connect(conn, password, None).await;
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 this.form.busy = false;
                 this.form.notice = Some(match result {
-                    Ok(v) => (true, format!("OK — {}", short_version(&v))),
+                    Ok(v) => (true, tr!("conn.test_ok", version = short_version(&v))),
                     Err(e) => (false, e),
                 });
                 cx.notify();
@@ -891,7 +951,14 @@ impl TuskApp {
         match db::save_password(&conn.name, &password) {
             Ok(()) => {}
             Err(e) => {
-                self.form.notice = Some((false, format!("{} error: {e}", db::CREDENTIAL_STORE)));
+                self.form.notice = Some((
+                    false,
+                    tr!(
+                        "conn.credential_error",
+                        store = db::CREDENTIAL_STORE,
+                        error = e
+                    ),
+                ));
                 cx.notify();
                 return;
             }
@@ -900,13 +967,11 @@ impl TuskApp {
         // silently drop Keychain writes must not get a false "Saved").
         let keychain_warning = match db::load_password(&conn.name) {
             Ok(back) if back == password => None,
-            Ok(_) => Some(format!(
-                "the {} gave back a different password",
-                db::CREDENTIAL_STORE
-            )),
-            Err(e) => Some(format!(
-                "the password can't be read back from the {} ({e})",
-                db::CREDENTIAL_STORE
+            Ok(_) => Some(tr!("conn.keychain_mismatch", store = db::CREDENTIAL_STORE)),
+            Err(e) => Some(tr!(
+                "conn.keychain_unreadable",
+                store = db::CREDENTIAL_STORE,
+                error = e
             )),
         };
         match db::upsert_connection(conn.clone(), None) {
@@ -916,16 +981,13 @@ impl TuskApp {
                 self.form.notice = Some(match keychain_warning {
                     Some(w) => (
                         false,
-                        format!(
-                            "Saved “{}” — but {w}; it won't survive a restart.",
-                            conn.name
-                        ),
+                        tr!("conn.saved_warning", name = conn.name, warning = w),
                     ),
-                    None => (true, format!("Saved “{}”.", conn.name)),
+                    None => (true, tr!("conn.saved", name = conn.name)),
                 });
             }
             Err(e) => {
-                self.form.notice = Some((false, format!("Save failed: {e:#}")));
+                self.form.notice = Some((false, tr!("conn.save_failed", error = format!("{e:#}"))));
             }
         }
         cx.notify();
@@ -936,7 +998,7 @@ impl TuskApp {
             return;
         };
         self.form.busy = true;
-        self.form.notice = Some((true, format!("Connecting to {}…", conn.name)));
+        self.form.notice = Some((true, tr!("conn.connecting", name = conn.name)));
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = db::connect(conn.clone(), password.clone(), None).await;
@@ -948,7 +1010,10 @@ impl TuskApp {
                         // Outside the dialog (welcome list, ⌘1…) only a toast is
                         // seen: render turns the error notice into one.
                         log::warn!("connect {}: {e}", conn.name);
-                        this.form.notice = Some((false, format!("{}: {e}", conn.name)));
+                        this.form.notice = Some((
+                            false,
+                            tr!("conn.connect_error", name = conn.name, error = e),
+                        ));
                         // No / wrong saved password: open the form to type it.
                         if Self::wants_password(&conn, &password, &e) {
                             crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
@@ -993,12 +1058,12 @@ impl TuskApp {
                 }
                 Ok(_) => {
                     this.objects_loading = false;
-                    this.toast(false, "Connected — no schemas found.");
+                    this.toast(false, tr!("toast.connected_no_schemas"));
                     cx.notify();
                 }
                 Err(e) => {
                     this.objects_loading = false;
-                    this.toast(false, format!("Connected, but schema list failed: {e}"));
+                    this.toast(false, tr!("toast.schema_list_failed", error = e));
                     cx.notify();
                 }
             });
@@ -1027,10 +1092,10 @@ impl TuskApp {
                         this.reload_obj_groups();
                         this.refresh_quick_open_tables();
                         let _ = counts;
-                        this.status_line.clear();
+                        this.status_line = None;
                     }
                     Err(e) => {
-                        this.toast(false, format!("Object list failed: {e}"));
+                        this.toast(false, tr!("toast.objects_failed", error = e));
                     }
                 }
                 cx.notify();
@@ -1087,10 +1152,10 @@ impl TuskApp {
         self.selected_object = Some((kind.clone(), name.clone()));
         match kind {
             TableKind::Function => {
-                self.status_line = format!(
-                    "{}.{}() — function detail lands with tabs (Phase 6)",
-                    self.current_schema, name
-                );
+                self.status_line = Some(StatusLine::FunctionDetail {
+                    schema: self.current_schema.clone(),
+                    name,
+                });
                 cx.notify();
             }
             kind => {
@@ -1259,19 +1324,18 @@ impl TuskApp {
         let is_draft =
             matches!(self.tabs.get(ix), Some(WorkspaceTab::Grid(g)) if g.draft.is_some());
         let detail = if is_draft {
-            "The new table hasn't been created yet.".to_string()
+            tr!("tab.draft_not_created")
+        } else if n == 1 {
+            tr!("tab.unsaved_one", count = n)
         } else {
-            format!(
-                "{n} unsaved change{} will be discarded.",
-                if n == 1 { "" } else { "s" }
-            )
+            tr!("tab.unsaved_many", count = n)
         };
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Warning,
-            "Close this tab?",
+            &tr!("tab.close_question"),
             Some(&detail),
-            "Discard",
+            &tr!("common.discard"),
             cx,
         );
         cx.spawn_in(window, async move |weak, cx| {
@@ -1357,7 +1421,7 @@ impl TuskApp {
                     hard_tabs: false,
                 })
                 .default_value(initial)
-                .placeholder("Write SQL…")
+                .placeholder(tr!("editor.placeholder"))
         });
         let result = crate::sql::new_result_state(window, cx);
         let mut tab = crate::sql::SqlTab::new(format!("SQL-{n}"), editor.clone(), result.clone());
@@ -1507,10 +1571,10 @@ impl TuskApp {
                             rows: crate::sql::rows_to_vec(rows),
                             truncated,
                             message: Some(if truncated {
-                                format!(
-                                    "{} (truncated at {})",
-                                    crate::sql::n_rows(n),
-                                    crate::sql::QUERY_ROW_LIMIT
+                                tr!(
+                                    "result.truncated_message",
+                                    rows = crate::sql::n_rows(n),
+                                    limit = crate::sql::QUERY_ROW_LIMIT
                                 )
                             } else {
                                 crate::sql::n_rows(n)
@@ -1563,7 +1627,7 @@ impl TuskApp {
                         let done = log.join("\n");
                         e.error = e
                             .error
-                            .map(|msg| format!("{msg}\n\nCompleted before the error:\n{done}"));
+                            .map(|msg| tr!("result.completed_before", error = msg, done = done));
                     }
                     e
                 }
@@ -1714,12 +1778,12 @@ impl TuskApp {
             .filter(|s| prefs.confirm_save && db::is_write(s))
             .collect();
         let (level, title, shown) = if !risky.is_empty() {
-            (PromptLevel::Warning, "Run a dangerous statement?", risky)
+            (PromptLevel::Warning, tr!("dialog.run_dangerous"), risky)
         } else if !writes.is_empty() {
             let title = if writes.len() == 1 {
-                "Run a statement that writes to the database?"
+                tr!("dialog.run_write_one")
             } else {
-                "Run statements that write to the database?"
+                tr!("dialog.run_write_many")
             };
             (PromptLevel::Info, title, writes)
         } else {
@@ -1734,14 +1798,14 @@ impl TuskApp {
             .collect::<Vec<_>>()
             .join("\n");
         if shown.len() > MAX_SHOWN {
-            detail.push_str(&format!("\n… and {} more", shown.len() - MAX_SHOWN));
+            detail.push_str(&tr!("dialog.more_lines", count = shown.len() - MAX_SHOWN));
         }
         let answer = crate::dialog_keys::confirm(
             window,
             level,
-            title,
-            Some(&format!("{detail}\n\n(Safe mode — Settings ▸ Safe Mode)")),
-            "Run",
+            &title,
+            Some(&tr!("dialog.safe_mode_note", detail = detail)),
+            &tr!("common.run"),
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -1821,10 +1885,16 @@ impl TuskApp {
                         .outline()
                         .xsmall()
                         .icon(IconName::Sparkles)
-                        .label("Ask AI to Fix")
+                        .label(tr!("editor.ask_ai_fix"))
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            this.send_to_chat("Failed query", sql.clone(), "sql", window, cx);
-                            this.send_to_chat("Error", err_c.clone(), "text", window, cx);
+                            this.send_to_chat(
+                                tr!("chat.failed_query"),
+                                sql.clone(),
+                                "sql",
+                                window,
+                                cx,
+                            );
+                            this.send_to_chat(tr!("chat.error"), err_c.clone(), "text", window, cx);
                         })),
                 )
                 .into_any_element()
@@ -1833,11 +1903,12 @@ impl TuskApp {
                 .output
                 .message
                 .clone()
-                .unwrap_or_else(|| "No rows".to_string());
-            let mut extra = format!("{} ms", tab.output.ms);
-            if tab.output.truncated {
-                extra.push_str(" · truncated");
-            }
+                .unwrap_or_else(|| tr!("result.no_rows"));
+            let extra = if tab.output.truncated {
+                tr!("result.ms_truncated", ms = tab.output.ms)
+            } else {
+                tr!("result.ms_elapsed", ms = tab.output.ms)
+            };
             div()
                 .flex_1()
                 .flex()
@@ -1897,7 +1968,7 @@ impl TuskApp {
                                     .text_color(if active { foreground } else { muted })
                                     .when(active, |t| t.bg(muted.opacity(0.18)))
                                     .hover(|t| t.bg(muted.opacity(0.1)))
-                                    .child(format!("Result {}", i + 1))
+                                    .child(tr!("result.tab_label", index = i + 1))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         if let Some(ix) = this.active_tab {
                                             this.show_result(ix, i, cx);
@@ -1914,15 +1985,20 @@ impl TuskApp {
                                 .text_color(foreground)
                                 .child({
                                     let n = tab.output.rows.len();
-                                    let mut s =
-                                        format!("{} · {} ms", crate::sql::n_rows(n), tab.output.ms);
                                     if tab.output.truncated {
-                                        s.push_str(&format!(
-                                            " · truncated at {}",
-                                            crate::sql::QUERY_ROW_LIMIT
-                                        ));
+                                        tr!(
+                                            "result.rows_ms_truncated",
+                                            rows = crate::sql::n_rows(n),
+                                            ms = tab.output.ms,
+                                            limit = crate::sql::QUERY_ROW_LIMIT
+                                        )
+                                    } else {
+                                        tr!(
+                                            "result.rows_ms",
+                                            rows = crate::sql::n_rows(n),
+                                            ms = tab.output.ms
+                                        )
                                     }
-                                    s
                                 }),
                         )
                         .child(div().flex_1())
@@ -1934,9 +2010,9 @@ impl TuskApp {
                                 (Some(src), _) => (
                                     Some(IconName::Pencil),
                                     format!("{}.{}", src.schema, src.table),
-                                    format!(
-                                        "Editable — double-click a cell, {}-s to save",
-                                        if cfg!(target_os = "macos") {
+                                    tr!(
+                                        "result.editable_hint",
+                                        key = if cfg!(target_os = "macos") {
                                             "cmd"
                                         } else {
                                             "ctrl"
@@ -1944,7 +2020,7 @@ impl TuskApp {
                                     ),
                                 ),
                                 (None, Some(note)) => {
-                                    (Some(IconName::Lock), "read-only".into(), note.clone())
+                                    (Some(IconName::Lock), tr!("result.read_only"), note.clone())
                                 }
                                 (None, None) => (None, String::new(), String::new()),
                             };
@@ -1982,7 +2058,7 @@ impl TuskApp {
                                 .text_color(muted)
                                 .hover(|this| this.bg(muted.opacity(0.1)).text_color(foreground))
                                 .child(Icon::new(IconName::Download).size(px(12.)))
-                                .child("Export")
+                                .child(tr!("menu.file.export"))
                                 .on_click(cx.listener(|this, _, _, cx| this.export_result(cx))),
                         ),
                 )
@@ -2000,29 +2076,32 @@ impl TuskApp {
             .flex_col()
             .when_some(tab.view_draft.clone(), |this, input| {
                 this.child(Self::draft_name_bar(
-                    "View name",
+                    tr!("editor.view_name"),
                     &input,
-                    "[cmd-s] creates the view",
+                    tr!("editor.view_create_hint"),
                     cx,
                 ))
             })
             .child(
                 div()
-                    .map(|d| if self.results_hidden { d.flex_1() } else { d.h(px(tab.editor_h)) })
+                    .map(|d| {
+                        if self.results_hidden {
+                            d.flex_1()
+                        } else {
+                            d.h(px(tab.editor_h))
+                        }
+                    })
                     .flex()
                     .flex_col()
                     .overflow_hidden()
                     .child(
-                        div()
-                            .flex_1()
-                            .overflow_hidden()
-                            .child(
-                                // No own border / radius: the pane's single
-                                // divider below separates it from the run bar.
-                                gpui_kit::component::input::Editor::new(&tab.editor)
-                                    .bordered(false)
-                                    .h_full(),
-                            ),
+                        div().flex_1().overflow_hidden().child(
+                            // No own border / radius: the pane's single
+                            // divider below separates it from the run bar.
+                            gpui_kit::component::input::Editor::new(&tab.editor)
+                                .bordered(false)
+                                .h_full(),
+                        ),
                     )
                     // Drag handle: resize the editor / results split.
                     .child(
@@ -2060,7 +2139,10 @@ impl TuskApp {
                                     .text_caption()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(muted)
-                                    .child(crate::kbd::rich_colored("[cmd-enter] run current (or selection) · [cmd-shift-enter] run all", muted)),
+                                    .child(crate::kbd::rich_colored(
+                                        &tr!("editor.run_hint"),
+                                        muted,
+                                    )),
                             )
                             .child(
                                 div()
@@ -2069,7 +2151,7 @@ impl TuskApp {
                                     .gap_2()
                                     .child(
                                         Button::new("run-sql-all")
-                                            .label("Run All")
+                                            .label(tr!("editor.run_all"))
                                             .small()
                                             .outline()
                                             .disabled(tab.running)
@@ -2079,7 +2161,7 @@ impl TuskApp {
                                     )
                                     .child(
                                         Button::new("run-sql")
-                                            .label("Run Current")
+                                            .label(tr!("editor.run_current"))
                                             .small()
                                             // Quiet outlined button, not a
                                             // white filled one.
@@ -2243,7 +2325,7 @@ impl TuskApp {
             this.form.load(&conn, w, cx);
             this.connect_now(w, cx);
         } else {
-            this.form.notice = Some((false, "No saved connections.".to_string()));
+            this.form.notice = Some((false, tr!("conn.no_saved")));
             cx.notify();
         }
     }
@@ -2326,7 +2408,7 @@ impl TuskApp {
         this.active_name.clear();
         this.server_label = None;
         this.screen = AppScreen::Connection;
-        this.status_line = "Not connected".to_string();
+        this.status_line = Some(StatusLine::NotConnected);
         // The "Connecting to …" / error notice belongs to the last attempt;
         // back on the welcome screen it would read as still in progress.
         this.form.notice = None;
@@ -2395,7 +2477,7 @@ impl TuskApp {
             conn.engine.label(),
             conn.endpoint()
         ));
-        self.status_line.clear();
+        self.status_line = None;
         self.screen = AppScreen::Workspace;
         self.load_sidebar_after_connect(cx);
         cx.notify();
@@ -2412,7 +2494,11 @@ impl TuskApp {
         if has(pool.caps()) {
             return true;
         }
-        let msg = format!("{what} isn't available for {}.", pool.engine().label());
+        let msg = tr!(
+            "toast.feature_unavailable",
+            feature = what,
+            engine = pool.engine().label()
+        );
         self.toast_info(msg);
         cx.notify();
         false
@@ -2429,7 +2515,7 @@ impl TuskApp {
         }
         let mut conn = conn;
         conn.database = name.clone();
-        self.status_line = format!("Connecting to {name}…");
+        self.status_line = Some(StatusLine::Connecting { name: name.clone() });
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = db::connect(conn.clone(), password.clone(), None).await;
@@ -2440,8 +2526,11 @@ impl TuskApp {
                         this.connected_with(c, &conn, &password, cx);
                     }
                     Err(e) => {
-                        this.status_line.clear();
-                        this.toast(false, format!("Can't open {name}: {e}"));
+                        this.status_line = None;
+                        this.toast(
+                            false,
+                            tr!("toast.open_database_failed", name = name, error = e),
+                        );
                     }
                 }
                 cx.notify();
@@ -2459,7 +2548,7 @@ impl TuskApp {
         let Some(conn) = db::last_connection() else {
             return;
         };
-        self.form.notice = Some((true, format!("Reconnecting to {}…", conn.name)));
+        self.form.notice = Some((true, tr!("conn.reconnecting", name = conn.name)));
         self.form.busy = true;
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -2481,7 +2570,10 @@ impl TuskApp {
                     }
                     Err(e) => {
                         // Render turns the error notice into a toast.
-                        this.form.notice = Some((false, format!("{}: {e}", conn.name)));
+                        this.form.notice = Some((
+                            false,
+                            tr!("conn.connect_error", name = conn.name, error = e),
+                        ));
                     }
                 }
                 cx.notify();
@@ -2516,7 +2608,7 @@ impl TuskApp {
                     phase: migrate_sheet::Phase::Review,
                 });
             }
-            Err(e) => self.form.notice = Some((false, format!("TablePlus import: {e}"))),
+            Err(e) => self.form.notice = Some((false, tr!("conn.tableplus_error", error = e))),
         }
         cx.notify();
     }
@@ -2528,7 +2620,7 @@ impl TuskApp {
             files: true,
             directories: true,
             multiple: false,
-            prompt: Some("Import".into()),
+            prompt: Some(tr!("menu.file.import").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -2549,11 +2641,14 @@ impl TuskApp {
                 {
                     Ok(plan) if plan.connections.is_empty() => {
                         let why = if plan.skipped.is_empty() {
-                            "no database services Tusk supports".to_string()
+                            tr!("compose.no_supported")
                         } else {
-                            format!("nothing to import — {}", plan.skipped.join(", "))
+                            tr!(
+                                "compose.nothing_to_import",
+                                services = plan.skipped.join(", ")
+                            )
                         };
-                        this.toast_info(format!("Docker Compose: {why}"));
+                        this.toast_info(tr!("compose.detail", detail = why));
                     }
                     Ok(plan) => {
                         let picked = vec![true; plan.connections.len()];
@@ -2563,7 +2658,7 @@ impl TuskApp {
                             phase: migrate_sheet::Phase::Review,
                         });
                     }
-                    Err(e) => this.toast(false, format!("Docker Compose: {e}")),
+                    Err(e) => this.toast(false, tr!("compose.detail", detail = e)),
                 }
                 cx.notify();
             });
@@ -2574,6 +2669,46 @@ impl TuskApp {
     pub fn reload_saved_connections(&mut self, cx: &mut Context<Self>) {
         self.form.saved = db::load_connections();
         cx.notify();
+    }
+
+    /// Language switch: the search inputs were built once in `main` and the
+    /// SQL editors once per tab, so window redraws do not re-translate their
+    /// placeholders — push the current-language strings in place.
+    /// Called from `i18n::set_language` through the `MainWindow` handle.
+    pub fn sync_localized_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.filter.update(cx, |s, cx| {
+            s.set_placeholder(tr!("sidebar.filter_ph"), window, cx)
+        });
+        self.conn_search.update(cx, |s, cx| {
+            s.set_placeholder(tr!("conn.search_ph"), window, cx)
+        });
+        self.history_search.update(cx, |s, cx| {
+            s.set_placeholder(tr!("history.search_ph"), window, cx)
+        });
+        // The AI composer, likewise built once with the panel (app_agent).
+        self.sync_ai_placeholder(window, cx);
+        for tab in &self.tabs {
+            match tab {
+                WorkspaceTab::Sql(t) => {
+                    t.editor.update(cx, |s, cx| {
+                        s.set_placeholder(tr!("editor.placeholder"), window, cx)
+                    });
+                }
+                WorkspaceTab::Grid(g) => {
+                    let columns: Vec<String> = g
+                        .state
+                        .read(cx)
+                        .delegate()
+                        .metas
+                        .iter()
+                        .map(|m| m.name.clone())
+                        .collect();
+                    for row in &g.filters.rows {
+                        row.relabel(&columns, window, cx);
+                    }
+                }
+            }
+        }
     }
 
     /// Start the connection's SQL language server (postgres-language-server
@@ -2912,7 +3047,7 @@ impl TuskApp {
                             .xsmall()
                             .color(muted),
                     )
-                    .child("Connecting…")
+                    .child(tr!("welcome.connecting"))
                     .into_any_element()
             } else {
                 Self::kbd_hint(&format!("cmd-{}", n + 1))
@@ -2955,7 +3090,7 @@ impl TuskApp {
                                     .line_height(zrem(26.))
                                     .font_family(crate::settings::ui_font())
                                     .text_color(foreground)
-                                    .child("Welcome back to Tusk"),
+                                    .child(tr!("welcome.title")),
                             )
                             .child(
                                 div()
@@ -2964,19 +3099,19 @@ impl TuskApp {
                                     .italic()
                                     .font_family(crate::settings::ui_font())
                                     .text_color(muted)
-                                    .child("The gentle giant for your databases"),
+                                    .child(tr!("welcome.subtitle")),
                             ),
                     ),
             )
             .child(
                 div()
                     .pb(px(4.))
-                    .child(Self::section_header("Get Started", muted)),
+                    .child(Self::section_header(&tr!("welcome.get_started"), muted)),
             )
             .child(self.welcome_row(
                 "welcome-new",
                 IconName::Plus,
-                "New Connection…",
+                &tr!("menu.file.new_connection"),
                 "cmd-n",
                 cx,
                 |this, _, w, cx| Self::run_new_connection(this, w, cx),
@@ -2984,7 +3119,7 @@ impl TuskApp {
             .child(self.welcome_row(
                 "welcome-open",
                 IconName::FolderOpen,
-                "Open Connection…",
+                &tr!("menu.file.open_connection"),
                 "cmd-shift-o",
                 cx,
                 |this, _, _, cx| this.toggle_conn_manager(cx),
@@ -2992,7 +3127,7 @@ impl TuskApp {
             .child(self.welcome_row(
                 "welcome-backup",
                 IconName::HardDriveDownload,
-                "Backup Database…",
+                &tr!("menu.file.backup"),
                 "",
                 cx,
                 |_, _, _, cx| {
@@ -3002,7 +3137,7 @@ impl TuskApp {
             .child(self.welcome_row(
                 "welcome-restore",
                 IconName::HardDriveUpload,
-                "Restore Database…",
+                &tr!("menu.file.restore"),
                 "",
                 cx,
                 |_, _, _, cx| {
@@ -3012,12 +3147,10 @@ impl TuskApp {
         // Recent: the five last-used profiles (⌘1–⌘5 follow this order).
         let recent = self.recent_indexes();
         if !recent.is_empty() {
-            col = col.child(
-                div()
-                    .pt(px(18.))
-                    .pb(px(4.))
-                    .child(Self::section_header("Recent Connections", muted)),
-            );
+            col = col.child(div().pt(px(18.)).pb(px(4.)).child(Self::section_header(
+                &tr!("welcome.recent_connections"),
+                muted,
+            )));
             for (n, ix) in recent.into_iter().take(5).enumerate() {
                 col = col.child(self.recent_row(n, ix, cx));
             }
@@ -3027,13 +3160,13 @@ impl TuskApp {
             div()
                 .pt(px(18.))
                 .pb(px(4.))
-                .child(Self::section_header("Import", muted)),
+                .child(Self::section_header(&tr!("menu.file.import"), muted)),
         );
         if crate::migrate::available() {
             col = col.child(self.welcome_row(
                 "welcome-migrate",
                 IconName::ArrowDownToLine,
-                "Migrate from TablePlus…",
+                &tr!("welcome.migrate"),
                 "",
                 cx,
                 |this, _, w, cx| this.migrate_from_tableplus(w, cx),
@@ -3042,7 +3175,7 @@ impl TuskApp {
         col = col.child(self.welcome_row(
             "welcome-compose",
             Icon::default().data(include_bytes!("../assets/icons/ui/docker.svg")),
-            "Import from Docker Compose…",
+            &tr!("welcome.import_compose"),
             "",
             cx,
             |this, _, w, cx| this.import_docker_compose(w, cx),
@@ -3182,11 +3315,11 @@ impl TuskApp {
 
         let mut list = div().flex().flex_col().gap_0();
         let empty_msg = if self.objects_loading {
-            Some("Loading objects…".to_string())
+            Some(tr!("sidebar.loading"))
         } else if matching.is_empty() {
-            Some(format!(
-                "No {} in this schema.",
-                self.sidebar_panel.title().to_lowercase()
+            Some(tr!(
+                "sidebar.empty",
+                kind = self.sidebar_panel.title().to_lowercase()
             ))
         } else {
             None
@@ -3266,7 +3399,7 @@ impl TuskApp {
                                 .text_color(cx.theme().foreground)
                                 .truncate()
                                 .child(if name.is_empty() {
-                                    "untitled".to_string()
+                                    tr!("sidebar.untitled")
                                 } else {
                                     name
                                 }),
@@ -3327,10 +3460,10 @@ impl TuskApp {
                             .text_caption()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(muted)
-                            .child(format!(
-                                "{} ({})",
-                                self.sidebar_panel.title().to_uppercase(),
-                                matching.len()
+                            .child(tr!(
+                                "sidebar.header",
+                                title = self.sidebar_panel.title().to_uppercase(),
+                                count = matching.len()
                             )),
                     )
                     .child(self.sidebar_new_button(cx))
@@ -3347,7 +3480,7 @@ impl TuskApp {
                             .hover(|this| this.bg(muted.opacity(0.12)))
                             .child(Icon::new(IconName::Search).size(px(13.)))
                             .tooltip(|window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new("Filter")
+                                gpui_kit::component::tooltip::Tooltip::new(tr!("sidebar.filter"))
                                     .key_binding(crate::kbd::tip("cmd-f"))
                                     .build(window, cx)
                             })
@@ -3416,12 +3549,14 @@ impl TuskApp {
         // connection's form to enter it instead of leaving you disconnected.
         self.conn_manager = false;
         let password = crate::conn::ConnectionForm::password_or_keychain(&conn.name, String::new());
-        self.status_line = format!("Connecting to {}…", conn.name);
+        self.status_line = Some(StatusLine::Connecting {
+            name: conn.name.clone(),
+        });
         cx.notify();
         cx.spawn_in(window, async move |weak, cx| {
             let result = db::connect(conn.clone(), password.clone(), None).await;
             let _ = weak.update_in(cx, |this: &mut TuskApp, window, cx| {
-                this.status_line.clear();
+                this.status_line = None;
                 match result {
                     Ok(c) => {
                         this.form.selected = Some(ix);
@@ -3431,13 +3566,13 @@ impl TuskApp {
                     Err(e) => {
                         log::warn!("switch to {}: {e}", conn.name);
                         if Self::wants_password(&conn, &password, &e) {
-                            this.toast(
-                                false,
-                                format!("{}: enter the password to connect.", conn.name),
-                            );
+                            this.toast(false, tr!("toast.enter_password", name = conn.name));
                             crate::dialog::ConnDialog::open_edit(conn.clone(), false, cx);
                         } else {
-                            this.toast(false, format!("{}: {e}", conn.name));
+                            this.toast(
+                                false,
+                                tr!("conn.connect_error", name = conn.name, error = e),
+                            );
                         }
                         this.focus.focus(window, cx);
                     }
@@ -3630,7 +3765,7 @@ impl TuskApp {
                     .hover(|this| this.bg(muted.opacity(0.15)).text_color(foreground))
                     .child(Icon::new(IconName::Plus).size(px(14.)))
                     .tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new("New SQL Query")
+                        gpui_kit::component::tooltip::Tooltip::new(tr!("menu.file.new_sql"))
                             .key_binding(crate::kbd::tip("cmd-t"))
                             .build(window, cx)
                     })
@@ -3796,14 +3931,14 @@ impl TuskApp {
                                 .text_sm()
                                 .font_family(crate::settings::ui_font())
                                 .text_color(muted)
-                                .child("No table open"),
+                                .child(tr!("tab.no_table")),
                         )
-                        .child(div().text_caption().text_color(muted).child(
-                            crate::kbd::rich_colored(
-                                "Click a table in the sidebar, or press [cmd-p] to quick-open.",
-                                muted,
-                            ),
-                        )),
+                        .child(
+                            div()
+                                .text_caption()
+                                .text_color(muted)
+                                .child(crate::kbd::rich_colored(&tr!("tab.no_table_hint"), muted)),
+                        ),
                 )
                 .into_any_element(),
         }
@@ -4133,12 +4268,12 @@ impl Render for TuskApp {
                 }),
             )
             .on_action(cx.listener(|this, _: &BackupDatabase, _, cx| {
-                if this.supports("Backup", |c| c.backup, cx) {
+                if this.supports(&tr!("feature.backup"), |c| c.backup, cx) {
                     this.open_backup(crate::backup::Mode::Backup, cx)
                 }
             }))
             .on_action(cx.listener(|this, _: &RestoreDatabase, _, cx| {
-                if this.supports("Restore", |c| c.backup, cx) {
+                if this.supports(&tr!("feature.restore"), |c| c.backup, cx) {
                     this.open_backup(crate::backup::Mode::Restore, cx)
                 }
             }))
@@ -4161,17 +4296,17 @@ impl Render for TuskApp {
             )
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.cycle_tab(1, cx)))
             .on_action(cx.listener(|this, _: &ProcessList, w, cx| {
-                if this.supports("The process list", |c| c.processes, cx) {
+                if this.supports(&tr!("feature.process_list"), |c| c.processes, cx) {
                     this.open_process_list(w, cx)
                 }
             }))
             .on_action(cx.listener(|this, _: &SearchInDatabase, w, cx| {
-                if this.supports("Search in database", |c| c.sql, cx) {
+                if this.supports(&tr!("feature.search_database"), |c| c.sql, cx) {
                     this.open_db_search(w, cx)
                 }
             }))
             .on_action(cx.listener(|this, _: &UserManagement, w, cx| {
-                if this.supports("User management", |c| c.roles, cx) {
+                if this.supports(&tr!("feature.user_management"), |c| c.roles, cx) {
                     this.open_user_mgmt(w, cx)
                 }
             }))

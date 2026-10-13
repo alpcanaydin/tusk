@@ -1,0 +1,1110 @@
+# Tusk interface strings. "en" is the default and the fallback locale.
+# Keys must stay identical to zh-CN.yml; i18n's tests enforce this (and the
+# %{} placeholders per key) in CI.
+
+common:
+  cancel: Cancel
+  discard: Discard
+  run: Run
+  undo: Undo
+  redo: Redo
+  cut: Cut
+  paste: Paste
+  select_all: Select All
+  new_group: New Group
+  new_group_n: New Group %{n}
+  filter: Filter
+  sort: Sort
+  close: Close
+  done: Done
+  add: Add
+  remove: Remove
+  copy: Copy
+  clear: Clear
+  refresh: Refresh
+  and: " and "
+  file_name: "File name:"
+  customize: Customize
+  token_date: Date (YYYY-MM-DD)
+  token_time: Time (HH-MM-SS)
+
+settings:
+  window:
+    title: Settings
+  language:
+    title: Language
+    description: Interface language. Applies immediately, no restart needed.
+    system: System default
+  page:
+    appearance: Appearance
+    interface: Interface
+    data_grid: Data Grid
+    general: General
+    sql_editor: SQL Editor
+    safe_mode: Safe Mode
+  group:
+    theme: Theme
+    ui_font: UI Font
+    layout: Layout
+    table_font: Table Font
+    display: Display
+    startup: Startup & Connections
+    editor: Editor
+    confirmations: Confirmations
+  appearance:
+    system: System
+    light: Light
+    dark: Dark
+  mode:
+    title: Mode
+    description: System follows the desktop light / dark appearance.
+  accent:
+    title: Accent Color
+    description: "Buttons, focus, caret, selection frames. \"Theme\" keeps the theme's own."
+    teal: Teal
+    blue: Blue
+    violet: Violet
+    magenta: Magenta
+    sky: Sky
+    theme: Theme
+  light_theme:
+    title: Light Theme
+    description: Used in light mode.
+  dark_theme:
+    title: Dark Theme
+    description: Used in dark mode.
+  font_family:
+    title: Font Family
+    ui_description: Sidebar, tabs, title bar, menus and dialogs.
+    data_description: Data grid, structure view and the SQL editor.
+  font_size:
+    title: Font Size
+    ui_description: Scales the whole interface.
+    data_description: Column widths scale with it.
+  sidebar_layout:
+    title: Sidebar Layout
+    description: "Objects lists the connected database only. Connections tree lists every saved connection by group, with the connected one's objects nested under it."
+    objects: Objects
+    connections_tree: Connections tree
+  reopen_last:
+    title: Reopen Last Connection
+    description: Connect to the last used database when the app starts.
+  query_timeout:
+    title: Query Timeout
+    description: Seconds before a statement is cancelled (0 = never). New connections.
+  gpu_device:
+    title: Graphics Device
+    description: GPU used for rendering. Restart Tusk to apply.
+  gpu:
+    automatic: Automatic
+  line_numbers:
+    title: Line Numbers
+    description: Show the gutter with line numbers.
+  soft_wrap:
+    title: Soft Wrap
+    description: Wrap long lines instead of scrolling sideways.
+  tab_size:
+    title: Tab Size
+    description: Spaces per indent level.
+  uppercase_keywords:
+    title: Uppercase Keywords
+    description: Completions insert SQL keywords in UPPERCASE.
+  stripes:
+    title: Alternating Row Colors
+    description: Stripe every other row.
+  null_display:
+    title: NULL Display
+    description: How NULL values are shown in grids.
+  confirm_destructive:
+    title: Confirm Dangerous Queries
+    description: Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.
+  confirm_save:
+    title: Confirm Before Saving
+    description: Ask before saving pending changes, or before a query writes to the database.
+
+menu:
+  title:
+    file: File
+    edit: Edit
+    view: View
+    tools: Tools
+    connection: Connection
+    navigate: Navigate
+    window: Window
+    help: Help
+  app:
+    about: About Tusk
+    release_notes: Release Notes
+    settings: Settings…
+    command_palette: Command Palette…
+    restart_update: Restart to Update…
+    check_updates: Check for Updates…
+    hide: Hide Tusk
+    quit: Quit Tusk
+  file:
+    new_connection: New Connection…
+    open_connection: Open Connection…
+    new_sql: New SQL Query
+    open_sql: Open…
+    save_as: Save As…
+    open_table: Open Table…
+    backup: Backup Database…
+    restore: Restore Database…
+    export: Export
+    export_tables: Export Tables…
+    export_active_table: Export this Table with Column Selection…
+    import: Import
+    import_csv: From CSV…
+    import_json: From JSON…
+    import_sql: From SQL Dump…
+    import_compose: Connections from Docker Compose…
+    close_tab: Close Tab
+    close_all_tabs: Close All Tabs
+  edit:
+    commit: Commit
+    discard: Discard
+    preview: Preview
+    add_row: Add Row
+    duplicate_row: Duplicate Row
+    copy_cells: Copy Selected Cells
+    paste_cells: Paste to Selected Cells
+    delete: Delete
+    line_comment: Toggle Line Comment
+    block_comment: Toggle Block Comment
+    increase_font: Increase Font Size
+    decrease_font: Decrease Font Size
+    transformations: Transformations
+    make_upper: Make Upper Case
+    make_lower: Make Lower Case
+    capitalize: Capitalize
+    filter: Filter…
+  view:
+    tables: Tables
+    views: Views
+    functions: Functions
+    toggle_sidebar: Toggle Left Sidebar
+    toggle_row_detail: Toggle Right Sidebar (Row Detail)
+    toggle_ai: Toggle AI Chat
+    send_to_chat: Send to Chat
+    toggle_console: Toggle Console
+    history: Query History
+    problems: Problems
+    toggle_results: Toggle Query Results Pane
+    show_all_tabs: Show All Tabs
+  tools:
+    processes: Process List
+    users: User Management
+    search: Search in Database…
+  connection:
+    new: New…
+    open_database: Open a Database…
+    open_connection: Open a Connection…
+    run_current: Run Current Query
+    run_all: Run All Queries
+    reload_workspace: Reload Workspace
+    refresh_tab: Reload Current Tab
+    reconnect: Reconnect
+    disconnect: Disconnect
+  navigate:
+    open_anything: Open Anything
+    command_palette: Command Palette…
+    new_tab: New Tab
+    close_tab: Close Tab
+    show_data: Show Table Data
+    show_structure: Show Table Structure
+    go_back: Go Back
+    go_forward: Go Forward
+    next_tab: Select Next Tab
+    prev_tab: Select Previous Tab
+    split_right: Split Pane Right
+    next_pane: Select Next Pane
+  window:
+    minimize: Minimize
+    zoom: Zoom
+    bring_all: Bring All to Front
+  help:
+    github: Tusk on GitHub
+    report: Report an Issue…
+
+palette:
+  connection:
+    new: "connection: new…"
+    open: "connection: open…"
+    import_compose: "connection: import from Docker Compose…"
+    disconnect: "connection: disconnect"
+    quick_connect: "connection: quick connect"
+    migrate: "connection: migrate from TablePlus…"
+    connect_to: "connection: connect to %{name}"
+    open_database: "connection: open a database…"
+    open_connection: "connection: open a connection…"
+    reload_workspace: "connection: reload workspace"
+    reconnect: "connection: reconnect"
+  database:
+    backup: "database: backup…"
+    restore: "database: restore…"
+    switch_to: "database: switch to %{name}"
+  schema:
+    switch_to: "schema: switch to %{name}"
+  ai:
+    send_to_chat: "ai: send to chat"
+  app:
+    settings: "app: settings"
+    check_updates: "app: check for updates…"
+    about: "app: about tusk"
+    release_notes: "app: release notes"
+    hide: "app: hide"
+    quit: "app: quit"
+  query:
+    new_sql: "query: new SQL tab"
+    run_current: "query: run current"
+    run_all: "query: run all"
+    export_result: "query: export result…"
+  tab:
+    close: "tab: close"
+    refresh: "tab: refresh"
+    next: "tab: next"
+    previous: "tab: previous"
+    close_all: "tab: close all"
+  changes:
+    save: "changes: save"
+    delete_selection: "changes: delete selection"
+    preview: "changes: preview SQL"
+    discard: "changes: discard"
+  editor:
+    line_comment: "editor: toggle line comment"
+    block_comment: "editor: toggle block comment"
+    upper: "editor: make upper case"
+    lower: "editor: make lower case"
+    capitalize: "editor: capitalize"
+  view:
+    increase_text: "view: increase text size"
+    decrease_text: "view: decrease text size"
+    reset_text: "view: reset text size"
+    toggle_results: "view: toggle query results pane"
+    split_right: "view: split pane right"
+    next_pane: "view: select next pane"
+    show_all_tabs: "view: show all tabs"
+    toggle_ai: "view: toggle ai chat"
+    toggle_row_detail: "view: toggle row detail"
+    toggle_console: "view: toggle console"
+    toggle_problems: "view: toggle problems"
+    history: "view: query history"
+    toggle_sidebar: "view: toggle sidebar"
+    tables: "view: tables"
+    views: "view: views"
+    functions: "view: functions"
+    open_structure: "view: open structure of %{name}"
+    export: "view: export %{name}…"
+    copy_create: "view: copy CREATE script of %{name}"
+    open_select: "view: open SELECT script of %{name}"
+    rename: "view: rename %{name}…"
+    delete: "view: delete %{name}"
+    new: "view: new view…"
+  grid:
+    copy_cells: "grid: copy selected cells"
+    paste_cells: "grid: paste to selected cells"
+    filters: "grid: toggle filters"
+    data: "grid: show data"
+    structure: "grid: show structure"
+  file:
+    open_sql: "file: open .sql file…"
+    save_as: "file: save query as…"
+  export:
+    tables: "export: tables…"
+    active_table: "export: this table (column selection)…"
+  import:
+    csv: "import: from CSV…"
+    json: "import: from JSON…"
+    sql: "import: from SQL dump…"
+  tools:
+    users: "tools: user management"
+    search: "tools: search in database…"
+    processes: "tools: process list"
+  table:
+    open: "table: open…"
+    new: "table: new table…"
+    import_into: "table: import CSV into %{name}…"
+    duplicate: "table: duplicate %{name} (structure)"
+    duplicate_data: "table: duplicate %{name} (structure + data)"
+    truncate: "table: truncate %{name}…"
+    truncate_cascade: "table: truncate %{name} cascade…"
+    open_structure: "table: open structure of %{name}"
+    export: "table: export %{name}…"
+    copy_create: "table: copy CREATE script of %{name}"
+    open_select: "table: open SELECT script of %{name}"
+    rename: "table: rename %{name}…"
+    delete: "table: delete %{name}"
+  sidebar:
+    new_group: "sidebar: new group…"
+    refresh: "sidebar: refresh"
+  theme:
+    apply: "theme: %{name} (%{mode})"
+    appearance: "theme: appearance %{mode}"
+    appearance_system: system
+    appearance_light: light
+    appearance_dark: dark
+    mode_light: light
+    mode_dark: dark
+  name_current: "%{name}  (current)"
+  ph:
+    commands: Type a command…
+    tables: Search tables…
+    databases: Open a database…
+    connections: Open a connection…
+    tabs: Go to tab…
+
+status:
+  not_connected: Not connected
+  connecting: Connecting to %{name}…
+  reconnecting: Reconnecting to %{name}…
+  duplicating: Duplicating %{name}…
+  saving_one: Saving %{count} statement…
+  saving_many: Saving %{count} statements…
+  function_detail: "%{schema}.%{name}() — function detail lands with tabs (Phase 6)"
+  pending_save: "%{pending} — [cmd-s] to save"
+
+titlebar:
+  no_connection: No connection
+  restart_update: Restart to Update
+  update_install: Install the update and relaunch
+  update_ready: "Tusk %{version} is ready: install and relaunch"
+  endpoint_ssh: "%{endpoint} via ssh %{host}"
+
+welcome:
+  title: Welcome back to Tusk
+  subtitle: The gentle giant for your databases
+  get_started: Get Started
+  recent_connections: Recent Connections
+  migrate: Migrate from TablePlus…
+  import_compose: Import from Docker Compose…
+  connecting: Connecting…
+
+# First launch after an update: the "What's new" card (whats_new.rs). The
+# version number and the release URL stay raw.
+whats_new:
+  label: WHAT'S NEW
+  updated: Updated to Tusk %{version}
+  summary: See what changed in this release.
+  release_notes: View Release Notes
+
+# About window. The app name and the version number stay raw.
+about:
+  version: Version %{version}
+
+conn:
+  incomplete_saved: The saved connection is incomplete — edit it and fill in its fields.
+  testing: Testing connection…
+  test_ok: "OK — %{version}"
+  credential_error: "%{store} error: %{error}"
+  keychain_mismatch: "the %{store} gave back a different password"
+  keychain_unreadable: "the password can't be read back from the %{store} (%{error})"
+  saved_warning: "Saved “%{name}” — but %{warning}; it won't survive a restart."
+  saved: "Saved “%{name}”."
+  save_failed: "Save failed: %{error}"
+  connecting: Connecting to %{name}…
+  reconnecting: Reconnecting to %{name}…
+  connect_error: "%{name}: %{error}"
+  no_saved: No saved connections.
+  tableplus_error: "TablePlus import: %{error}"
+  saved_connect_warning: "Saved “%{name}” — but %{warning}."
+  search_ph: Search for connection…
+  new_dots: New Connection…
+  manage_dots: Manage Connections…
+  new_connection: New Connection
+  no_match: No matching connections.
+  disconnect_q: "Disconnect from “%{name}”?"
+  switch_q: "Switch to “%{name}”?"
+  work_discarded: "%{work} will be discarded."
+  delete_q: "Delete “%{name}”?"
+  delete_detail: The saved profile and its stored passwords are removed.
+  connection_dots: Connection…
+  group_item: Group
+  new: New
+  edit_dots: Edit…
+  copy_url: Copy as URL
+  delete_dots: Delete…
+  title: Connections
+  all_connections: All Connections
+  groups_label: GROUPS
+  empty_here: No connections here
+  no_matches: No matches
+  manager_hint: click to connect · right-click for more
+  new_group_item: New Group
+  delete_group: Delete Group
+  rename_group: Rename Group
+  no_group_item: No Group
+  field:
+    account_id: Account ID
+    account: Account
+    warehouse: Warehouse
+    role: Role
+    schema: Schema
+    project: Project
+    dataset: Dataset
+    key_file: Key File
+    region: Region
+    access_key: Access Key
+    endpoint: Endpoint
+  ph:
+    cloudflare_account: Cloudflare account id
+    dataset: my_dataset (optional)
+    endpoint: http://localhost:8000 (optional)
+    name: My database
+    password: "Password (stored in %{store})"
+    folder: No folder
+    ssh_secret: "Stored in %{store}"
+    # Database-field placeholders per engine (engine.rs); the real database
+    # names inside them (FREEPDB1, 0) stay raw.
+    database_service: Service name (FREEPDB1)
+    database_keyspace: Keyspace (optional)
+    database_index: Database index (0)
+    database_optional: Database (optional)
+  tag:
+    none: none
+    local: local
+    development: development
+    testing: testing
+    staging: staging
+    production: production
+
+toast:
+  connected_no_schemas: Connected — no schemas found.
+  schema_list_failed: "Connected, but schema list failed: %{error}"
+  objects_failed: "Object list failed: %{error}"
+  open_database_failed: "Can't open %{name}: %{error}"
+  enter_password: "%{name}: enter the password to connect."
+  feature_unavailable: "%{feature} isn't available for %{engine}."
+  reloaded: Reloaded
+  reconnected: Reconnected to %{name}
+  reconnect_failed: "Reconnect failed: %{error}"
+  indexes_failed: "Indexes: %{error}"
+  triggers_failed: "Triggers: %{error}"
+  ddl_failed: "DDL: %{error}"
+
+compose:
+  no_supported: no database services Tusk supports
+  nothing_to_import: "nothing to import — %{services}"
+  detail: "Docker Compose: %{detail}"
+  no_file: no compose.yaml / docker-compose.yml in %{path}
+  no_services: "no `services:` in the compose file"
+  skip_no_image: "%{service} (no image)"
+  skip_no_port: "%{service} (port %{port} not published)"
+  skip_imported: "%{service} (already imported)"
+  skip_name_taken: "%{service} (name %{name} taken)"
+
+# The migrate / import sheet (app_migrate): review, import, summary. Service
+# and connection names, hosts, ports, engine names and raw failure causes
+# stay parameters.
+migrate:
+  review_title: Bring your connections over
+  importing_title: Moving in…
+  done_title: All set
+  tableplus_subtitle: Groups, tags, colors, SSH and saved passwords come along.
+  compose_subtitle: Database services of “%{project}” go into the %{project} folder, passwords included.
+  progress: "%{done} of %{total} imported"
+  done_summary: "%{connections} and %{passwords} imported"
+  connections_one: "%{count} connection"
+  connections_many: "%{count} connections"
+  passwords_one: "%{count} password"
+  passwords_many: "%{count} passwords"
+  skipped: "Skipped: %{items}"
+  import_one: Import %{count} Connection
+  import_many: Import %{count} Connections
+  open_connections: Open Connections
+  failed: "%{name}: %{error}"
+
+feature:
+  backup: Backup
+  restore: Restore
+  process_list: The process list
+  search_database: Search in database
+  user_management: User management
+
+sidebar:
+  loading: Loading objects…
+  empty: "No %{kind} in this schema."
+  header: "%{title} (%{count})"
+  filter: Filter
+  filter_ph: Filter…
+  untitled: untitled
+
+history:
+  search_ph: Search history…
+
+tab:
+  no_table: No table open
+  no_table_hint: Click a table in the sidebar, or press [cmd-p] to quick-open.
+  close_question: Close this tab?
+  draft_not_created: The new table hasn't been created yet.
+  unsaved_one: "%{count} unsaved change will be discarded."
+  unsaved_many: "%{count} unsaved changes will be discarded."
+  data: Data
+  structure: Structure
+  index: Index
+  triggers: Triggers
+  add_row: + Row
+  add_column: + Column
+  add_index: + Index
+  add_trigger: + Trigger
+  cols_one: "%{count} column"
+  cols_many: "%{count} columns"
+  indexes_one: "%{count} index"
+  indexes_many: "%{count} indexes"
+  triggers_count_one: "%{count} trigger"
+  triggers_count_many: "%{count} triggers"
+  row_range: "%{from}–%{to} of %{rows}"
+  filtered: (filtered)
+
+dialog:
+  run_dangerous: Run a dangerous statement?
+  run_write_one: Run a statement that writes to the database?
+  run_write_many: Run statements that write to the database?
+  more_lines: "\n… and %{count} more"
+  safe_mode_note: "%{detail}\n\n(Safe mode — Settings ▸ Safe Mode)"
+  new_connection: Create a new connection
+  connection: "%{engine} Connection"
+  edit_connection: "Edit %{engine} Connection"
+  name: Name
+  status_color: Status Color
+  tag: Tag
+  group: Group
+  no_group: No group
+  password: Password
+  host_socket: Host/Socket
+  port: Port
+  user: User
+  service: Service
+  keyspace: Keyspace
+  database: Database
+  database_id: Database ID
+  ssl_mode: SSL mode
+  path: Path
+  url: URL
+  auth_token: Auth Token
+  api_token: API Token
+  access_token: Access Token
+  secret_key: Secret Key
+  private_key: Private Key
+  server: Server
+  passphrase: Passphrase
+  use_ssh_key: Use SSH key
+  ssh_key_hint: Leave the key empty to use ~/.ssh/id_ed25519 or id_rsa.
+  file_created_hint: A file that doesn't exist yet is created.
+  browse: Browse…
+  store_in: "Store in %{store}"
+  back: Back
+  over_ssh: Over SSH
+  save: Save
+  test: Test
+  connect: Connect
+  create: Create
+  import: Import
+  import_url: Import from URL
+  enter_url: Enter a connection URL like mysql://user@host/db.
+  choose: Choose
+  delete: Delete
+  truncate: Truncate
+  drop: Drop
+  disconnect: Disconnect
+  switch: Switch
+  save_changes: Save changes to the database?
+  name_taken: "A connection named “%{name}” already exists. Pick another name."
+  fill:
+    file: Fill in the name and the database file.
+    url_token: Fill in the name and the server URL.
+    cloudflare_d1: Fill in the name, account id and database id.
+    snowflake: Fill in the name, account and user.
+    bigquery: Fill in the name and the project.
+    dynamodb: Fill in the name and the region (or an endpoint).
+    server: Fill in name, host, port, database and user.
+
+editor:
+  placeholder: Write SQL…
+  ask_ai_fix: Ask AI to Fix
+  run_all: Run All
+  run_current: Run Current
+  run_hint: "[cmd-enter] run current (or selection) · [cmd-shift-enter] run all"
+  view_name: View name
+  view_create_hint: "[cmd-s] creates the view"
+  create_table_hint: "[cmd-s] creates the table"
+  select_first: Select some text first.
+  text_size: Text size %{size}
+
+result:
+  no_rows: No rows
+  row_count_one: "%{count} row"
+  row_count_many: "%{count} rows"
+  tab_label: "Result %{index}"
+  ms_elapsed: "%{ms} ms"
+  ms_truncated: "%{ms} ms · truncated"
+  rows_ms: "%{rows} · %{ms} ms"
+  rows_ms_truncated: "%{rows} · %{ms} ms · truncated at %{limit}"
+  truncated_message: "%{rows} (truncated at %{limit})"
+  read_only: read-only
+  editable_hint: "Editable — double-click a cell, %{key}-s to save"
+  completed_before: "%{error}\n\nCompleted before the error:\n%{done}"
+
+sql:
+  run_hint: Run a query with [cmd-enter]
+  running: Running…
+  result_row: Result row
+  no_triggers: No triggers
+
+grid:
+  edit_cell: Edit Cell
+  set_null: Set NULL
+  set_empty_string: Set Empty String
+  copy_value: Copy Value
+  copy_column_name: Copy Column Name
+  copy_row_as: Copy Row As
+  send_row_to_chat: Send Row to Chat
+  undo_delete_row: Undo Delete Row
+  delete_row: Delete Row
+  ascending: Ascending
+  descending: Descending
+  row_of: Row of %{table}
+  bytea_preview: '\x%{hex}… (%{count} bytes)'
+  pasted_one: Pasted %{count} cell
+  pasted_many: Pasted %{count} cells
+
+filter:
+  raw_sql: Raw SQL
+  value_ph: Value
+  apply: Apply
+  apply_all: Apply All
+  export: Export
+  toggle: Filters
+  toggle_on: "Filters •"
+  limit_offset: Limit / offset
+  prev_page: Previous page
+  next_page: Next page
+  page_hint: "[cmd-left] / [cmd-right] previous / next page"
+  limit: Limit
+  offset: Offset
+  go: Go
+  default_sort: Default Filter Column Sort
+  default_column: Default Filter Column
+  default_operator: Default Filter Operator
+  default_state: Default Filter State
+  default_table_sort: Default Table Sort
+  enabled: Enabled
+  disabled: Disabled
+  sort_table_order: Table order
+  sort_alphabetical: Alphabetical
+  col_first: First column
+  col_pk: Primary key
+  tsort_pk_asc: Primary key ascending
+  tsort_pk_desc: Primary key descending
+  tsort_none: None
+  op:
+    eq: '='
+    ne: '<>'
+    lt: '<'
+    gt: '>'
+    le: '<='
+    ge: '>='
+    is_null: IS NULL
+    is_not_null: IS NOT NULL
+    between: BETWEEN
+    contains: Contains
+    not_contains: Not contains
+    has_prefix: Has prefix
+    has_suffix: Has suffix
+  quick:
+    eq: "= '%{value}'"
+    ne: "<> '%{value}'"
+
+cell:
+  time: Time
+  not_integer: “%{value}” isn't a whole number (%{type}).
+  not_number: “%{value}” isn't a number (%{type}).
+
+chat:
+  failed_query: Failed query
+  error: Error
+
+# Pending-change / save flow of the tab views (batch 4b).
+changes:
+  none_save: No changes to save.
+  saved_one: Saved — %{count} statement, %{rows} affected · %{ms} ms
+  saved_many: Saved — %{count} statements, %{rows} affected · %{ms} ms
+  rolled_back: "Save failed (rolled back): %{error}"
+  name_table_first: Name the new table first.
+  name_view_first: Name the view and write its query first.
+  pending_one: "%{count} unsaved change"
+  pending_many: "%{count} unsaved changes"
+  query_one: "%{count} unsaved query"
+  query_many: "%{count} unsaved queries"
+  none_discard: No changes to discard.
+  discarded_one: Discarded %{count} change
+  discarded_many: Discarded %{count} changes
+  discarded_draft: Discarded new table “%{name}”
+  none_undo: Nothing to undo.
+  none_redo: Nothing to redo.
+  none_preview: No changes to preview.
+  preview: Preview changes
+
+# Table structure editor (structure view + table header labels).
+structure:
+  col_name: column_name
+  data_type: data_type
+  nullable: is_nullable
+  col_default: column_default
+  fk: foreign_key
+  comment: comment
+  primary: Primary
+  none: none
+  no_columns: No columns
+  validation: Give every new column a name and a data type.
+  add_column: Add Column
+  keep_column: Keep Column
+  delete_column: Delete Column
+
+# Index editor (index view of a table tab).
+indexes:
+  name: index_name
+  algorithm: index_algorithm
+  unique: is_unique
+  condition: condition
+  include: include
+  no_indexes: No indexes
+  validation: Give every new index at least one column.
+
+# Structure / index edits the engine can't express as DDL (ddl.rs). The engine
+# names, SQL keywords (NOT NULL) and column identifiers stay raw.
+ddl:
+  no_comments: "%{engine} columns have no comments"
+  sqlite_retype: SQLite can't change the type, nullability or default of %{column} in place — rename, add or drop columns, or rebuild the table.
+  cassandra_columns: Cassandra columns can only be added, dropped or (key columns) renamed.
+  cassandra_pk: "A Cassandra table needs a primary key: mark its key columns."
+  cassandra_unique_index: Cassandra secondary indexes can't be unique.
+  cassandra_rename: Cassandra tables can't be renamed.
+  bigquery_not_null: BigQuery can't make a column NOT NULL after the fact.
+  snowflake_default: Snowflake can only set a column default when the column is added.
+  redshift_nullable: Redshift can't change a column's nullability.
+  redshift_default: Redshift can't change a column's default.
+  no_index_support: "%{engine} has no indexes to create"
+  no_partial_index: "%{engine} indexes can't be partial"
+
+# Sidebar object list: context menus, groups, import / duplicate / truncate.
+objects:
+  open: Open
+  select: Select
+  open_structure: Open Structure
+  copy_name: Copy Name
+  copy_script_as: Copy Script As
+  open_script_editor: Open Script in Editor
+  new_query: New Query
+  new_table_dots: New Table…
+  new_view_dots: New View…
+  new_table: New Table
+  new_view: New View
+  new_function: New Function/Procedure
+  export_dots: Export…
+  import_csv_dots: Import from CSV…
+  move_to_group: Move to Group
+  rename_dots: Rename…
+  dup_structure: Structure Only
+  dup_data: Structure and Data
+  duplicate: Duplicate
+  truncate_dots: Truncate…
+  truncate_cascade_dots: Truncate Cascade…
+  truncate_q: "Truncate “%{name}”?"
+  truncate_detail: Deletes every row of the table. This can't be undone.
+  truncate_cascade_detail: Deletes every row, and every row referencing it in other tables (CASCADE). This can't be undone.
+  truncated: Truncated %{name}
+  truncate_failed: "Truncate failed: %{error}"
+  script_failed: "Script failed: %{error}"
+  copied_script: Copied %{label} script of %{name}
+  created: Created %{name}
+  duplicate_failed: "Duplicate failed: %{error}"
+  imported: Imported %{rows} into %{name}
+  import_failed: "Import failed: %{error}"
+  rename_group: Rename Group
+  delete_group: Delete Group
+  new_group_dots: New Group…
+  no_group: No Group
+  design_unavailable: Designing tables isn't available for %{engine} yet — use CREATE TABLE in a query tab.
+  csv_no_header: The CSV file has no header line.
+  json_not_array: "Not a JSON array of objects: %{error}"
+
+# User management tool (roles).
+users:
+  roles_failed: "Roles: %{error}"
+  name_first: Name the role first.
+  saved: Saved role %{name}
+  not_saved: "Role not saved: %{error}"
+  drop_q: "Drop role “%{name}”?"
+  drop_detail: Objects it owns must be reassigned or dropped first.
+  dropped: Dropped role %{name}
+  drop_failed: "Drop role %{name}: %{error}"
+  role_name: Role name
+  conn_limit: Conn. limit
+  valid_until: Valid until
+  can_login: Can log in
+  superuser: Superuser
+  create_db: Create databases
+  create_roles: Create roles
+  inherit: Inherit privileges
+  replication: Replication
+  bypass_rls: Bypass RLS
+  member_of: Member of
+  new_role: New Role
+  pw_unchanged: unchanged
+  limit_none: -1 (no limit)
+  never_expires: never expires
+  name_ph: role_name
+  super_badge: super
+
+# Process list and search-in-database tools.
+tools:
+  list_failed: "Process list: %{error}"
+  select_first: Select a process first.
+  kill_q: Kill session %{pid}?
+  cancel_q: Cancel the query of session %{pid}?
+  cancel_query: Cancel Query
+  kill: Kill
+  signalled: Signalled session %{pid}
+  kill_failed: "Kill session %{pid}: %{error}"
+  cancel_failed: "Cancel the query of session %{pid}: %{error}"
+  search_ph: Search every table for…
+  searching: Searching…
+  search_hint: Enter searches the rows of every table and view in this schema.
+  search_none: "No rows contain “%{query}”."
+  found_one: "“%{query}” found in %{count} table."
+  found_many: "“%{query}” found in %{count} tables."
+
+# Bottom panel (console / history / problems).
+panels:
+  console: Console
+  history: History
+  console_empty: Every statement Tusk sends shows up here.
+  no_problems: No problems in the open queries.
+  history_empty: Queries you run on this connection appear here.
+  history_none: No matching queries.
+  run_new_tab: Run in New Tab
+  open_new_tab: Open in New Tab
+  remove_history: Remove from History
+  copy_error: Copy with Error
+  clear_history_q: Clear the query history?
+  clear_history_detail: "Every query run on “%{conn}” is removed."
+  all: All
+  meta: Meta
+
+# Row detail panel (right sidebar).
+rowdetail:
+  row: Row
+  title: "%{table} · row %{row}"
+  narrow: Narrow
+  wide: Wide
+  hint: Select a row in the data grid to see it here.
+  format: Format
+  invalid_json: "Invalid JSON: %{error}"
+  not_saved: "Not saved — invalid JSON: %{error}"
+  cant_format: "Can't format: the JSON is invalid."
+  panel: Row Detail
+  time: Time
+
+# "Copy Row As" submenu: SQL verb phrases; format names stay canonical.
+copy_as:
+  insert: SQL INSERT
+  update: SQL UPDATE
+
+# SQL completion popup kind labels; API terms (db, cursor, collection) and
+# language names (PartiQL, CQL) stay English.
+complete:
+  table: Table
+  view: View
+  function: function
+
+# Theme pieces with prose: the button that reveals a written file in this
+# platform's file manager (theme.rs).
+theme:
+  reveal_macos: Show in Finder
+  reveal_windows: Show in Explorer
+  reveal_linux: Show in Folder
+
+# Backup / Restore window (File ▸ Backup / Restore). Client tool names
+# (pg_dump / psql), option flags and the `{database}_{date}` template stay raw.
+backup:
+  search_db_ph: Search for database…
+  pick_first: Pick a connection and a database first.
+  no_tools: PostgreSQL client tools are missing from this build.
+  running: Backing up %{database}…
+  saved_to: Backup saved to %{path}
+  restore_q: "Restore into “%{database}”?"
+  restoring_into: Restoring into %{database}…
+  restored_into: Restored into %{database}
+  create_db_q: "Create database “%{name}”?"
+  create_db_detail: To use another name, type it in the database search first.
+  password_for: "Password for “%{name}”"
+  no_client_tools: No client tools found
+  choose_version: Choose version
+  add_option: Add option…
+  options_none: Options…
+  gzip: Compress file using Gzip
+  new_database: New database
+  start_backup: Start backup…
+  start_restore: Start restore…
+  title_backup: Backup database
+  title_restore: Restore database
+  tool_not_found: "%{tool} not found in %{dir}"
+  tool_exited: "%{tool} exited with %{status}"
+  psql_missing: psql not found; install PostgreSQL client tools or set TUSK_PG_BIN
+  token_conn: Connection name
+  token_db: Database name
+
+# Export window (File ▸ Export). Format names (CSV / JSON / SQL), delimiter
+# chars, line-break escapes and the {table}/{date}/{time} tokens stay raw.
+export:
+  not_connected: Not connected.
+  here: Export Here
+  running: Exporting…
+  done: Exported %{rows} to %{path}
+  title_filter: Export filter result
+  title_table: Export %{name}
+  title_tables: Export %{count} tables
+  title_result: Export query result
+  tables_label: Tables to export
+  all_fields: All fields
+  fields_of: "%{picked} of %{total} fields"
+  fields_label: Select fields to export
+  query_label: Export query
+  result_note: the rows of %{title}, as shown
+  null_empty: Convert NULL to EMPTY
+  lb_space: Convert line break to space
+  header_row: Put field names in the first row
+  delimiter: Delimiter
+  tab: Tab
+  quoting: Quoting
+  quote_if_needed: Quote if needed
+  quote_all: Quote all fields
+  quote_never: Never quote
+  line_break: Line break
+  decimal: Decimal
+  pretty: Pretty print
+  include_drop: Include DROP TABLE statement
+  include_create: Include CREATE TABLE statement
+  include_data: Include content (INSERT)
+  rows_per_insert: Rows / INSERT
+  tables_dots: Export %{count} Tables…
+  token_table: Table name
+
+# File ▸ Open / Save As / Import / Export panels (app_files). Suggested file
+# names and the "path: OS error" causes stay raw; only the prose is keyed.
+files:
+  save_query_hint: Open a query tab to save it as a file.
+  import_target_hint: Open or select the table to import into first.
+  run_dump_q: "Run %{file} on %{database}?"
+  run_dump_detail: Every statement in the file runs in one transaction.
+  ran: Ran %{name}
+  import_rolled_back: "Import failed (rolled back): %{error}"
+  saved: Saved %{path}
+  export_table_hint: Open a table to export it.
+
+# The AI panel (agent.rs / app_agent.rs / acp.rs / acp_registry.rs). Agent
+# names (Claude, Codex, …), ACP/MCP wire text, tool payloads and the raw
+# causes coming from the agent process stay parameters.
+agent:
+  status:
+    starting: Starting…
+    starting_agent: "Starting %{agent}…"
+    installing: "Installing %{agent}…"
+    connecting: Connecting…
+    opening_chat: Opening a chat…
+    opening_session: Opening the chat…
+    signing_in: "Signing in with %{method}…"
+    exited: "%{agent} exited."
+    failed_start: "%{agent} couldn't start"
+  notice:
+    max_tokens: The reply hit the token limit.
+    max_turns: The agent hit its turn limit.
+    refused: The agent declined to continue.
+    continuing: Continuing this chat (the agent can't show its earlier messages).
+    finish_console: "Finish signing in to %{agent} in the console window, then press Retry."
+    finish_terminal: "Finish signing in to %{agent} in Terminal, then press Retry."
+  content:
+    image: "*(image)*"
+    audio: "*(audio)*"
+    tool: Tool
+  error:
+    agent_exited: The agent exited
+    no_stdin: no stdin
+    no_stdout: no stdout
+    no_stderr: no stderr
+    no_message: error
+  install:
+    needs_uv: "%{agent} needs uv (uvx) installed"
+    needs_node: "%{agent} needs Node.js — install it from nodejs.org, then try again"
+    npm_failed: "npm install %{package} failed:\n%{error}"
+    checksum_failed: "%{agent} download failed its checksum"
+    unpack_failed: "unpacking %{file} failed"
+    no_executable: "%{package} has no executable"
+    download_failed: "download failed: %{url}"
+  session:
+    untitled: Untitled chat
+  panel:
+    ai_chat: AI Chat
+    new_chat: New Chat
+    new_chat_with: "New Chat with %{agent}"
+    new_chat_named: "New Chat · %{agent}"
+    custom_agents: Custom Agents
+    installed: Installed
+    acp_registry: ACP Registry
+    history: History
+    chat_history: Chat History
+    no_agents: No agents available.
+    no_history: No earlier chats yet.
+    no_history_agent: This agent doesn't keep a chat history.
+    empty_title: "Chat with %{agent}"
+    empty_hint: It can read your database's structure and write queries into a tab. Running them stays with you.
+    sign_in: "Sign in to %{agent}"
+    retry: Retry
+    plan: "Plan %{done}/%{total}"
+    working: Working…
+    thinking: Thinking
+    thought: Thought
+    stop: Stop
+    send: Send
+    search_ph: Search…
+    no_match: No match
+    placeholder: "Ask about your data, or for a query…  (/ commands · @ tables)"
+  attach:
+    query: "Query \"%{name}\""
+    selection: "Selection from \"%{name}\""
+    row: "Row of %{table}"
+  tool:
+    wrote_query: Wrote a query to a new tab
+    updated_query: Updated the open query
+    saw_context: Looked at the connection
+    listed_tables: Listed the tables
+    read_structure: "Read the structure of %{table}"
+    a_table: a table
+    read_open_query: Read the open query
+    open_in_tab: Open in a query tab
+  toast:
+    query_empty: The query is empty.
+    tools_unavailable: "AI tools unavailable: %{error}"
+    wrote_to_tab: "AI wrote a query to \"%{title}\" — review and run it"
+  chat:
+    attach_only: Take a look at the attached.
+  time:
+    now: now
+    minutes: "%{count}m ago"
+    hours: "%{count}h ago"
+    days: "%{count}d ago"
+
+db:
+  load_notice_kept: "Couldn't read %{name} (%{error}). It was kept as %{backup}."
+  load_notice_sideline: "Couldn't read %{name} (%{error}) or set it aside (%{err})."
+
+drivers:
+  snowflake_account: Fill in the account
+  snowflake_auth: Enter an access token or choose a private key
+  bigquery_key: Choose a service-account key file (or run gcloud auth application-default login).
+  bigquery_project: Fill in the project
+  bigquery_token: No access token in the OAuth reply
+  http_timeout: "The server didn't answer in time."
+  redis_close: "Redis can only close a client's connection."
+  mongo_missing: The document was not found (changed or deleted elsewhere?)
+  dynamo_binary: Binary values are hex

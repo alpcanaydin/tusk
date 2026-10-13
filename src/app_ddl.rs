@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::objects::{ObjKind, Script};
+use crate::tr;
 
 impl TuskApp {
     /// DDL view: the table's full `CREATE` statement, read-only (selectable,
@@ -42,7 +43,7 @@ impl TuskApp {
                         st.set_value(sql, window, cx);
                         st.set_readonly(true, cx);
                     }),
-                    Err(e) => this.toast(false, format!("DDL: {e}")),
+                    Err(e) => this.toast(false, tr!("toast.ddl_failed", error = e)),
                 }
                 cx.notify();
             });
@@ -104,7 +105,7 @@ impl TuskApp {
                             t.trigger_count = Some(n);
                         }
                     }
-                    Err(e) => this.toast(false, format!("Triggers: {e}")),
+                    Err(e) => this.toast(false, tr!("toast.triggers_failed", error = e)),
                 }
                 cx.notify();
             });

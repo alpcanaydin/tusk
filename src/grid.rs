@@ -25,6 +25,7 @@ use serde_json::Value;
 
 use crate::cell_edit::{self, CellEditHost, CellEditor};
 use crate::db::{self, DbResult, GridColumnMeta, Stmt, WhereClause};
+use crate::tr;
 
 pub const WINDOW_ROWS: i64 = 200;
 /// Rows per page (bottom bar ‹ › / Limit).
@@ -1253,7 +1254,7 @@ pub(crate) fn render_value(
                 let hex = s.strip_prefix("\\x").unwrap_or(s);
                 let preview: String = hex.chars().take(48).collect();
                 if hex.chars().count() > 48 {
-                    format!("\\x{preview}… ({} bytes)", hex.len() / 2)
+                    tr!("grid.bytea_preview", hex = preview, count = hex.len() / 2)
                 } else {
                     format!("\\x{preview}")
                 }
@@ -1293,7 +1294,7 @@ impl TableDelegate for GridDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        crate::theme::empty_state("No rows", cx)
+        crate::theme::empty_state(tr!("result.no_rows"), cx)
     }
     fn columns_count(&self, _cx: &App) -> usize {
         self.columns.len()
@@ -1489,6 +1490,8 @@ impl TableDelegate for GridDelegate {
             })
             .map(|this| {
                 // New row, column not set yet: the database default applies.
+                // "DEFAULT" stays English like "NULL" — an SQL keyword marker,
+                // not prose.
                 if value.is_none() && self.is_new_row(row_ix) {
                     let muted = cx.theme().muted_foreground;
                     this.child(
@@ -1568,6 +1571,16 @@ impl TableDelegate for GridDelegate {
     }
 }
 
+/// `theme::danger_item` for localized labels (tr! yields a String, not
+/// `&'static str`); mirrors its red-text rendering.
+pub(crate) fn danger_item_owned(
+    label: String,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> PopupMenuItem {
+    PopupMenuItem::element(move |_, cx| div().text_color(cx.theme().red).child(label.clone()))
+        .on_click(on_click)
+}
+
 /// Right-click menu of one data cell: edit / set value, copy
 /// (value, column name, row as TSV/CSV/JSON/SQL/Markdown), quick filter and
 /// sort on this column, delete row.
@@ -1600,20 +1613,23 @@ fn cell_menu(
     let copy_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
         for fmt in CopyFormat::ALL {
             let e = e.clone();
-            m = m.item(PopupMenuItem::new(fmt.label()).on_click(move |_, _, cx| {
-                let d = e.read(cx).delegate();
-                let (cols, key) = (d.column_names(), d.key_columns());
-                let Some(row) = d.row_values(row_ix) else {
-                    return;
-                };
-                let target = Target {
-                    schema: &d.schema,
-                    table: &d.table,
-                    key: &key,
-                };
-                let out = format_rows(fmt, &cols, &[row], Some(&target), fmt != CopyFormat::Json);
-                cx.write_to_clipboard(ClipboardItem::new_string(out));
-            }));
+            m = m.item(
+                PopupMenuItem::new(fmt.display_label()).on_click(move |_, _, cx| {
+                    let d = e.read(cx).delegate();
+                    let (cols, key) = (d.column_names(), d.key_columns());
+                    let Some(row) = d.row_values(row_ix) else {
+                        return;
+                    };
+                    let target = Target {
+                        schema: &d.schema,
+                        table: &d.table,
+                        key: &key,
+                    };
+                    let out =
+                        format_rows(fmt, &cols, &[row], Some(&target), fmt != CopyFormat::Json);
+                    cx.write_to_clipboard(ClipboardItem::new_string(out));
+                }),
+            );
         }
         m
     });
@@ -1636,34 +1652,50 @@ fn cell_menu(
             let m = if is_null {
                 m
             } else {
-                m.item(quick(format!("= '{short}'"), FilterOp::Eq, text.clone()))
-                    .item(quick(format!("<> '{short}'"), FilterOp::Ne, text.clone()))
-                    .separator()
-            };
-            m.item(quick("IS NULL".into(), FilterOp::IsNull, String::new()))
-                .item(quick(
-                    "IS NOT NULL".into(),
-                    FilterOp::IsNotNull,
-                    String::new(),
+                m.item(quick(
+                    tr!("filter.quick.eq", value = short),
+                    FilterOp::Eq,
+                    text.clone(),
                 ))
+                .item(quick(
+                    tr!("filter.quick.ne", value = short),
+                    FilterOp::Ne,
+                    text.clone(),
+                ))
+                .separator()
+            };
+            m.item(quick(
+                tr!("filter.op.is_null"),
+                FilterOp::IsNull,
+                String::new(),
+            ))
+            .item(quick(
+                tr!("filter.op.is_not_null"),
+                FilterOp::IsNotNull,
+                String::new(),
+            ))
         }
     });
     let e = entity.clone();
     let sort_menu = PopupMenu::build(window, cx, move |m, _, _| {
         let (e1, e2) = (e.clone(), e.clone());
-        m.item(PopupMenuItem::new("Ascending").on_click(move |_, _, cx| {
-            e1.update(cx, |st, cx| st.delegate_mut().sort_by(col_ix, false, cx));
-        }))
-        .item(PopupMenuItem::new("Descending").on_click(move |_, _, cx| {
-            e2.update(cx, |st, cx| st.delegate_mut().sort_by(col_ix, true, cx));
-        }))
+        m.item(
+            PopupMenuItem::new(tr!("grid.ascending")).on_click(move |_, _, cx| {
+                e1.update(cx, |st, cx| st.delegate_mut().sort_by(col_ix, false, cx));
+            }),
+        )
+        .item(
+            PopupMenuItem::new(tr!("grid.descending")).on_click(move |_, _, cx| {
+                e2.update(cx, |st, cx| st.delegate_mut().sort_by(col_ix, true, cx));
+            }),
+        )
     });
 
     let mut menu = menu;
     if editable {
         let e = entity.clone();
         menu = menu.item(
-            PopupMenuItem::new("Edit Cell")
+            PopupMenuItem::new(tr!("grid.edit_cell"))
                 .action(Box::new(crate::actions::GridEdit))
                 .on_click(move |_, window, cx| {
                     e.update(cx, |st, cx| {
@@ -1674,7 +1706,7 @@ fn cell_menu(
         );
         let e = entity.clone();
         menu = menu.item(
-            PopupMenuItem::new("Set NULL")
+            PopupMenuItem::new(tr!("grid.set_null"))
                 .action(Box::new(crate::actions::GridSetNull))
                 .on_click(move |_, _, cx| {
                     e.update(cx, |st, cx| {
@@ -1686,7 +1718,7 @@ fn cell_menu(
         let e = entity.clone();
         menu = menu
             .item(
-                PopupMenuItem::new("Set Empty String").on_click(move |_, _, cx| {
+                PopupMenuItem::new(tr!("grid.set_empty_string")).on_click(move |_, _, cx| {
                     e.update(cx, |st, cx| {
                         st.delegate_mut().set_empty(row_ix, col_ix);
                         cx.notify();
@@ -1698,21 +1730,21 @@ fn cell_menu(
     let copy_value = text.clone();
     menu = menu
         .item(
-            PopupMenuItem::new("Copy Value")
+            PopupMenuItem::new(tr!("grid.copy_value"))
                 .action(Box::new(crate::actions::GridCopy))
                 .on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()));
                 }),
         )
         .item(
-            PopupMenuItem::new("Copy Column Name").on_click(move |_, _, cx| {
+            PopupMenuItem::new(tr!("grid.copy_column_name")).on_click(move |_, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
             }),
         )
-        .item(PopupMenuItem::submenu("Copy Row As", copy_menu))
+        .item(PopupMenuItem::submenu(tr!("grid.copy_row_as"), copy_menu))
         .item({
             let e = entity.clone();
-            PopupMenuItem::new("Send Row to Chat")
+            PopupMenuItem::new(tr!("grid.send_row_to_chat"))
                 .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
@@ -1721,13 +1753,19 @@ fn cell_menu(
                     };
                     let view = cx.global::<crate::app::TuskHandle>().0.clone();
                     view.update(cx, |app, cx| {
-                        app.send_to_chat(format!("Row of {table}"), json, "json", window, cx)
+                        app.send_to_chat(
+                            tr!("grid.row_of", table = table),
+                            json,
+                            "json",
+                            window,
+                            cx,
+                        )
                     });
                 })
         })
         .separator()
-        .item(PopupMenuItem::submenu("Filter", filter_menu))
-        .item(PopupMenuItem::submenu("Sort", sort_menu));
+        .item(PopupMenuItem::submenu(tr!("common.filter"), filter_menu))
+        .item(PopupMenuItem::submenu(tr!("common.sort"), sort_menu));
     if editable {
         let e = entity.clone();
         let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
@@ -1737,9 +1775,9 @@ fn cell_menu(
             });
         };
         menu = menu.separator().item(if deleted {
-            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+            PopupMenuItem::new(tr!("grid.undo_delete_row")).on_click(toggle)
         } else {
-            crate::theme::danger_item("Delete Row", toggle)
+            danger_item_owned(tr!("grid.delete_row"), toggle)
         });
     }
     menu

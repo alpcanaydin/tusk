@@ -19,6 +19,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::db::{self, SavedConnection, SslMode};
+use crate::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
@@ -170,7 +171,11 @@ fn run_tool(
 ) -> Result<String, String> {
     let path = dir.join(format!("{tool}{}", std::env::consts::EXE_SUFFIX));
     if !path.is_file() {
-        return Err(format!("{tool} not found in {}", dir.display()));
+        return Err(tr!(
+            "backup.tool_not_found",
+            tool = tool.to_string(),
+            dir = dir.display().to_string()
+        ));
     }
     let out = Command::new(&path)
         .arg("-h")
@@ -197,7 +202,11 @@ fn run_tool(
     if out.status.success() {
         Ok(log)
     } else if log.trim().is_empty() {
-        Err(format!("{tool} exited with {}", out.status))
+        Err(tr!(
+            "backup.tool_exited",
+            tool = tool.to_string(),
+            status = out.status.to_string()
+        ))
     } else {
         Err(log)
     }
@@ -212,7 +221,7 @@ pub fn run_sql_file(ep: &Endpoint, db: &str, file: &Path) -> Result<String, Stri
     let tools = installed_tools();
     let t = pick_tools(&tools, None)
         .and_then(|i| tools.get(i))
-        .ok_or("psql not found; install PostgreSQL client tools or set TUSK_PG_BIN")?;
+        .ok_or_else(|| tr!("backup.psql_missing"))?;
     let args: Vec<String> = [
         "-X",
         "-q",
@@ -396,12 +405,11 @@ impl BackupWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = |p: &str, window: &mut Window, cx: &mut Context<Self>| {
-            let p = p.to_string();
+        let search = |p: String, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(p))
         };
-        let conn_search = search("Search for connection…", window, cx);
-        let db_search = search("Search for database…", window, cx);
+        let conn_search = search(tr!("conn.search_ph"), window, cx);
+        let db_search = search(tr!("backup.search_db_ph"), window, cx);
         let file_name = cx.new(|cx| {
             let mut st = InputState::new(window, cx);
             st.set_value("{database}_{date}".to_string(), window, cx);
@@ -410,7 +418,7 @@ impl BackupWindow {
         let password = cx.new(|cx| {
             InputState::new(window, cx)
                 .masked(true)
-                .placeholder("Password")
+                .placeholder(tr!("dialog.password"))
         });
         let mut subs: Vec<Subscription> = [&conn_search, &db_search]
             .into_iter()
@@ -564,7 +572,14 @@ impl BackupWindow {
         if self.store_password
             && let Err(e) = db::save_password(&name, &pw)
         {
-            self.notice = Some((false, format!("{} error: {e}", db::CREDENTIAL_STORE)));
+            self.notice = Some((
+                false,
+                tr!(
+                    "conn.credential_error",
+                    store = db::CREDENTIAL_STORE,
+                    error = e
+                ),
+            ));
         }
         self.passwords.insert(name, pw);
         let database = self.selected_db.clone();
@@ -580,15 +595,12 @@ impl BackupWindow {
             self.selected_db.clone(),
             self.endpoint.clone(),
         ) else {
-            self.notice = Some((false, "Pick a connection and a database first.".into()));
+            self.notice = Some((false, tr!("backup.pick_first")));
             cx.notify();
             return;
         };
         let Some(tools) = self.tool_ix.and_then(|i| self.tools.get(i)).cloned() else {
-            self.notice = Some((
-                false,
-                "PostgreSQL client tools are missing from this build.".into(),
-            ));
+            self.notice = Some((false, tr!("backup.no_tools")));
             cx.notify();
             return;
         };
@@ -622,7 +634,8 @@ impl BackupWindow {
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
                         this.saved = None;
-                        this.notice = Some((true, format!("Backing up {database}…")));
+                        this.notice =
+                            Some((true, tr!("backup.running", database = database.clone())));
                         cx.notify();
                     });
                     // pg_dump writes the plain file; gzip compresses it after.
@@ -645,7 +658,7 @@ impl BackupWindow {
                         this.busy = false;
                         this.notice = Some(match result {
                             Ok(file) => {
-                                let msg = format!("Backup saved to {}", file.display());
+                                let msg = tr!("backup.saved_to", path = file.display().to_string());
                                 this.saved = Some(file);
                                 (true, msg)
                             }
@@ -661,7 +674,7 @@ impl BackupWindow {
                     files: true,
                     directories: false,
                     multiple: false,
-                    prompt: Some("Restore".into()),
+                    prompt: Some(tr!("feature.restore").into()),
                 });
                 let handle = window.window_handle();
                 self.modal = true;
@@ -673,11 +686,16 @@ impl BackupWindow {
                     let confirmed = match &file {
                         // Return = Restore: the user just picked the file.
                         Some(file) => match handle.update(cx, |_, window, cx| {
+                            let (question, restore, cancel) = (
+                                tr!("backup.restore_q", database = database.clone()),
+                                tr!("feature.restore"),
+                                tr!("common.cancel"),
+                            );
                             window.prompt(
                                 PromptLevel::Warning,
-                                &format!("Restore into “{database}”?"),
+                                &question,
                                 Some(&format!("{}\n\n{}", file.display(), options.join(" "))),
-                                &["Restore", "Cancel"],
+                                &[restore.as_str(), cancel.as_str()],
                                 cx,
                             )
                         }) {
@@ -693,7 +711,10 @@ impl BackupWindow {
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = true;
                         this.saved = None;
-                        this.notice = Some((true, format!("Restoring into {database}…")));
+                        this.notice = Some((
+                            true,
+                            tr!("backup.restoring_into", database = database.clone()),
+                        ));
                         cx.notify();
                     });
                     let db2 = database.clone();
@@ -728,7 +749,10 @@ impl BackupWindow {
                     let _ = weak.update(cx, |this: &mut BackupWindow, cx| {
                         this.busy = false;
                         this.notice = Some(match result {
-                            Ok(_) => (true, format!("Restored into {database}")),
+                            Ok(_) => (
+                                true,
+                                tr!("backup.restored_into", database = database.clone()),
+                            ),
                             Err(e) => (false, e),
                         });
                         cx.notify();
@@ -759,11 +783,17 @@ impl BackupWindow {
             name = format!("restored_{n}");
             n += 1;
         }
+        let (question, detail, create, cancel) = (
+            tr!("backup.create_db_q", name = name.clone()),
+            tr!("backup.create_db_detail"),
+            tr!("dialog.create"),
+            tr!("common.cancel"),
+        );
         let answer = window.prompt(
             PromptLevel::Info,
-            &format!("Create database “{name}”?"),
-            Some("To use another name, type it in the database search first."),
-            &["Create", "Cancel"],
+            &question,
+            Some(&detail),
+            &[create.as_str(), cancel.as_str()],
             cx,
         );
         self.modal = true;
@@ -884,7 +914,7 @@ impl BackupWindow {
                 .p_3()
                 .text_sm()
                 .text_color(muted)
-                .child("Connecting…")
+                .child(tr!("welcome.connecting"))
                 .into_any_element();
         }
         if self.needs_password {
@@ -902,7 +932,7 @@ impl BackupWindow {
                     div()
                         .text_sm()
                         .text_color(fg)
-                        .child(format!("Password for “{name}”")),
+                        .child(tr!("backup.password_for", name = name)),
                 )
                 .child(Input::new(&self.password).small())
                 .child(
@@ -912,7 +942,7 @@ impl BackupWindow {
                         .gap_2()
                         .child(
                             Checkbox::new("bk-store-pw")
-                                .label(format!("Store in {}", db::CREDENTIAL_STORE))
+                                .label(tr!("dialog.store_in", store = db::CREDENTIAL_STORE))
                                 .checked(self.store_password)
                                 .on_click(cx.listener(|this, v: &bool, _, cx| {
                                     this.store_password = *v;
@@ -922,7 +952,7 @@ impl BackupWindow {
                         .child(div().flex_1())
                         .child(
                             Button::new("bk-pw-connect")
-                                .label("Connect")
+                                .label(tr!("dialog.connect"))
                                 .small()
                                 .primary()
                                 .on_click(cx.listener(|this, _, _, cx| this.submit_password(cx))),
@@ -984,9 +1014,9 @@ impl BackupWindow {
             .map(|t| t.label.clone())
             .unwrap_or_else(|| {
                 if self.tools.is_empty() {
-                    "No client tools found".into()
+                    tr!("backup.no_client_tools")
                 } else {
-                    "Choose version".into()
+                    tr!("backup.choose_version")
                 }
             });
         let (tools, current, view) = (self.tools.clone(), self.tool_ix, cx.entity());
@@ -1018,7 +1048,7 @@ impl BackupWindow {
         };
         let (picked, view) = (self.options.clone(), cx.entity());
         let add = Button::new("bk-add-option")
-            .label("Add option…")
+            .label(tr!("backup.add_option"))
             .small()
             .w_full()
             .disabled(!enabled)
@@ -1053,7 +1083,7 @@ impl BackupWindow {
                 div()
                     .text_sm()
                     .text_color(muted.opacity(0.6))
-                    .child("Options…"),
+                    .child(tr!("backup.options_none")),
             );
         }
         for (i, o) in self.options.iter().enumerate() {
@@ -1146,7 +1176,12 @@ impl BackupWindow {
             .flex()
             .items_center()
             .gap_2()
-            .child(div().text_sm().text_color(fg).child("File name:"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(fg)
+                    .child(tr!("common.file_name")),
+            )
             .child(
                 div().flex_1().child(
                     Input::new(&self.file_name)
@@ -1156,14 +1191,14 @@ impl BackupWindow {
             )
             .child(
                 Button::new("bk-customize")
-                    .label("Customize")
+                    .label(tr!("common.customize"))
                     .small()
                     .dropdown_menu(move |mut menu, _, _| {
                         for (label, token) in [
-                            ("Connection name", "{connection}"),
-                            ("Database name", "{database}"),
-                            ("Date (YYYY-MM-DD)", "{date}"),
-                            ("Time (HH-MM-SS)", "{time}"),
+                            (tr!("backup.token_conn"), "{connection}"),
+                            (tr!("backup.token_db"), "{database}"),
+                            (tr!("common.token_date"), "{date}"),
+                            (tr!("common.token_time"), "{time}"),
                         ] {
                             let v = view.clone();
                             menu = menu.item(PopupMenuItem::new(label).on_click(
@@ -1205,14 +1240,14 @@ impl BackupWindow {
             )
             .children(self.saved.clone().map(|path| {
                 Button::new("bk-reveal")
-                    .label(crate::theme::REVEAL_LABEL)
+                    .label(crate::theme::reveal_label())
                     .small()
                     .on_click(move |_, _, cx| cx.reveal_path(&path))
             }))
             .when(backup, |this| {
                 this.child(
                     Checkbox::new("bk-gzip")
-                        .label("Compress file using Gzip")
+                        .label(tr!("backup.gzip"))
                         .checked(self.gzip)
                         .on_click(cx.listener(|this, v: &bool, _, cx| {
                             this.gzip = *v;
@@ -1223,7 +1258,7 @@ impl BackupWindow {
             .when(!backup, |this| {
                 this.child(
                     Button::new("bk-newdb")
-                        .label("New database")
+                        .label(tr!("backup.new_database"))
                         .small()
                         .disabled(self.connected.is_none() || self.busy)
                         .on_click(cx.listener(|this, _, window, cx| this.new_database(window, cx))),
@@ -1232,9 +1267,9 @@ impl BackupWindow {
             .child(
                 Button::new("bk-start")
                     .label(if backup {
-                        "Start backup…"
+                        tr!("backup.start_backup")
                     } else {
-                        "Start restore…"
+                        tr!("backup.start_restore")
                     })
                     .small()
                     .primary()
@@ -1289,9 +1324,9 @@ impl BackupWindow {
                             .text_sm()
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(if backup {
-                                "Backup database"
+                                tr!("backup.title_backup")
                             } else {
-                                "Restore database"
+                                tr!("backup.title_restore")
                             }),
                     )
                     .child(div().w(px(60.))),

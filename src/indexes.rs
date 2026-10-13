@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use crate::db::{self, IndexDef, Stmt};
 use crate::icons::DbIcon;
+use crate::tr;
 
 const FIELDS: [(&str, f32); 7] = [
     ("index_name", 220.),
@@ -32,6 +33,19 @@ const F_COLUMNS: usize = 3;
 const F_CONDITION: usize = 4;
 const F_INCLUDE: usize = 5;
 const F_COMMENT: usize = 6;
+
+/// Localized header for the grid column at `ix` (the FIELDS ids stay raw keys).
+fn field_label(ix: usize) -> String {
+    match ix {
+        F_NAME => tr!("indexes.name"),
+        F_ALGO => tr!("indexes.algorithm"),
+        F_UNIQUE => tr!("indexes.unique"),
+        F_COLUMNS => tr!("structure.col_name"),
+        F_CONDITION => tr!("indexes.condition"),
+        F_INCLUDE => tr!("indexes.include"),
+        _ => tr!("structure.comment"),
+    }
+}
 
 /// One index row: the loaded definition (`None` for a new index) plus its
 /// current, possibly edited, values.
@@ -497,7 +511,7 @@ impl IndexDelegate {
             .iter()
             .filter(|r| !r.deleted && r.orig.is_none())
             .any(|r| r.columns.trim().is_empty())
-            .then(|| "Give every new index at least one column.".to_string())
+            .then(|| tr!("indexes.validation"))
             .or_else(|| self.ddl().err())
     }
 
@@ -567,7 +581,7 @@ impl TableDelegate for IndexDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        crate::theme::empty_state("No indexes", cx)
+        crate::theme::empty_state(tr!("indexes.no_indexes"), cx)
     }
     fn columns_count(&self, _cx: &App) -> usize {
         FIELDS.len()
@@ -607,7 +621,7 @@ impl TableDelegate for IndexDelegate {
             .font_weight(FontWeight::MEDIUM)
             .font_family(crate::settings::table_font())
             .text_color(cx.theme().foreground)
-            .child(FIELDS[col_ix].0)
+            .child(field_label(col_ix))
     }
 
     fn render_tr(

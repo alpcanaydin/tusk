@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::cell_edit::{self, CellEditHost, CellEditor};
 use crate::db::{EditSource, Stmt};
 use crate::grid;
+use crate::tr;
 use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::component::theme::ActiveTheme as _;
@@ -23,9 +24,13 @@ use gpui_kit::*;
 use serde_json::Value;
 
 /// Max rows fetched for one SELECT (100k-row acceptance query fits).
-/// "1 row" / "3 rows".
+/// "1 row" / "3 rows" — rust-i18n 4 has no plurals, so *_one/*_many by count.
 pub fn n_rows(n: usize) -> String {
-    format!("{n} row{}", if n == 1 { "" } else { "s" })
+    if n == 1 {
+        tr!("result.row_count_one", count = n)
+    } else {
+        tr!("result.row_count_many", count = n)
+    }
 }
 
 pub const QUERY_ROW_LIMIT: i64 = 100_000;
@@ -54,7 +59,10 @@ impl QueryOutput {
             columns: Vec::new(),
             rows: Vec::new(),
             truncated: false,
-            message: Some("Run a query with [cmd-enter]".to_string()),
+            // Built once per tab at construction; a language switch does not
+            // rewrite a tab's idle hint (same limitation as other stored
+            // messages — see app.rs `sync_localized_placeholders`).
+            message: Some(tr!("sql.run_hint")),
             error: None,
             ms: 0,
             edit_note: None,
@@ -63,7 +71,7 @@ impl QueryOutput {
 
     pub fn running() -> Self {
         Self {
-            message: Some("Running…".to_string()),
+            message: Some(tr!("sql.running")),
             ..Self::empty_message()
         }
     }
@@ -162,6 +170,8 @@ pub struct QueryDelegate {
     /// Content-fitted column widths (set with the rows).
     widths: Vec<Pixels>,
     /// What an empty result says ("No rows"; "No triggers" in that view).
+    /// Kept as the English canonical value (callers set and compare it);
+    /// `render_empty` maps it to a localized string at display time.
     pub empty_text: SharedString,
 }
 
@@ -456,59 +466,66 @@ fn result_cell_menu(
     let copy_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
         for fmt in CopyFormat::ALL {
             let e = e.clone();
-            m = m.item(PopupMenuItem::new(fmt.label()).on_click(move |_, _, cx| {
-                let d = e.read(cx).delegate();
-                let cols: Vec<String> = d.columns.iter().map(|c| c.name.clone()).collect();
-                let row: Vec<Value> = (0..cols.len())
-                    .map(|c| d.display_value(row_ix, c).unwrap_or(Value::Null))
-                    .collect();
-                let target = d.source.as_ref().map(|src| Target {
-                    schema: &src.schema,
-                    table: &src.table,
-                    key: &src.key,
-                });
-                let out = format_rows(fmt, &cols, &[row], target.as_ref(), fmt != CopyFormat::Json);
-                cx.write_to_clipboard(ClipboardItem::new_string(out));
-            }));
+            m = m.item(
+                PopupMenuItem::new(fmt.display_label()).on_click(move |_, _, cx| {
+                    let d = e.read(cx).delegate();
+                    let cols: Vec<String> = d.columns.iter().map(|c| c.name.clone()).collect();
+                    let row: Vec<Value> = (0..cols.len())
+                        .map(|c| d.display_value(row_ix, c).unwrap_or(Value::Null))
+                        .collect();
+                    let target = d.source.as_ref().map(|src| Target {
+                        schema: &src.schema,
+                        table: &src.table,
+                        key: &src.key,
+                    });
+                    let out =
+                        format_rows(fmt, &cols, &[row], target.as_ref(), fmt != CopyFormat::Json);
+                    cx.write_to_clipboard(ClipboardItem::new_string(out));
+                }),
+            );
         }
         m
     });
     let mut menu = menu;
     if editable {
         let e = entity.clone();
-        menu = menu.item(
-            PopupMenuItem::new("Edit Cell").on_click(move |_, window, cx| {
+        menu = menu.item(PopupMenuItem::new(tr!("grid.edit_cell")).on_click(
+            move |_, window, cx| {
                 e.update(cx, |st, cx| {
                     st.set_selected_cell(row_ix, col_ix, cx);
                     st.delegate_mut().begin_edit(row_ix, col_ix, window, cx);
                 });
-            }),
-        );
+            },
+        ));
         let e = entity.clone();
         menu = menu
-            .item(PopupMenuItem::new("Set NULL").on_click(move |_, _, cx| {
-                e.update(cx, |st, cx| {
-                    st.delegate_mut().set_null(row_ix, col_ix);
-                    cx.notify();
-                });
-            }))
+            .item(
+                PopupMenuItem::new(tr!("grid.set_null")).on_click(move |_, _, cx| {
+                    e.update(cx, |st, cx| {
+                        st.delegate_mut().set_null(row_ix, col_ix);
+                        cx.notify();
+                    });
+                }),
+            )
             .separator();
     }
     let e = entity.clone();
     menu = menu
-        .item(PopupMenuItem::new("Copy Value").on_click(move |_, _, cx| {
-            let text = e.read(cx).delegate().cell_text_at(row_ix, col_ix);
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
-        }))
         .item(
-            PopupMenuItem::new("Copy Column Name").on_click(move |_, _, cx| {
+            PopupMenuItem::new(tr!("grid.copy_value")).on_click(move |_, _, cx| {
+                let text = e.read(cx).delegate().cell_text_at(row_ix, col_ix);
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }),
+        )
+        .item(
+            PopupMenuItem::new(tr!("grid.copy_column_name")).on_click(move |_, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
             }),
         )
-        .item(PopupMenuItem::submenu("Copy Row As", copy_menu))
+        .item(PopupMenuItem::submenu(tr!("grid.copy_row_as"), copy_menu))
         .item({
             let e = entity.clone();
-            PopupMenuItem::new("Send Row to Chat")
+            PopupMenuItem::new(tr!("grid.send_row_to_chat"))
                 .action(Box::new(crate::actions::SendToChat))
                 .on_click(move |_, window, cx| {
                     let d = e.read(cx).delegate();
@@ -520,7 +537,7 @@ fn result_cell_menu(
                         crate::copy_as::format_rows(CopyFormat::Json, &cols, &[row], None, false);
                     let view = cx.global::<crate::app::TuskHandle>().0.clone();
                     view.update(cx, |app, cx| {
-                        app.send_to_chat("Result row", json, "json", window, cx)
+                        app.send_to_chat(tr!("sql.result_row"), json, "json", window, cx)
                     });
                 })
         });
@@ -533,9 +550,9 @@ fn result_cell_menu(
             });
         };
         menu = menu.separator().item(if deleted {
-            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
+            PopupMenuItem::new(tr!("grid.undo_delete_row")).on_click(toggle)
         } else {
-            crate::theme::danger_item("Delete Row", toggle)
+            grid::danger_item_owned(tr!("grid.delete_row"), toggle)
         });
     }
     menu
@@ -685,7 +702,15 @@ impl TableDelegate for QueryDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        crate::theme::empty_state(self.empty_text.clone(), cx)
+        // Translate at render time: empty_text is an English sentinel (other
+        // crates set it, e.g. app_ddl's "No triggers"), so a language switch
+        // live-updates the wording without touching storage.
+        let text = match self.empty_text.as_ref() {
+            "No rows" => tr!("result.no_rows"),
+            "No triggers" => tr!("sql.no_triggers"),
+            other => other.to_string(),
+        };
+        crate::theme::empty_state(text, cx)
     }
 
     fn cell_text(&self, row_ix: usize, col_ix: usize, _cx: &App) -> String {

@@ -8,28 +8,53 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::*;
 
 use crate::db::{self, ConnTag, SavedConnection, SshConfig, SslMode, load_password};
+use crate::tr;
 
-/// Engine-specific form fields: (key in `SavedConnection::options`, label, placeholder).
-pub const OPTION_FIELDS: &[(&str, &str, &str)] = &[
-    ("account_id", "Account ID", "Cloudflare account id"),
-    ("account", "Account", "xy12345.eu-central-1"),
-    ("warehouse", "Warehouse", "COMPUTE_WH"),
-    ("role", "Role", "SYSADMIN"),
-    ("schema", "Schema", "PUBLIC"),
-    ("project", "Project", "my-project-id"),
-    ("dataset", "Dataset", "my_dataset (optional)"),
-    ("key_file", "Key File", "~/service-account.json"),
-    ("region", "Region", "us-east-1"),
-    ("access_key", "Access Key", "AKIA…"),
-    ("endpoint", "Endpoint", "http://localhost:8000 (optional)"),
-];
+/// Engine-specific form fields: (key in `SavedConnection::options`, label,
+/// placeholder). Built per form, so the `tr!` labels follow the current
+/// language; placeholders that are literally technical samples stay as-is.
+pub fn option_fields() -> Vec<(&'static str, String, String)> {
+    vec![
+        (
+            "account_id",
+            tr!("conn.field.account_id"),
+            tr!("conn.ph.cloudflare_account"),
+        ),
+        (
+            "account",
+            tr!("conn.field.account"),
+            "xy12345.eu-central-1".into(),
+        ),
+        (
+            "warehouse",
+            tr!("conn.field.warehouse"),
+            "COMPUTE_WH".into(),
+        ),
+        ("role", tr!("conn.field.role"), "SYSADMIN".into()),
+        ("schema", tr!("conn.field.schema"), "PUBLIC".into()),
+        ("project", tr!("conn.field.project"), "my-project-id".into()),
+        ("dataset", tr!("conn.field.dataset"), tr!("conn.ph.dataset")),
+        (
+            "key_file",
+            tr!("conn.field.key_file"),
+            "~/service-account.json".into(),
+        ),
+        ("region", tr!("conn.field.region"), "us-east-1".into()),
+        ("access_key", tr!("conn.field.access_key"), "AKIA…".into()),
+        (
+            "endpoint",
+            tr!("conn.field.endpoint"),
+            tr!("conn.ph.endpoint"),
+        ),
+    ]
+}
 
 pub struct ConnectionForm {
     /// The engine picked for this connection.
     pub engine: crate::engine::Engine,
     /// Database file (SQLite / DuckDB) or server URL (LibSQL).
     pub path: Entity<InputState>,
-    /// Engine-specific fields, keyed like [`OPTION_FIELDS`].
+    /// Engine-specific fields, keyed like [`option_fields`].
     pub options: Vec<(&'static str, Entity<InputState>)>,
     pub name: Entity<InputState>,
     pub host: Entity<InputState>,
@@ -100,11 +125,11 @@ impl ConnectionForm {
                 "~/data/app.db",
                 initial.path.clone().unwrap_or_default(),
             ),
-            options: OPTION_FIELDS
+            options: option_fields()
                 .iter()
                 .map(|(k, _, ph)| (*k, input(window, cx, ph, initial.opt(k).to_string())))
                 .collect(),
-            name: input(window, cx, "My database", initial.name.clone()),
+            name: input(window, cx, &tr!("conn.ph.name"), initial.name.clone()),
             host: input(window, cx, "127.0.0.1", initial.host.clone()),
             port: input(window, cx, "5432", initial.port.to_string()),
             database: input(window, cx, "mydb", initial.database.clone()),
@@ -112,12 +137,12 @@ impl ConnectionForm {
             password: secret(
                 window,
                 cx,
-                &format!("Password (stored in {})", db::CREDENTIAL_STORE),
+                &tr!("conn.ph.password", store = db::CREDENTIAL_STORE),
             ),
             folder: input(
                 window,
                 cx,
-                "No folder",
+                &tr!("conn.ph.folder"),
                 initial.folder.clone().unwrap_or_default(),
             ),
             ssl: initial.ssl,
@@ -152,7 +177,11 @@ impl ConnectionForm {
                     .and_then(|s| s.key_path.clone())
                     .unwrap_or_default(),
             ),
-            ssh_secret: secret(window, cx, &format!("Stored in {}", db::CREDENTIAL_STORE)),
+            ssh_secret: secret(
+                window,
+                cx,
+                &tr!("conn.ph.ssh_secret", store = db::CREDENTIAL_STORE),
+            ),
             editing: None,
             saved: db::load_connections(),
             selected: None,

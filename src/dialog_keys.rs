@@ -46,7 +46,7 @@ pub fn confirm(
         message,
         detail,
         &[
-            PromptButton::Cancel("Cancel".into()),
+            PromptButton::Cancel(crate::tr!("common.cancel").into()),
             PromptButton::new(verb.to_string()),
         ],
         cx,

@@ -110,7 +110,7 @@ impl TuskApp {
                         imported += 1;
                         passwords += usize::from(pw);
                     }
-                    Err(e) => failed.push(format!("{name}: {e}")),
+                    Err(e) => failed.push(tr!("migrate.failed", name = name, error = e)),
                 }
             }
             cx.background_executor()
@@ -283,7 +283,7 @@ impl TuskApp {
                                     .map(|f| badge(f, muted)),
                             )
                             .children(conn.tag.map(|tag| {
-                                badge(tag.label().to_string(), rgb(tag.color()).into())
+                                badge(crate::dialog::tag_label(tag), rgb(tag.color()).into())
                             })),
                     )
                     .child(
@@ -350,7 +350,11 @@ impl TuskApp {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(Icon::new(IconName::ArrowDownToLine).size(px(22.)).text_color(gpui::white()))
+                            .child(
+                                Icon::new(IconName::ArrowDownToLine)
+                                    .size(px(22.))
+                                    .text_color(gpui::white()),
+                            )
                             .into_any_element(),
                         Source::Compose(_) => div()
                             .size(px(40.))
@@ -374,7 +378,9 @@ impl TuskApp {
                             .text_color(accent)
                             .with_animation(
                                 "mig-arrow",
-                                Animation::new(Duration::from_millis(1400)).repeat().with_easing(bounce(ease_in_out)),
+                                Animation::new(Duration::from_millis(1400))
+                                    .repeat()
+                                    .with_easing(bounce(ease_in_out)),
                                 |i, delta| i.opacity(0.4 + 0.6 * delta),
                             ),
                     )
@@ -387,33 +393,38 @@ impl TuskApp {
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(fg)
                     .child(match &sheet.phase {
-                        Phase::Review => "Bring your connections over".to_string(),
-                        Phase::Importing { .. } => "Moving in…".to_string(),
-                        Phase::Done { .. } => "All set".to_string(),
+                        Phase::Review => tr!("migrate.review_title"),
+                        Phase::Importing { .. } => tr!("migrate.importing_title"),
+                        Phase::Done { .. } => tr!("migrate.done_title"),
                     }),
             )
             .child(div().text_sm().text_color(muted).child(match &sheet.phase {
                 Phase::Review => match &sheet.plan.source {
-                    Source::TablePlus => "Groups, tags, colors, SSH and saved passwords come along.".to_string(),
-                    Source::Compose(project) => {
-                        format!("Database services of “{project}” go into the {project} folder, passwords included.")
-                    }
+                    Source::TablePlus => tr!("migrate.tableplus_subtitle"),
+                    Source::Compose(project) => tr!("migrate.compose_subtitle", project = project),
                 },
-                Phase::Importing { done, .. } => format!(
-                    "{} of {} imported",
-                    done.iter().filter(|d| d.is_some()).count(),
-                    sheet.picked.iter().filter(|p| **p).count()
+                Phase::Importing { done, .. } => tr!(
+                    "migrate.progress",
+                    done = done.iter().filter(|d| d.is_some()).count(),
+                    total = sheet.picked.iter().filter(|p| **p).count()
                 ),
-                Phase::Done { imported, passwords, .. } => {
-                    let plural = |n: usize, one: &str, many: &str| {
-                        format!("{n} {}", if n == 1 { one } else { many })
-                    };
-                    format!(
-                        "{} and {} imported",
-                        plural(*imported, "connection", "connections"),
-                        plural(*passwords, "password", "passwords")
-                    )
-                }
+                Phase::Done {
+                    imported,
+                    passwords,
+                    ..
+                } => tr!(
+                    "migrate.done_summary",
+                    connections = if *imported == 1 {
+                        tr!("migrate.connections_one", count = imported)
+                    } else {
+                        tr!("migrate.connections_many", count = imported)
+                    },
+                    passwords = if *passwords == 1 {
+                        tr!("migrate.passwords_one", count = passwords)
+                    } else {
+                        tr!("migrate.passwords_many", count = passwords)
+                    },
+                ),
             }));
 
         // Progress bar (importing / done).
@@ -510,13 +521,10 @@ impl TuskApp {
                         && sheet.plan.source != Source::TablePlus
                         && !sheet.plan.skipped.is_empty(),
                     |d| {
-                        d.child(
-                            div()
-                                .pt_1()
-                                .text_caption()
-                                .text_color(muted)
-                                .child(format!("Skipped: {}", sheet.plan.skipped.join(", "))),
-                        )
+                        d.child(div().pt_1().text_caption().text_color(muted).child(tr!(
+                            "migrate.skipped",
+                            items = sheet.plan.skipped.join(", ")
+                        )))
                     },
                 )
                 .into_any_element(),
@@ -533,7 +541,7 @@ impl TuskApp {
                 Phase::Review => d
                     .child(
                         Button::new("mig-cancel")
-                            .label("Cancel")
+                            .label(tr!("common.cancel"))
                             .small()
                             .ghost()
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -544,9 +552,9 @@ impl TuskApp {
                     .child(
                         Button::new("mig-go")
                             .label(if picked == 1 {
-                                "Import 1 Connection".to_string()
+                                tr!("migrate.import_one", count = picked)
                             } else {
-                                format!("Import {picked} Connections")
+                                tr!("migrate.import_many", count = picked)
                             })
                             .small()
                             .primary()
@@ -557,7 +565,7 @@ impl TuskApp {
                 Phase::Done { .. } => d
                     .child(
                         Button::new("mig-close")
-                            .label("Open Connections")
+                            .label(tr!("migrate.open_connections"))
                             .small()
                             .ghost()
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -568,7 +576,7 @@ impl TuskApp {
                     )
                     .child(
                         Button::new("mig-done")
-                            .label("Done")
+                            .label(tr!("common.done"))
                             .small()
                             .primary()
                             .on_click(cx.listener(|this, _, _, cx| {

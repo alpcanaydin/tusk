@@ -31,6 +31,7 @@ mod engine;
 mod export;
 mod filter;
 mod grid;
+mod i18n;
 mod icons;
 mod indexes;
 mod kbd;
@@ -53,9 +54,19 @@ mod updater;
 mod whats_new;
 mod widths;
 
+// Generates the crate-root translation backend `t!` resolves to (locales are
+// embedded at build time; "en" is the fallback).
+rust_i18n::i18n!("locales", fallback = "en");
+
 /// Handle of the main (connection / workspace) window, for dock reopen.
 struct MainWindow(AnyWindowHandle);
 impl Global for MainWindow {}
+
+/// The open main window, if any: cross-window updates outside the render
+/// pass (a language switch) reach the app view through here.
+pub(crate) fn main_window(cx: &App) -> Option<AnyWindowHandle> {
+    cx.try_global::<MainWindow>().map(|m| m.0)
+}
 
 fn main() {
     // Started by an AI agent as its MCP server: relay to the running app.
@@ -84,6 +95,7 @@ fn main() {
     dock::set_process_name();
     app.run(move |cx: &mut App| {
         gpui_kit::init(cx);
+        i18n::apply(cx);
         actions::bind_keys(cx);
         dialog_keys::bind_keys(cx);
         updater::init(cx);
@@ -123,16 +135,19 @@ fn open_main_window(cx: &mut App, auto_connect: bool) {
                 .next()
                 .unwrap_or_else(db::dev_default);
             let form = conn::ConnectionForm::new(window, cx, &initial);
+            // Built once for the app's life; `TuskApp::sync_localized_placeholders`
+            // re-translates them when the language switches.
             let filter = cx.new(|cx| {
-                gpui_kit::component::input::InputState::new(window, cx).placeholder("Filter…")
+                gpui_kit::component::input::InputState::new(window, cx)
+                    .placeholder(crate::tr!("sidebar.filter_ph"))
             });
             let conn_search = cx.new(|cx| {
                 gpui_kit::component::input::InputState::new(window, cx)
-                    .placeholder("Search for connection…")
+                    .placeholder(crate::tr!("conn.search_ph"))
             });
             let history_search = cx.new(|cx| {
                 gpui_kit::component::input::InputState::new(window, cx)
-                    .placeholder("Search history…")
+                    .placeholder(crate::tr!("history.search_ph"))
             });
             let view =
                 cx.new(|cx| app::TuskApp::new(form, filter, conn_search, history_search, cx));

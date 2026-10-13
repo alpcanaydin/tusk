@@ -32,7 +32,7 @@ impl TuskApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Open".into()),
+            prompt: Some(tr!("objects.open").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -63,7 +63,7 @@ impl TuskApp {
     pub(super) fn save_query_as(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ix) = self.active_tab else { return };
         let Some(WorkspaceTab::Sql(t)) = self.tabs.get(ix) else {
-            self.toast_info("Open a query tab to save it as a file.");
+            self.toast_info(tr!("files.save_query_hint"));
             cx.notify();
             return;
         };
@@ -93,7 +93,7 @@ impl TuskApp {
                             t.title = file_title(&path);
                             t.file = Some(path.clone());
                         }
-                        this.toast(true, format!("Saved {}", path.display()));
+                        this.toast(true, tr!("files.saved", path = path.display().to_string()));
                     }
                     Err(e) => this.toast(false, format!("{}: {e}", path.display())),
                 }
@@ -106,7 +106,7 @@ impl TuskApp {
     /// File ▸ Import ▸ From CSV / From JSON into the active table.
     pub(super) fn import_file(&mut self, json: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(name) = self.import_target() else {
-            self.toast_info("Open or select the table to import into first.");
+            self.toast_info(tr!("files.import_target_hint"));
             cx.notify();
             return;
         };
@@ -122,7 +122,7 @@ impl TuskApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Import".into()),
+            prompt: Some(tr!("dialog.import").into()),
         });
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -137,8 +137,15 @@ impl TuskApp {
             };
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match result {
-                    Ok(n) => this.toast(true, format!("Imported {n} rows into {name}")),
-                    Err(e) => this.toast(false, format!("Import failed: {e}")),
+                    Ok(n) => this.toast(
+                        true,
+                        tr!(
+                            "objects.imported",
+                            rows = crate::sql::n_rows(n as usize),
+                            name = name.clone()
+                        ),
+                    ),
+                    Err(e) => this.toast(false, tr!("objects.import_failed", error = e)),
                 }
                 this.reload_tabs_of(&schema, &name, cx);
                 cx.notify();
@@ -167,7 +174,7 @@ impl TuskApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Import".into()),
+            prompt: Some(tr!("dialog.import").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -177,11 +184,22 @@ impl TuskApp {
                 return;
             };
             let Ok(answer) = this.update_in(cx, |_, window, cx| {
+                // First button (Run) keeps Return's default, as before.
+                let (question, detail, run, cancel) = (
+                    tr!(
+                        "files.run_dump_q",
+                        file = file_title(&path),
+                        database = db.clone()
+                    ),
+                    tr!("files.run_dump_detail"),
+                    tr!("common.run"),
+                    tr!("common.cancel"),
+                );
                 window.prompt(
                     PromptLevel::Warning,
-                    &format!("Run {} on {db}?", file_title(&path)),
-                    Some("Every statement in the file runs in one transaction."),
-                    &["Run", "Cancel"],
+                    &question,
+                    Some(&detail),
+                    &[run.as_str(), cancel.as_str()],
                     cx,
                 )
             }) else {
@@ -198,14 +216,15 @@ impl TuskApp {
             let _ = this.update_in(cx, |this, _, cx| {
                 match result {
                     Ok(_) => {
-                        this.toast(true, format!("Ran {}", file_title(&path)));
+                        this.toast(true, tr!("files.ran", name = file_title(&path)));
                         let schema = this.current_schema.clone();
                         this.fetch_objects_for(&schema, cx);
                         this.refresh_active_tab(cx);
                     }
-                    Err(e) => {
-                        this.toast(false, format!("Import failed (rolled back): {}", e.trim()))
-                    }
+                    Err(e) => this.toast(
+                        false,
+                        tr!("files.import_rolled_back", error = e.trim().to_string()),
+                    ),
                 }
                 cx.notify();
             });
@@ -240,7 +259,7 @@ impl TuskApp {
     /// table (with its filter) — its fields picker chooses the columns.
     pub(super) fn export_active_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(WorkspaceTab::Grid(g)) = self.active_tab.and_then(|ix| self.tabs.get(ix)) else {
-            self.toast_info("Open a table to export it.");
+            self.toast_info(tr!("files.export_table_hint"));
             cx.notify();
             return;
         };

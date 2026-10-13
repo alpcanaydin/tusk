@@ -131,7 +131,7 @@ impl TuskApp {
         };
         let empty = editor.read(cx).selected_range().is_empty();
         if empty {
-            self.toast_info("Select some text first.");
+            self.toast_info(tr!("editor.select_first"));
             cx.notify();
             return;
         }
@@ -177,7 +177,11 @@ impl TuskApp {
             }
         });
         if n > 0 {
-            self.toast_info(format!("Pasted {n} cell{}", if n == 1 { "" } else { "s" }));
+            self.toast_info(if n == 1 {
+                tr!("grid.pasted_one", count = n)
+            } else {
+                tr!("grid.pasted_many", count = n)
+            });
         }
     }
 
@@ -191,7 +195,7 @@ impl TuskApp {
             };
         });
         let size = crate::settings::get().table_font_size;
-        self.toast_info(format!("Text size {size}"));
+        self.toast_info(tr!("editor.text_size", size = size));
         cx.notify();
     }
 }

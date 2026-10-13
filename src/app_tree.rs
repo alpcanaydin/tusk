@@ -39,18 +39,20 @@ impl TuskApp {
         let q = self.unsaved_queries(cx);
         let mut lost = Vec::new();
         if n > 0 {
-            lost.push(format!(
-                "{n} unsaved change{}",
-                if n == 1 { "" } else { "s" }
-            ));
+            lost.push(if n == 1 {
+                tr!("changes.pending_one", count = n)
+            } else {
+                tr!("changes.pending_many", count = n)
+            });
         }
         if q > 0 {
-            lost.push(format!(
-                "{q} unsaved quer{}",
-                if q == 1 { "y" } else { "ies" }
-            ));
+            lost.push(if q == 1 {
+                tr!("changes.query_one", count = q)
+            } else {
+                tr!("changes.query_many", count = q)
+            });
         }
-        (!lost.is_empty()).then(|| lost.join(" and "))
+        (!lost.is_empty()).then(|| lost.join(&tr!("common.and")))
     }
 
     /// Disconnect (menu, palette, title bar), asking first when that would
@@ -60,12 +62,17 @@ impl TuskApp {
             Self::run_disconnect(self, window, cx);
             return;
         };
+        let (ask, detail, verb) = (
+            tr!("conn.disconnect_q", name = self.active_name.clone()),
+            tr!("conn.work_discarded", work = lost.clone()),
+            tr!("dialog.disconnect"),
+        );
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Warning,
-            &format!("Disconnect from “{}”?", self.active_name),
-            Some(&format!("{lost} will be discarded.")),
-            "Disconnect",
+            &ask,
+            Some(&detail),
+            &verb,
             cx,
         );
         cx.spawn_in(window, async move |weak, cx| {
@@ -97,12 +104,17 @@ impl TuskApp {
             self.switch_connection(ix, window, cx);
             return;
         };
+        let (ask, detail, verb) = (
+            tr!("conn.switch_q", name = name.clone()),
+            tr!("conn.work_discarded", work = lost.clone()),
+            tr!("dialog.switch"),
+        );
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Warning,
-            &format!("Switch to “{name}”?"),
-            Some(&format!("{lost} will be discarded.")),
-            "Switch",
+            &ask,
+            Some(&detail),
+            &verb,
             cx,
         );
         cx.spawn_in(window, async move |weak, cx| {
@@ -197,7 +209,9 @@ impl TuskApp {
                             .flex_none()
                             .text_caption()
                             .text_color(rgb(tag.color()))
-                            .child(tag.label())
+                            // Display label only; the tag's canonical value
+                            // stays English in the saved profile.
+                            .child(crate::dialog::tag_label(tag))
                     })),
             )
             .when(connecting, |this| {
@@ -289,19 +303,19 @@ impl TuskApp {
             .context_menu(move |menu: PopupMenu, _, _| {
                 let d = menu_name.clone();
                 menu.item(
-                    PopupMenuItem::new("New Connection…").on_click(|_, window, cx| {
+                    PopupMenuItem::new(tr!("conn.new_dots")).on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(NewConnection), cx);
                     }),
                 )
                 .item(
-                    PopupMenuItem::new("Manage Connections…").on_click(|_, _, cx| {
+                    PopupMenuItem::new(tr!("conn.manage_dots")).on_click(|_, _, cx| {
                         let view = cx.global::<TuskHandle>().0.clone();
                         view.update(cx, |this, cx| this.toggle_conn_manager(cx));
                     }),
                 )
                 .separator()
                 .item(crate::theme::danger_item(
-                    "Delete Group",
+                    tr!("conn.delete_group"),
                     move |_, _, cx| {
                         let view = cx.global::<TuskHandle>().0.clone();
                         view.update(cx, |this, cx| this.delete_group(d.clone(), cx));
@@ -440,7 +454,7 @@ impl TuskApp {
                     .py_1()
                     .text_caption()
                     .text_color(muted)
-                    .child("No matching connections."),
+                    .child(tr!("conn.no_match")),
             );
         }
 
@@ -465,7 +479,7 @@ impl TuskApp {
             .text_color(muted)
             .hover(|this| this.bg(muted.opacity(0.08)))
             .child(Icon::new(IconName::Plus).size(px(12.)))
-            .child("New Connection")
+            .child(tr!("conn.new_connection"))
             .on_click(|_, window, cx| window.dispatch_action(Box::new(NewConnection), cx));
 
         div()
