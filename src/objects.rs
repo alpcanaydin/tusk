@@ -6,6 +6,7 @@ use serde_json::Value;
 use sqlx::Row;
 
 use crate::db::{self, DbResult, GridColumnMeta, quote_ident};
+use crate::tr;
 
 /// What kind of object a script is for (mirrors `app::TableKind`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -378,8 +379,8 @@ fn insert_batches(
 /// Import ▸ From JSON: an array of objects, one row each; only the keys
 /// the file uses are inserted (other columns get their defaults).
 pub async fn import_json(db: &db::Db, schema: &str, name: &str, data: Vec<u8>) -> DbResult<u64> {
-    let rows: Vec<serde_json::Map<String, serde_json::Value>> =
-        serde_json::from_slice(&data).map_err(|e| format!("Not a JSON array of objects: {e}"))?;
+    let rows: Vec<serde_json::Map<String, serde_json::Value>> = serde_json::from_slice(&data)
+        .map_err(|e| tr!("objects.json_not_array", error = e.to_string()))?;
     if rows.is_empty() {
         return Ok(0);
     }
@@ -463,7 +464,7 @@ pub async fn import_csv(db: &db::Db, schema: &str, name: &str, data: Vec<u8>) ->
         .trim_end_matches('\r')
         .to_string();
     if header.trim().is_empty() {
-        return Err("The CSV file has no header line.".into());
+        return Err(tr!("objects.csv_no_header"));
     }
     if let Some(pool) = db.pg().cloned() {
         let cols: Vec<String> = header

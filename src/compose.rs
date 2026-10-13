@@ -13,6 +13,7 @@ use serde_json::Value;
 use crate::db::{self, ConnTag, SavedConnection, SslMode};
 use crate::engine::Engine;
 use crate::migrate::{Plan, Source};
+use crate::tr;
 
 /// File names `docker compose` looks for, in its order of preference.
 const FILE_NAMES: [&str; 4] = [
@@ -31,7 +32,7 @@ pub fn find_file(path: &Path) -> Result<PathBuf, String> {
         .iter()
         .map(|n| path.join(n))
         .find(|p| p.is_file())
-        .ok_or_else(|| format!("no compose.yaml / docker-compose.yml in {}", path.display()))
+        .ok_or_else(|| tr!("compose.no_file", path = path.display().to_string()))
 }
 
 /// `compose.yaml` → `compose.override.yaml` (merged on top, like Compose).
@@ -649,7 +650,7 @@ pub fn plan(file: &Path, existing: &[(String, Option<String>)]) -> Result<Plan, 
     let mut services = Vec::new();
     let doc = load(file, None, 0, &mut services)?;
     if services.is_empty() {
-        return Err("no `services:` in the compose file".into());
+        return Err(tr!("compose.no_services"));
     }
     let project = project_name(&doc, &dir, &services[0].vars);
     let taken = |name: &str| existing.iter().any(|(n, _)| n == name);
@@ -666,7 +667,8 @@ pub fn plan(file: &Path, existing: &[(String, Option<String>)]) -> Result<Plan, 
     } in &services
     {
         let Some(image) = svc.get("image").and_then(Value::as_str) else {
-            plan.skipped.push(format!("{service} (no image)"));
+            plan.skipped
+                .push(tr!("compose.skip_no_image", service = service));
             continue;
         };
         let Some(engine) = engine_of(image) else {
@@ -693,8 +695,11 @@ pub fn plan(file: &Path, existing: &[(String, Option<String>)]) -> Result<Plan, 
             }
             (None, true) => ("127.0.0.1".to_string(), target),
             (None, false) => {
-                plan.skipped
-                    .push(format!("{service} (port {target} not published)"));
+                plan.skipped.push(tr!(
+                    "compose.skip_no_port",
+                    service = service,
+                    port = target
+                ));
                 continue;
             }
         };
@@ -708,7 +713,8 @@ pub fn plan(file: &Path, existing: &[(String, Option<String>)]) -> Result<Plan, 
                 .any(|(en, f)| en == n && f.as_deref() == Some(&project))
         };
         let name = if in_folder(service) || in_folder(&format!("{project}-{service}")) {
-            plan.skipped.push(format!("{service} (already imported)"));
+            plan.skipped
+                .push(tr!("compose.skip_imported", service = service));
             continue;
         } else if taken(service) {
             format!("{project}-{service}")
@@ -716,7 +722,11 @@ pub fn plan(file: &Path, existing: &[(String, Option<String>)]) -> Result<Plan, 
             service.clone()
         };
         if taken(&name) {
-            plan.skipped.push(format!("{service} (name {name} taken)"));
+            plan.skipped.push(tr!(
+                "compose.skip_name_taken",
+                service = service,
+                name = name
+            ));
             continue;
         }
 

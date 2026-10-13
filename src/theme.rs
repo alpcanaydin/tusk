@@ -13,6 +13,8 @@
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::*;
 
+use crate::tr;
+
 /// "Le Blackque orange" paleti — birebir hex degerler.
 /// Referans palet: fazlasi Phase 6/7'de (syntax highlight) kullanilacak.
 #[allow(dead_code)]
@@ -306,12 +308,13 @@ pub fn backdrop(t: &gpui_kit::component::theme::Theme) -> Hsla {
 
 /// A destructive context-menu item: red label, listed last.
 pub fn danger_item(
-    label: &'static str,
+    label: impl Into<SharedString>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> gpui_kit::component::menu::PopupMenuItem {
     use gpui_kit::component::theme::ActiveTheme as _;
+    let label: SharedString = label.into();
     gpui_kit::component::menu::PopupMenuItem::element(move |_, cx| {
-        div().text_color(cx.theme().red).child(label)
+        div().text_color(cx.theme().red).child(label.clone())
     })
     .on_click(on_click)
 }
@@ -341,13 +344,17 @@ pub fn empty_state(text: impl Into<SharedString>, cx: &App) -> AnyElement {
 }
 
 /// The button that reveals a written file in the platform's file manager.
-pub const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
-    "Show in Finder"
-} else if cfg!(windows) {
-    "Show in Explorer"
-} else {
-    "Show in Folder"
-};
+/// A `&'static str` const would freeze the language of the first render:
+/// this reads the locale every time, like `danger_item_owned` does for menus.
+pub fn reveal_label() -> String {
+    if cfg!(target_os = "macos") {
+        tr!("theme.reveal_macos")
+    } else if cfg!(windows) {
+        tr!("theme.reveal_windows")
+    } else {
+        tr!("theme.reveal_linux")
+    }
+}
 
 /// Font features for literal text such as CLI flags: the UI font's
 /// ligatures would draw `--format` as `—format`.

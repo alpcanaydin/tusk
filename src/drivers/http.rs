@@ -46,7 +46,7 @@ fn describe(e: &reqwest::Error) -> String {
     if e.is_connect() {
         format!("Can't reach the server: {e}")
     } else if e.is_timeout() {
-        "The server didn't answer in time.".to_string()
+        crate::tr!("drivers.http_timeout")
     } else {
         e.to_string()
     }

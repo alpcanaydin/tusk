@@ -14,6 +14,7 @@ use gpui_kit::*;
 
 use crate::actions::*;
 use crate::app::{TableRef, TuskApp, TuskHandle};
+use crate::tr;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum PaletteMode {
@@ -83,10 +84,10 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
     let mut items = Vec::new();
     let mut runs: Vec<RunFn> = Vec::new();
     let noop: RunFn = std::rc::Rc::new(|_, _, _| {});
-    let mut action = |label: &str, icon: IconName, action: Box<dyn Action>, keywords: &[&str]| {
+    let mut action = |label: String, icon: IconName, action: Box<dyn Action>, keywords: &[&str]| {
         items.push(
             CommandItem::new()
-                .label(label.to_string())
+                .label(label)
                 .keywords(keywords.iter().map(|k| k.to_string()))
                 .icon(Icon::new(icon))
                 .action(action),
@@ -96,33 +97,33 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
 
     // ---- connection ----
     action(
-        "connection: new…",
+        tr!("palette.connection.new"),
         IconName::Plus,
         Box::new(NewConnection),
         &["add", "create"],
     );
     action(
-        "connection: open…",
+        tr!("palette.connection.open"),
         IconName::FolderOpen,
         Box::new(OpenConnections),
         &["manager", "groups", "saved"],
     );
     action(
-        "connection: import from Docker Compose…",
+        tr!("palette.connection.import_compose"),
         IconName::ArrowDownToLine,
         Box::new(ImportDockerCompose),
         &["docker", "compose", "yaml", "container"],
     );
     if ctx.connected {
         action(
-            "connection: disconnect",
+            tr!("palette.connection.disconnect"),
             IconName::LogOut,
             Box::new(Disconnect),
             &["close"],
         );
     } else {
         action(
-            "connection: quick connect",
+            tr!("palette.connection.quick_connect"),
             IconName::Zap,
             Box::new(QuickConnect),
             &["docker"],
@@ -130,13 +131,13 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
     }
     // Backup / Restore work from anywhere (the window picks the database).
     action(
-        "database: backup…",
+        tr!("palette.database.backup"),
         IconName::HardDriveDownload,
         Box::new(BackupDatabase),
         &["dump", "pg_dump", "export"],
     );
     action(
-        "database: restore…",
+        tr!("palette.database.restore"),
         IconName::HardDriveUpload,
         Box::new(RestoreDatabase),
         &["pg_restore", "import", "load"],
@@ -144,7 +145,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
     let mut dynamic: Vec<(String, IconName, RunFn)> = Vec::new();
     if crate::migrate::available() {
         dynamic.push((
-            "connection: migrate from TablePlus…".into(),
+            tr!("palette.connection.migrate"),
             IconName::ArrowDownToLine,
             std::rc::Rc::new(
                 |this: &mut TuskApp, w: &mut Window, cx: &mut Context<TuskApp>| {
@@ -158,7 +159,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             continue;
         }
         dynamic.push((
-            format!("connection: connect to {name}"),
+            tr!("palette.connection.connect_to", name = name),
             IconName::Plug,
             std::rc::Rc::new(
                 move |this: &mut TuskApp, w: &mut Window, cx: &mut Context<TuskApp>| {
@@ -171,239 +172,254 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
     if ctx.connected {
         // ---- query / tabs ----
         action(
-            "query: new SQL tab",
+            tr!("palette.query.new_sql"),
             IconName::SquareTerminal,
             Box::new(NewSqlTab),
             &["editor", "sql"],
         );
         action(
-            "query: run current",
+            tr!("palette.query.run_current"),
             IconName::Play,
             Box::new(RunCurrent),
             &["execute", "statement"],
         );
         action(
-            "query: run all",
+            tr!("palette.query.run_all"),
             IconName::ListVideo,
             Box::new(RunAll),
             &["execute", "script"],
         );
         action(
-            "table: open…",
+            tr!("palette.table.open"),
             IconName::Table,
             Box::new(QuickOpenTables),
             &["quick", "find", "go"],
         );
-        action("tab: close", IconName::X, Box::new(CloseTab), &[]);
         action(
-            "tab: refresh",
+            tr!("palette.tab.close"),
+            IconName::X,
+            Box::new(CloseTab),
+            &[],
+        );
+        action(
+            tr!("palette.tab.refresh"),
             IconName::RefreshCw,
             Box::new(RefreshActive),
             &["reload"],
         );
         // ---- edits ----
         action(
-            "changes: save",
+            tr!("palette.changes.save"),
             IconName::Save,
             Box::new(SaveChanges),
             &["commit", "write"],
         );
         action(
-            "changes: delete selection",
+            tr!("palette.changes.delete_selection"),
             IconName::Delete,
             Box::new(DeleteSelection),
             &["remove", "drop"],
         );
         action(
-            "editor: toggle line comment",
+            tr!("palette.editor.line_comment"),
             IconName::Hash,
             Box::new(ToggleLineComment),
             &["comment"],
         );
         action(
-            "editor: toggle block comment",
+            tr!("palette.editor.block_comment"),
             IconName::Hash,
             Box::new(ToggleBlockComment),
             &["comment"],
         );
         action(
-            "editor: make upper case",
+            tr!("palette.editor.upper"),
             IconName::CaseUpper,
             Box::new(MakeUpperCase),
             &["transform"],
         );
         action(
-            "editor: make lower case",
+            tr!("palette.editor.lower"),
             IconName::CaseLower,
             Box::new(MakeLowerCase),
             &["transform"],
         );
         action(
-            "editor: capitalize",
+            tr!("palette.editor.capitalize"),
             IconName::CaseSensitive,
             Box::new(Capitalize),
             &["transform"],
         );
         action(
-            "view: increase text size",
+            tr!("palette.view.increase_text"),
             IconName::ZoomIn,
             Box::new(IncreaseFontSize),
             &["font", "bigger"],
         );
         action(
-            "view: decrease text size",
+            tr!("palette.view.decrease_text"),
             IconName::ZoomOut,
             Box::new(DecreaseFontSize),
             &["font", "smaller"],
         );
         action(
-            "view: reset text size",
+            tr!("palette.view.reset_text"),
             IconName::RotateCcw,
             Box::new(ResetFontSize),
             &["font"],
         );
         action(
-            "grid: copy selected cells",
+            tr!("palette.grid.copy_cells"),
             IconName::Copy,
             Box::new(GridCopyCells),
             &["clipboard"],
         );
         action(
-            "grid: paste to selected cells",
+            tr!("palette.grid.paste_cells"),
             IconName::ClipboardPaste,
             Box::new(GridPaste),
             &["clipboard"],
         );
         action(
-            "file: open .sql file…",
+            tr!("palette.file.open_sql"),
             IconName::FolderOpen,
             Box::new(OpenSqlFile),
             &["load"],
         );
         action(
-            "file: save query as…",
+            tr!("palette.file.save_as"),
             IconName::Save,
             Box::new(SaveQueryAs),
             &["export", "sql"],
         );
         action(
-            "export: tables…",
+            tr!("palette.export.tables"),
             IconName::Download,
             Box::new(ExportTables),
             &["csv", "json", "sql"],
         );
         action(
-            "export: this table (column selection)…",
+            tr!("palette.export.active_table"),
             IconName::Download,
             Box::new(ExportActiveTable),
             &["csv", "json", "sql", "columns"],
         );
         action(
-            "import: from CSV…",
+            tr!("palette.import.csv"),
             IconName::FileSpreadsheet,
             Box::new(ImportCsv),
             &["load"],
         );
         action(
-            "import: from JSON…",
+            tr!("palette.import.json"),
             IconName::Braces,
             Box::new(ImportJson),
             &["load"],
         );
         action(
-            "import: from SQL dump…",
+            tr!("palette.import.sql"),
             IconName::FileCode,
             Box::new(ImportSqlDump),
             &["load", "restore", "psql"],
         );
         action(
-            "tools: user management",
+            tr!("palette.tools.users"),
             IconName::Users,
             Box::new(UserManagement),
             &["roles", "grant", "password"],
         );
         action(
-            "view: toggle query results pane",
+            tr!("palette.view.toggle_results"),
             IconName::PanelBottom,
             Box::new(ToggleResultsPane),
             &["result", "editor", "full"],
         );
         action(
-            "view: split pane right",
+            tr!("palette.view.split_right"),
             IconName::Columns2,
             Box::new(SplitPaneRight),
             &["side by side", "pane"],
         );
         action(
-            "view: select next pane",
+            tr!("palette.view.next_pane"),
             IconName::ArrowRightLeft,
             Box::new(NextPane),
             &["pane"],
         );
         action(
-            "view: show all tabs",
+            tr!("palette.view.show_all_tabs"),
             IconName::PanelTop,
             Box::new(ShowAllTabs),
             &["tabs", "switch"],
         );
         action(
-            "tools: search in database…",
+            tr!("palette.tools.search"),
             IconName::Search,
             Box::new(SearchInDatabase),
             &["find", "grep", "text"],
         );
         action(
-            "tools: process list",
+            tr!("palette.tools.processes"),
             IconName::Activity,
             Box::new(ProcessList),
             &["sessions", "kill", "pg_stat_activity"],
         );
         action(
-            "changes: preview SQL",
+            tr!("palette.changes.preview"),
             IconName::Eye,
             Box::new(PreviewChanges),
             &["review", "sql"],
         );
         action(
-            "changes: discard",
+            tr!("palette.changes.discard"),
             IconName::Undo2,
             Box::new(DiscardChanges),
             &["revert", "cancel"],
         );
         action(
-            "connection: open a database…",
+            tr!("palette.connection.open_database"),
             IconName::Database,
             Box::new(OpenDatabase),
             &["switch"],
         );
         action(
-            "connection: open a connection…",
+            tr!("palette.connection.open_connection"),
             IconName::Server,
             Box::new(OpenConnection),
             &["switch"],
         );
         action(
-            "connection: reload workspace",
+            tr!("palette.connection.reload_workspace"),
             IconName::RefreshCw,
             Box::new(ReloadWorkspace),
             &["refresh"],
         );
         action(
-            "connection: reconnect",
+            tr!("palette.connection.reconnect"),
             IconName::RefreshCw,
             Box::new(Reconnect),
             &[],
         );
-        action("tab: next", IconName::ChevronRight, Box::new(NextTab), &[]);
         action(
-            "tab: previous",
+            tr!("palette.tab.next"),
+            IconName::ChevronRight,
+            Box::new(NextTab),
+            &[],
+        );
+        action(
+            tr!("palette.tab.previous"),
             IconName::ChevronLeft,
             Box::new(PrevTab),
             &[],
         );
-        action("tab: close all", IconName::X, Box::new(CloseAllTabs), &[]);
         action(
-            "view: toggle ai chat",
+            tr!("palette.tab.close_all"),
+            IconName::X,
+            Box::new(CloseAllTabs),
+            &[],
+        );
+        action(
+            tr!("palette.view.toggle_ai"),
             IconName::Sparkles,
             Box::new(ToggleAiPanel),
             &[
@@ -418,74 +434,74 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             ],
         );
         action(
-            "ai: send to chat",
+            tr!("palette.ai.send_to_chat"),
             IconName::Sparkles,
             Box::new(SendToChat),
             &["context", "attach", "selection", "query", "row", "agent"],
         );
         action(
-            "view: toggle row detail",
+            tr!("palette.view.toggle_row_detail"),
             IconName::PanelRight,
             Box::new(ToggleRowDetail),
             &["row", "record", "json", "form", "right sidebar"],
         );
         action(
-            "view: toggle console",
+            tr!("palette.view.toggle_console"),
             IconName::SquareTerminal,
             Box::new(ToggleConsole),
             &["log", "debug", "queries"],
         );
         action(
-            "view: toggle problems",
+            tr!("palette.view.toggle_problems"),
             IconName::TriangleAlert,
             Box::new(ToggleProblems),
             &["lint", "errors", "warnings", "diagnostics"],
         );
         action(
-            "view: query history",
+            tr!("palette.view.history"),
             IconName::Clock,
             Box::new(ShowHistory),
             &["recent", "queries", "log"],
         );
         action(
-            "grid: toggle filters",
+            tr!("palette.grid.filters"),
             IconName::ListFilter,
             Box::new(ToggleFilters),
             &["where", "search"],
         );
         action(
-            "grid: show data",
+            tr!("palette.grid.data"),
             IconName::Table,
             Box::new(ShowData),
             &["rows"],
         );
         action(
-            "grid: show structure",
+            tr!("palette.grid.structure"),
             IconName::Columns3,
             Box::new(ShowStructure),
             &["columns", "schema", "ddl"],
         );
         // ---- view ----
         action(
-            "view: toggle sidebar",
+            tr!("palette.view.toggle_sidebar"),
             IconName::PanelLeft,
             Box::new(ToggleSidebar),
             &["hide", "show"],
         );
         action(
-            "view: tables",
+            tr!("palette.view.tables"),
             IconName::Table,
             Box::new(ShowTablesPanel),
             &["panel"],
         );
         action(
-            "view: views",
+            tr!("palette.view.views"),
             IconName::Eye,
             Box::new(ShowViewsPanel),
             &["panel"],
         );
         action(
-            "view: functions",
+            tr!("palette.view.functions"),
             IconName::Code,
             Box::new(ShowFunctionsPanel),
             &["panel"],
@@ -497,7 +513,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             }
             let go = db.clone();
             dynamic.push((
-                format!("database: switch to {db}"),
+                tr!("palette.database.switch_to", name = db),
                 IconName::Database,
                 std::rc::Rc::new(
                     move |this: &mut TuskApp, w: &mut Window, cx: &mut Context<TuskApp>| {
@@ -512,7 +528,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             }
             let go = schema.clone();
             dynamic.push((
-                format!("schema: switch to {schema}"),
+                tr!("palette.schema.switch_to", name = schema),
                 IconName::Layers,
                 std::rc::Rc::new(
                     move |this: &mut TuskApp, _w: &mut Window, cx: &mut Context<TuskApp>| {
@@ -530,31 +546,48 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             use crate::app::TableKind;
             use crate::objects::Script;
             let is_table = kind == TableKind::Table;
-            let noun = if is_table { "table" } else { "view" };
             let mut add = |label: String, icon: IconName, f: BoxedRun| {
                 dynamic.push((label, icon, rc(f)));
             };
+            // table / view actions: one key set each, the noun lives in the
+            // string so every language can put it where it reads best.
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: open structure of {name}"),
+                if is_table {
+                    tr!("palette.table.open_structure", name = name)
+                } else {
+                    tr!("palette.view.open_structure", name = name)
+                },
                 IconName::Columns3,
                 Box::new(move |a, w, cx| a.open_structure(k.clone(), n.clone(), w, cx)),
             );
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: export {name}…"),
+                if is_table {
+                    tr!("palette.table.export", name = name)
+                } else {
+                    tr!("palette.view.export", name = name)
+                },
                 IconName::Download,
                 Box::new(move |a, w, cx| a.export_object(k.clone(), n.clone(), w, cx)),
             );
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: copy CREATE script of {name}"),
+                if is_table {
+                    tr!("palette.table.copy_create", name = name)
+                } else {
+                    tr!("palette.view.copy_create", name = name)
+                },
                 IconName::Copy,
                 Box::new(move |a, _, cx| a.copy_script(k.clone(), n.clone(), Script::Create, cx)),
             );
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: open SELECT script of {name}"),
+                if is_table {
+                    tr!("palette.table.open_select", name = name)
+                } else {
+                    tr!("palette.view.open_select", name = name)
+                },
                 IconName::SquareTerminal,
                 Box::new(move |a, w, cx| {
                     a.script_to_editor(k.clone(), n.clone(), Script::Select, w, cx)
@@ -562,66 +595,74 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             );
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: rename {name}…"),
+                if is_table {
+                    tr!("palette.table.rename", name = name)
+                } else {
+                    tr!("palette.view.rename", name = name)
+                },
                 IconName::Pencil,
                 Box::new(move |a, w, cx| a.start_rename(k.clone(), n.clone(), w, cx)),
             );
             let (k, n) = (kind.clone(), name.clone());
             add(
-                format!("{noun}: delete {name}"),
+                if is_table {
+                    tr!("palette.table.delete", name = name)
+                } else {
+                    tr!("palette.view.delete", name = name)
+                },
                 IconName::Trash,
                 Box::new(move |a, _, cx| a.toggle_drop(k.clone(), n.clone(), cx)),
             );
             if is_table {
                 let n = name.clone();
                 add(
-                    format!("table: import CSV into {name}…"),
+                    tr!("palette.table.import_into", name = name),
                     IconName::Upload,
                     Box::new(move |a, w, cx| a.import_csv_into(n.clone(), w, cx)),
                 );
                 let n = name.clone();
                 add(
-                    format!("table: duplicate {name} (structure)"),
+                    tr!("palette.table.duplicate", name = name),
                     IconName::CopyPlus,
                     Box::new(move |a, _, cx| a.duplicate_object(n.clone(), false, cx)),
                 );
                 let n = name.clone();
                 add(
-                    format!("table: duplicate {name} (structure + data)"),
+                    tr!("palette.table.duplicate_data", name = name),
                     IconName::CopyPlus,
                     Box::new(move |a, _, cx| a.duplicate_object(n.clone(), true, cx)),
                 );
                 let n = name.clone();
                 add(
-                    format!("table: truncate {name}…"),
+                    tr!("palette.table.truncate", name = name),
                     IconName::Eraser,
                     Box::new(move |a, w, cx| a.truncate_object(n.clone(), false, w, cx)),
                 );
                 let n = name.clone();
                 add(
-                    format!("table: truncate {name} cascade…"),
+                    tr!("palette.table.truncate_cascade", name = name),
                     IconName::Eraser,
                     Box::new(move |a, w, cx| a.truncate_object(n.clone(), true, w, cx)),
                 );
             }
         }
         dynamic.push((
-            "table: new table…".into(),
+            tr!("palette.table.new"),
             IconName::Plus,
             rc(Box::new(|a, w, cx| a.new_table_editor(w, cx))),
         ));
         dynamic.push((
-            "view: new view…".into(),
+            tr!("palette.view.new"),
             IconName::Plus,
             rc(Box::new(|a, w, cx| a.new_view_editor(w, cx))),
         ));
         dynamic.push((
-            "sidebar: new group…".into(),
+            tr!("palette.sidebar.new_group"),
             IconName::FolderPlus,
             rc(Box::new(|a, w, cx| a.new_obj_group(None, w, cx))),
         ));
         dynamic.push((
-            "sidebar: refresh".into(),
+            tr!("palette.sidebar.refresh"),
             IconName::RefreshCw,
             rc(Box::new(|a, _, cx| {
                 let schema = a.palette_context().current_schema;
@@ -630,7 +671,7 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         ));
         if ctx.sql_tab_active {
             dynamic.push((
-                "query: export result…".into(),
+                tr!("palette.query.export_result"),
                 IconName::Download,
                 rc(Box::new(|a, _, cx| a.export_result(cx))),
             ));
@@ -648,9 +689,13 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             if name == current {
                 continue;
             }
-            let mode = if light { "light" } else { "dark" };
+            let mode = if light {
+                tr!("palette.theme.mode_light")
+            } else {
+                tr!("palette.theme.mode_dark")
+            };
             dynamic.push((
-                format!("theme: {name} ({mode})"),
+                tr!("palette.theme.apply", name = name, mode = mode),
                 IconName::Palette,
                 std::rc::Rc::new(
                     move |_: &mut TuskApp, _: &mut Window, cx: &mut Context<TuskApp>| {
@@ -664,8 +709,15 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         if mode == current_theme.appearance {
             continue;
         }
+        let mode_label = match mode {
+            crate::settings::Appearance::System => tr!("palette.theme.appearance_system"),
+            crate::settings::Appearance::Light => tr!("palette.theme.appearance_light"),
+            crate::settings::Appearance::Dark => tr!("palette.theme.appearance_dark"),
+            // A desktop brand name: kept as-is, lowercased like the rest.
+            crate::settings::Appearance::Omarchy => mode.label().to_lowercase(),
+        };
         dynamic.push((
-            format!("theme: appearance {}", mode.label().to_lowercase()),
+            tr!("palette.theme.appearance", mode = mode_label),
             match mode {
                 crate::settings::Appearance::Light => IconName::Sun,
                 crate::settings::Appearance::Omarchy => IconName::Palette,
@@ -683,10 +735,10 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
         runs.push(run);
     }
     // ---- app ----
-    let mut action = |label: &str, icon: IconName, action: Box<dyn Action>| {
+    let mut action = |label: String, icon: IconName, action: Box<dyn Action>| {
         items.push(
             CommandItem::new()
-                .label(label.to_string())
+                .label(label)
                 .icon(Icon::new(icon))
                 .action(action),
         );
@@ -694,20 +746,28 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             |_: &mut TuskApp, _: &mut Window, _: &mut Context<TuskApp>| {},
         ));
     };
-    action("app: settings", IconName::Settings, Box::new(OpenSettings));
     action(
-        "app: check for updates…",
+        tr!("palette.app.settings"),
+        IconName::Settings,
+        Box::new(OpenSettings),
+    );
+    action(
+        tr!("palette.app.check_updates"),
         IconName::ArrowDownToLine,
         Box::new(CheckForUpdates),
     );
-    action("app: about tusk", IconName::Info, Box::new(ShowAbout));
     action(
-        "app: release notes",
+        tr!("palette.app.about"),
+        IconName::Info,
+        Box::new(ShowAbout),
+    );
+    action(
+        tr!("palette.app.release_notes"),
         IconName::ExternalLink,
         Box::new(ShowReleaseNotes),
     );
-    action("app: hide", IconName::EyeOff, Box::new(HideApp));
-    action("app: quit", IconName::Power, Box::new(Quit));
+    action(tr!("palette.app.hide"), IconName::EyeOff, Box::new(HideApp));
+    action(tr!("palette.app.quit"), IconName::Power, Box::new(Quit));
     (items, runs)
 }
 
@@ -738,7 +798,7 @@ fn name_items(names: &[String], icon: IconName, current: &str) -> Vec<CommandIte
         .iter()
         .map(|n| {
             let label = if n == current {
-                format!("{n}  (current)")
+                crate::tr!("palette.name_current", name = n)
             } else {
                 n.clone()
             };
@@ -758,11 +818,11 @@ impl TuskApp {
         let border = cx.theme().border;
 
         let placeholder = match overlay.mode {
-            PaletteMode::Commands => "Type a command…",
-            PaletteMode::Tables => "Search tables…",
-            PaletteMode::Databases => "Open a database…",
-            PaletteMode::Connections => "Open a connection…",
-            PaletteMode::Tabs => "Go to tab…",
+            PaletteMode::Commands => tr!("palette.ph.commands"),
+            PaletteMode::Tables => tr!("palette.ph.tables"),
+            PaletteMode::Databases => tr!("palette.ph.databases"),
+            PaletteMode::Connections => tr!("palette.ph.connections"),
+            PaletteMode::Tabs => tr!("palette.ph.tabs"),
         };
         let cached = overlay
             .items

@@ -213,9 +213,9 @@ impl TuskApp {
                 .text_caption()
                 .text_color(muted)
                 .child(if needle.is_empty() {
-                    "Queries you run on this connection appear here."
+                    tr!("panels.history_empty")
                 } else {
-                    "No matching queries."
+                    tr!("panels.history_none")
                 })
                 .into_any_element();
         }
@@ -300,8 +300,10 @@ impl TuskApp {
                                 .hover(|d| d.text_color(fg).bg(muted.opacity(0.12)))
                                 .child(Icon::new(IconName::Play).size(px(11.)))
                                 .tooltip(|window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new("Run in New Tab")
-                                        .build(window, cx)
+                                    gpui_kit::component::tooltip::Tooltip::new(tr!(
+                                        "panels.run_new_tab"
+                                    ))
+                                    .build(window, cx)
                                 })
                                 .on_click(move |_, window, cx| {
                                     cx.stop_propagation();
@@ -333,23 +335,25 @@ impl TuskApp {
     ) -> PopupMenu {
         let (s1, s2, s3, s4) = (sql.clone(), sql.clone(), sql.clone(), sql);
         menu.item(
-            PopupMenuItem::new("Open in New Tab").on_click(move |_, window, cx| {
+            PopupMenuItem::new(tr!("panels.open_new_tab")).on_click(move |_, window, cx| {
                 let s = s1.clone();
                 with_app(cx, |app, cx| app.open_history(s, false, window, cx));
             }),
         )
         .item(
-            PopupMenuItem::new("Run in New Tab").on_click(move |_, window, cx| {
+            PopupMenuItem::new(tr!("panels.run_new_tab")).on_click(move |_, window, cx| {
                 let s = s2.clone();
                 with_app(cx, |app, cx| app.open_history(s, true, window, cx));
             }),
         )
-        .item(PopupMenuItem::new("Copy").on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(s3.clone()));
-        }))
+        .item(
+            PopupMenuItem::new(tr!("common.copy")).on_click(move |_, _, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(s3.clone()));
+            }),
+        )
         .separator()
         .item(crate::theme::danger_item(
-            "Remove from History",
+            tr!("panels.remove_history"),
             move |_, _, cx| {
                 console::remove_history(at, &s4);
                 with_app(cx, |_, cx| cx.notify());
@@ -366,7 +370,7 @@ impl TuskApp {
     ) -> AnyElement {
         let t = cx.theme().clone();
         let (muted, fg, border) = (t.muted_foreground, t.foreground, t.border);
-        let tab = |id: &'static str, label: &'static str, which: BottomPanel| {
+        let tab = |id: &'static str, label: String, which: BottomPanel| {
             let on = panel == which;
             div()
                 .id(id)
@@ -392,7 +396,7 @@ impl TuskApp {
         };
         let tools: AnyElement = match panel {
             BottomPanel::Console => {
-                let chip = |id: &'static str, label: &'static str, f: Option<Source>| {
+                let chip = |id: &'static str, label: String, f: Option<Source>| {
                     let on = self.console_filter == f;
                     div()
                         .id(id)
@@ -416,13 +420,14 @@ impl TuskApp {
                     .flex()
                     .items_center()
                     .gap_1()
-                    .child(chip("console-all", "All", None))
-                    .child(chip("console-data", "Data", Some(Source::Data)))
-                    .child(chip("console-meta", "Meta", Some(Source::Meta)))
+                    .child(chip("console-all", tr!("panels.all"), None))
+                    // Source chips: "Data" reuses the grid view label.
+                    .child(chip("console-data", tr!("tab.data"), Some(Source::Data)))
+                    .child(chip("console-meta", tr!("panels.meta"), Some(Source::Meta)))
                     .child(div().w(px(1.)).h(px(14.)).mx_1().bg(border))
                     .child(
                         Button::new("console-clear")
-                            .label("Clear")
+                            .label(tr!("common.clear"))
                             .small()
                             .outline()
                             .on_click(cx.listener(|_, _, _, cx| {
@@ -446,17 +451,22 @@ impl TuskApp {
                 )
                 .child(
                     Button::new("history-clear")
-                        .label("Clear")
+                        .label(tr!("common.clear"))
                         .small()
                         .outline()
                         .on_click(cx.listener(|this, _, window, cx| {
                             let conn = this.history_connection();
+                            let (title, detail, verb) = (
+                                tr!("panels.clear_history_q"),
+                                tr!("panels.clear_history_detail", conn = conn),
+                                tr!("common.clear"),
+                            );
                             let answer = crate::dialog_keys::confirm(
                                 window,
                                 PromptLevel::Warning,
-                                "Clear the query history?",
-                                Some(&format!("Every query run on “{conn}” is removed.")),
-                                "Clear",
+                                &title,
+                                Some(&detail),
+                                &verb,
                                 cx,
                             );
                             cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -480,9 +490,21 @@ impl TuskApp {
             .px_2()
             .border_b_1()
             .border_color(border)
-            .child(tab("panel-tab-console", "Console", BottomPanel::Console))
-            .child(tab("panel-tab-history", "History", BottomPanel::History))
-            .child(tab("panel-tab-problems", "Problems", BottomPanel::Problems))
+            .child(tab(
+                "panel-tab-console",
+                tr!("panels.console"),
+                BottomPanel::Console,
+            ))
+            .child(tab(
+                "panel-tab-history",
+                tr!("panels.history"),
+                BottomPanel::History,
+            ))
+            .child(tab(
+                "panel-tab-problems",
+                tr!("menu.view.problems"),
+                BottomPanel::Problems,
+            ))
             .child(div().flex_1())
             .child(tools)
             .child(
@@ -599,7 +621,7 @@ impl TuskApp {
                 .py_2()
                 .text_caption()
                 .text_color(muted)
-                .child("Every statement Tusk sends shows up here.")
+                .child(tr!("panels.console_empty"))
                 .into_any_element();
         }
         if self.console_scroll.stick.replace(false) {
@@ -671,16 +693,18 @@ impl TuskApp {
                         )
                         .context_menu(move |menu, _, _| {
                             let (a, b, c) = (copy.clone(), open.clone(), full.clone());
-                            menu.item(PopupMenuItem::new("Copy").on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(a.clone()));
-                            }))
-                            .item(PopupMenuItem::new("Copy with Error").on_click(
+                            menu.item(PopupMenuItem::new(tr!("common.copy")).on_click(
+                                move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(a.clone()));
+                                },
+                            ))
+                            .item(PopupMenuItem::new(tr!("panels.copy_error")).on_click(
                                 move |_, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(c.clone()));
                                 },
                             ))
                             .item(
-                                PopupMenuItem::new("Open in New Tab").on_click(
+                                PopupMenuItem::new(tr!("panels.open_new_tab")).on_click(
                                     move |_, window, cx| {
                                         let s = b.clone();
                                         with_app(cx, |app, cx| {
@@ -797,7 +821,7 @@ impl TuskApp {
                     .py_1()
                     .text_caption()
                     .text_color(muted)
-                    .child("No problems in the open queries."),
+                    .child(tr!("panels.no_problems")),
             );
         }
         div()
@@ -860,7 +884,8 @@ impl TuskApp {
             .child(count(IconName::CircleX, errors, red))
             .child(count(IconName::TriangleAlert, warnings, yellow))
             .tooltip(|window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new("Problems").build(window, cx)
+                gpui_kit::component::tooltip::Tooltip::new(tr!("menu.view.problems"))
+                    .build(window, cx)
             })
             .on_click(
                 cx.listener(|this, _, _, cx| this.toggle_bottom_panel(BottomPanel::Problems, cx)),
@@ -874,7 +899,7 @@ impl TuskApp {
             "status-history",
             // The clock's circle fills its box; one px less to match optically.
             BottomPanel::History.icon().size(px(13.)),
-            "Query History",
+            tr!("menu.view.history"),
             "cmd-y",
             BottomPanel::History,
             cx,
@@ -885,7 +910,7 @@ impl TuskApp {
         &self,
         id: &'static str,
         icon: Icon,
-        tip: &'static str,
+        tip: String,
         keys: &'static str,
         panel: BottomPanel,
         cx: &mut Context<Self>,
@@ -908,7 +933,7 @@ impl TuskApp {
             })
             .child(icon)
             .tooltip(move |window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new(tip)
+                gpui_kit::component::tooltip::Tooltip::new(tip.clone())
                     .key_binding(crate::kbd::tip(keys))
                     .build(window, cx)
             })
@@ -921,7 +946,7 @@ impl TuskApp {
         self.status_icon_button(
             "status-console",
             BottomPanel::Console.icon().size(px(14.)),
-            "Console",
+            tr!("panels.console"),
             "cmd-shift-c",
             BottomPanel::Console,
             cx,

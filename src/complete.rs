@@ -17,6 +17,7 @@ use lsp_types::{
 
 use crate::drivers::Db;
 use crate::engine::Engine;
+use crate::tr;
 
 const SQL_KEYWORDS: &[&str] = &[
     "SELECT",
@@ -627,11 +628,13 @@ impl SchemaCompletion {
                 .await
                 .iter()
                 .map(|(n, view)| {
-                    item(
-                        n,
-                        if *view { K::INTERFACE } else { K::CLASS },
-                        if *view { "View" } else { "Table" },
-                    )
+                    // let-binding: tr! returns an owned String borrowed as &str.
+                    let kind = if *view {
+                        tr!("complete.view")
+                    } else {
+                        tr!("complete.table")
+                    };
+                    item(n, if *view { K::INTERFACE } else { K::CLASS }, &kind)
                 })
                 .collect();
         }
@@ -645,7 +648,14 @@ impl SchemaCompletion {
             items.push(item(
                 &n,
                 if view { K::INTERFACE } else { K::CLASS },
-                &format!("{} · {schema}", if view { "View" } else { "Table" }),
+                &format!(
+                    "{} · {schema}",
+                    if view {
+                        tr!("complete.view")
+                    } else {
+                        tr!("complete.table")
+                    }
+                ),
             ));
         }
         let language = if engine == Engine::DynamoDb {
@@ -660,7 +670,7 @@ impl SchemaCompletion {
         }
         if !prefix.is_empty() {
             for f in SQL_FUNCTIONS {
-                items.push(item(f, K::FUNCTION, "function"));
+                items.push(item(f, K::FUNCTION, &tr!("complete.function")));
             }
         }
         items

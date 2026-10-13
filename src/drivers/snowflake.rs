@@ -53,7 +53,7 @@ pub fn host_of(account: &str) -> String {
 pub async fn connect(conn: &SavedConnection, secret: String) -> DbResult<Db> {
     let account = conn.opt("account").trim().to_string();
     if account.is_empty() {
-        return Err("Fill in the account".into());
+        return Err(crate::tr!("drivers.snowflake_account"));
     }
     let key = conn.opt("key_file").trim();
     let auth = if !key.is_empty() {
@@ -70,7 +70,7 @@ pub async fn connect(conn: &SavedConnection, secret: String) -> DbResult<Db> {
     } else if !secret.trim().is_empty() {
         Auth::Token(secret.trim().to_string())
     } else {
-        return Err("Enter an access token or choose a private key".into());
+        return Err(crate::tr!("drivers.snowflake_auth"));
     };
     let endpoint = conn
         .opt("endpoint")

@@ -60,7 +60,7 @@ impl TuskApp {
             m
         });
 
-        let item = |label: &'static str,
+        let item = |label: String,
                     f: fn(&mut TuskApp, TableKind, String, &mut Window, &mut Context<TuskApp>)| {
             let (k, n) = (kind.clone(), name.clone());
             PopupMenuItem::new(label).on_click(move |_, window, cx| {
@@ -69,7 +69,7 @@ impl TuskApp {
             })
         };
 
-        let danger = |label: &'static str,
+        let danger = |label: String,
                       f: fn(
             &mut TuskApp,
             TableKind,
@@ -78,61 +78,72 @@ impl TuskApp {
             &mut Context<TuskApp>,
         )| {
             let (k, n) = (kind.clone(), name.clone());
-            crate::theme::danger_item(label, move |_, window, cx| {
+            crate::grid::danger_item_owned(label, move |_, window, cx| {
                 let (k, n) = (k.clone(), n.clone());
                 with_app(cx, |app, cx| f(app, k, n, window, cx));
             })
         };
 
         let mut menu = menu.item(item(
-            if is_fn { "Select" } else { "Open" },
+            if is_fn {
+                tr!("objects.select")
+            } else {
+                tr!("objects.open")
+            },
             |app, k, n, w, cx| {
                 app.sidebar_focus.focus(w, cx);
                 app.on_pick_object(k, n, w, cx);
             },
         ));
         if !is_fn {
-            menu = menu.item(item("Open Structure", |app, k, n, w, cx| {
+            menu = menu.item(item(tr!("objects.open_structure"), |app, k, n, w, cx| {
                 app.open_structure(k, n, w, cx)
             }));
         }
         menu = menu
             .separator()
-            .item(item("Copy Name", |_, _, n, _, cx| {
+            .item(item(tr!("objects.copy_name"), |_, _, n, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(n));
             }))
             .item(
-                item("Send to Chat", |app, k, n, w, cx| {
+                item(tr!("menu.view.send_to_chat"), |app, k, n, w, cx| {
                     let schema = app.current_schema.clone();
                     app.send_table_to_chat(k, schema, n, w, cx);
                 })
                 .action(Box::new(SendToChat)),
             )
-            .item(PopupMenuItem::submenu("Copy Script As", script_menu))
             .item(PopupMenuItem::submenu(
-                "Open Script in Editor",
+                tr!("objects.copy_script_as"),
+                script_menu,
+            ))
+            .item(PopupMenuItem::submenu(
+                tr!("objects.open_script_editor"),
                 open_script_menu,
             ))
             .separator()
             .item(
-                item("New Query", |app, _, _, w, cx| app.open_sql_tab(w, cx))
-                    .action(Box::new(NewSqlTab)),
+                item(tr!("objects.new_query"), |app, _, _, w, cx| {
+                    app.open_sql_tab(w, cx)
+                })
+                .action(Box::new(NewSqlTab)),
             )
-            .item(item("New Table…", |app, _, _, w, cx| {
+            .item(item(tr!("objects.new_table_dots"), |app, _, _, w, cx| {
                 app.new_table_editor(w, cx)
             }))
-            .item(item("New View…", |app, k, n, w, cx| {
+            .item(item(tr!("objects.new_view_dots"), |app, k, n, w, cx| {
                 // Selecting from the table that was right-clicked.
                 let from = (k != TableKind::Function).then_some(n);
                 app.new_view_editor_from(from, w, cx)
             }));
         if !is_fn {
-            menu = menu.separator().item(item("Export…", |app, k, n, w, cx| {
-                app.export_object(k, n, w, cx)
-            }));
+            menu = menu
+                .separator()
+                .item(item(tr!("objects.export_dots"), |app, k, n, w, cx| {
+                    app.export_object(k, n, w, cx)
+                }));
         }
         if is_table {
-            menu = menu.item(item("Import from CSV…", |app, _, n, w, cx| {
+            menu = menu.item(item(tr!("objects.import_csv_dots"), |app, _, n, w, cx| {
                 app.import_csv_into(n, w, cx)
             }));
         }
@@ -140,31 +151,34 @@ impl TuskApp {
         let group_menu = Self::move_to_group_menu(member, window, cx);
         menu = menu
             .separator()
-            .item(PopupMenuItem::submenu("Move to Group", group_menu))
-            .item(item("Rename…", |app, k, n, w, cx| {
+            .item(PopupMenuItem::submenu(
+                tr!("objects.move_to_group"),
+                group_menu,
+            ))
+            .item(item(tr!("objects.rename_dots"), |app, k, n, w, cx| {
                 app.start_rename(k, n, w, cx)
             }));
         if is_table {
             let (n1, n2) = (name.clone(), name.clone());
             let dup = PopupMenu::build(window, cx, move |m, _, _| {
                 let (a, b) = (n1.clone(), n2.clone());
-                m.item(
-                    PopupMenuItem::new("Structure Only").on_click(move |_, _, cx| {
+                m.item(PopupMenuItem::new(tr!("objects.dup_structure")).on_click(
+                    move |_, _, cx| {
                         let a = a.clone();
                         with_app(cx, |app, cx| app.duplicate_object(a, false, cx));
-                    }),
-                )
+                    },
+                ))
                 .item(
-                    PopupMenuItem::new("Structure and Data").on_click(move |_, _, cx| {
+                    PopupMenuItem::new(tr!("objects.dup_data")).on_click(move |_, _, cx| {
                         let b = b.clone();
                         with_app(cx, |app, cx| app.duplicate_object(b, true, cx));
                     }),
                 )
             });
-            menu = menu.item(PopupMenuItem::submenu("Duplicate", dup));
+            menu = menu.item(PopupMenuItem::submenu(tr!("objects.duplicate"), dup));
         }
         menu = menu.item(
-            item("Refresh", |app, _, _, _, cx| {
+            item(tr!("common.refresh"), |app, _, _, _, cx| {
                 let schema = app.current_schema.clone();
                 app.fetch_objects_for(&schema, cx);
             })
@@ -174,14 +188,15 @@ impl TuskApp {
         menu = menu.separator();
         if is_table {
             menu = menu
-                .item(danger("Truncate…", |app, _, n, w, cx| {
+                .item(danger(tr!("objects.truncate_dots"), |app, _, n, w, cx| {
                     app.truncate_object(n, false, w, cx)
                 }))
-                .item(danger("Truncate Cascade…", |app, _, n, w, cx| {
-                    app.truncate_object(n, true, w, cx)
-                }));
+                .item(danger(
+                    tr!("objects.truncate_cascade_dots"),
+                    |app, _, n, w, cx| app.truncate_object(n, true, w, cx),
+                ));
         }
-        menu.item(danger("Delete", |app, k, n, _, cx| {
+        menu.item(danger(tr!("dialog.delete"), |app, k, n, _, cx| {
             app.toggle_drop(k, n, cx)
         }))
     }
@@ -281,7 +296,7 @@ impl TuskApp {
             let _ = weak.update(cx, |this: &mut TuskApp, cx| match result {
                 Ok(text) => done(this, text, cx),
                 Err(e) => {
-                    this.toast(false, format!("Script failed: {e}"));
+                    this.toast(false, tr!("objects.script_failed", error = e));
                     cx.notify();
                 }
             });
@@ -299,7 +314,10 @@ impl TuskApp {
         let label = which.label();
         self.fetch_script(kind, name.clone(), which, cx, move |this, text, cx| {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
-            this.toast(true, format!("Copied {label} script of {name}"));
+            this.toast(
+                true,
+                tr!("objects.copied_script", label = label, name = name.clone()),
+            );
             cx.notify();
         });
     }
@@ -333,15 +351,15 @@ impl TuskApp {
             return;
         };
         let schema = self.current_schema.clone();
-        self.status_line = format!("Duplicating {name}…");
+        self.status_line = Some(StatusLine::Duplicating { name: name.clone() });
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = objects::duplicate_table(&pool, &schema, &name, with_data).await;
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
-                this.status_line.clear();
+                this.status_line = None;
                 match result {
-                    Ok(copy) => this.toast(true, format!("Created {copy}")),
-                    Err(e) => this.toast(false, format!("Duplicate failed: {e}")),
+                    Ok(copy) => this.toast(true, tr!("objects.created", name = copy)),
+                    Err(e) => this.toast(false, tr!("objects.duplicate_failed", error = e)),
                 }
                 this.fetch_objects_for(&schema, cx);
             });
@@ -362,16 +380,17 @@ impl TuskApp {
             return;
         };
         let schema = self.current_schema.clone();
+        let detail = if cascade {
+            tr!("objects.truncate_cascade_detail")
+        } else {
+            tr!("objects.truncate_detail")
+        };
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Critical,
-            &format!("Truncate “{name}”?"),
-            Some(if cascade {
-                "Deletes every row, and every row referencing it in other tables (CASCADE). This can't be undone."
-            } else {
-                "Deletes every row of the table. This can't be undone."
-            }),
-            "Truncate",
+            &tr!("objects.truncate_q", name = name.clone()),
+            Some(&detail),
+            &tr!("dialog.truncate"),
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -387,8 +406,8 @@ impl TuskApp {
             let result = db::run_exec(&pool, &sql).await;
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match result {
-                    Ok(_) => this.toast(true, format!("Truncated {name}")),
-                    Err(e) => this.toast(false, format!("Truncate failed: {e}")),
+                    Ok(_) => this.toast(true, tr!("objects.truncated", name = name.clone())),
+                    Err(e) => this.toast(false, tr!("objects.truncate_failed", error = e)),
                 }
                 this.reload_tabs_of(&schema, &name, cx);
                 cx.notify();
@@ -423,7 +442,7 @@ impl TuskApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Import".into()),
+            prompt: Some(tr!("dialog.import").into()),
         });
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -438,8 +457,15 @@ impl TuskApp {
             };
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match result {
-                    Ok(n) => this.toast(true, format!("Imported {n} rows into {name}")),
-                    Err(e) => this.toast(false, format!("Import failed: {e}")),
+                    Ok(n) => this.toast(
+                        true,
+                        tr!(
+                            "objects.imported",
+                            rows = crate::sql::n_rows(n as usize),
+                            name = name.clone()
+                        ),
+                    ),
+                    Err(e) => this.toast(false, tr!("objects.import_failed", error = e)),
                 }
                 this.reload_tabs_of(&schema, &name, cx);
                 cx.notify();
@@ -480,7 +506,11 @@ impl TuskApp {
             .ghost()
             .xsmall()
             .child(Icon::new(IconName::Plus).size(px(13.)).text_color(muted))
-            .tooltip(if views { "New View" } else { "New Table" })
+            .tooltip(if views {
+                tr!("objects.new_view")
+            } else {
+                tr!("objects.new_table")
+            })
             .on_click(cx.listener(move |this, _, window, cx| {
                 if views {
                     this.new_view_editor(window, cx);
@@ -493,7 +523,7 @@ impl TuskApp {
             .xsmall()
             .child(Icon::new(IconName::ChevronDown).size(px(11.)).text_color(muted))
             .dropdown_menu(|menu, _, _| {
-                let function = PopupMenuItem::new("New Function/Procedure").on_click(|_, window, cx| {
+                let function = PopupMenuItem::new(tr!("objects.new_function")).on_click(|_, window, cx| {
                     with_app(cx, |app, cx| {
                         let s = db::quote_ident(&app.current_schema);
                         let text = format!(
@@ -502,15 +532,15 @@ impl TuskApp {
                         app.open_sql_tab_with(Some(text), window, cx);
                     });
                 });
-                menu.item(PopupMenuItem::new("New Table").on_click(|_, window, cx| {
+                menu.item(PopupMenuItem::new(tr!("objects.new_table")).on_click(|_, window, cx| {
                     with_app(cx, |app, cx| app.new_table_editor(window, cx));
                 }))
-                .item(PopupMenuItem::new("New View").on_click(|_, window, cx| {
+                .item(PopupMenuItem::new(tr!("objects.new_view")).on_click(|_, window, cx| {
                     with_app(cx, |app, cx| app.new_view_editor(window, cx));
                 }))
                 .item(function)
                     .separator()
-                    .item(PopupMenuItem::new("New Group…").on_click(|_, window, cx| {
+                    .item(PopupMenuItem::new(tr!("objects.new_group_dots")).on_click(|_, window, cx| {
                         with_app(cx, |app, cx| app.new_obj_group(None, window, cx));
                     }))
             });
@@ -529,10 +559,10 @@ impl TuskApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut name = "New Group".to_string();
+        let mut name = tr!("common.new_group");
         let mut n = 2;
         while self.obj_groups.iter().any(|g| g.name == name) {
-            name = format!("New Group {n}");
+            name = tr!("common.new_group_n", n = n);
             n += 1;
         }
         if let Some(m) = &member {
@@ -670,14 +700,14 @@ impl TuskApp {
             }))
             .context_menu(move |menu, _, _| {
                 let (r, d) = (menu_name.clone(), menu_name.clone());
-                menu.item(
-                    PopupMenuItem::new("Rename Group").on_click(move |_, window, cx| {
+                menu.item(PopupMenuItem::new(tr!("objects.rename_group")).on_click(
+                    move |_, window, cx| {
                         let r = r.clone();
                         with_app(cx, |app, cx| app.start_obj_group_rename(r, window, cx));
-                    }),
-                )
-                .item(crate::theme::danger_item(
-                    "Delete Group",
+                    },
+                ))
+                .item(crate::grid::danger_item_owned(
+                    tr!("objects.delete_group"),
                     move |_, _, cx| {
                         let d = d.clone();
                         with_app(cx, |app, cx| app.delete_obj_group(d, cx));
@@ -703,10 +733,12 @@ impl TuskApp {
         };
         PopupMenu::build(window, cx, move |mut m, _, _| {
             let m0 = member.clone();
-            m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
-                let m0 = m0.clone();
-                with_app(cx, |app, cx| app.move_obj_to_group(m0, None, cx));
-            }));
+            m = m.item(
+                PopupMenuItem::new(tr!("objects.no_group")).on_click(move |_, _, cx| {
+                    let m0 = m0.clone();
+                    with_app(cx, |app, cx| app.move_obj_to_group(m0, None, cx));
+                }),
+            );
             if !groups.is_empty() {
                 m = m.separator();
             }
@@ -718,12 +750,13 @@ impl TuskApp {
                 }));
             }
             let mn = member.clone();
-            m.separator().item(
-                PopupMenuItem::new("New Group…").on_click(move |_, window, cx| {
-                    let mn = mn.clone();
-                    with_app(cx, |app, cx| app.new_obj_group(Some(mn), window, cx));
-                }),
-            )
+            m.separator()
+                .item(PopupMenuItem::new(tr!("objects.new_group_dots")).on_click(
+                    move |_, window, cx| {
+                        let mn = mn.clone();
+                        with_app(cx, |app, cx| app.new_obj_group(Some(mn), window, cx));
+                    },
+                ))
         })
     }
 }
@@ -767,7 +800,7 @@ impl TuskApp {
                 Vec::new(),
             ),
         };
-        let label = |s: &'static str| div().flex_none().text_caption().text_color(muted).child(s);
+        let label = |s: String| div().flex_none().text_caption().text_color(muted).child(s);
         let chips = div()
             .flex()
             .items_center()
@@ -788,7 +821,7 @@ impl TuskApp {
                         .text_caption()
                         .italic()
                         .text_color(muted)
-                        .child("none"),
+                        .child(tr!("structure.none")),
                 )
             });
         let primary: AnyElement = if designing {
@@ -827,7 +860,7 @@ impl TuskApp {
             .h(px(crate::settings::bar_h() + 8.))
             .border_b_1()
             .border_color(border)
-            .child(label("Name"))
+            .child(label(tr!("dialog.name")))
             .children(name_input.map(|input| {
                 div().w(px(240.)).child(
                     Input::new(&input)
@@ -836,7 +869,7 @@ impl TuskApp {
                 )
             }))
             .child(div().w(px(10.)))
-            .child(label("Primary"))
+            .child(label(tr!("structure.primary")))
             .child(primary)
             .when(designing, |d| {
                 // One line, never squeezed: the hint yields to the name field.
@@ -847,7 +880,7 @@ impl TuskApp {
                         .text_caption()
                         .text_color(muted)
                         .child(
-                            crate::kbd::rich_colored("[cmd-s] creates the table", muted)
+                            crate::kbd::rich_colored(&tr!("editor.create_table_hint"), muted)
                                 .flex_nowrap(),
                         ),
                 )
@@ -857,9 +890,9 @@ impl TuskApp {
 
     /// `Label [name…]  hint` bar above a draft's editor.
     pub(super) fn draft_name_bar(
-        label: &'static str,
+        label: String,
         input: &Entity<InputState>,
-        hint: &'static str,
+        hint: String,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let t = cx.theme();
@@ -883,7 +916,7 @@ impl TuskApp {
                 div()
                     .text_caption()
                     .text_color(t.muted_foreground)
-                    .child(crate::kbd::rich_colored(hint, t.muted_foreground)),
+                    .child(crate::kbd::rich_colored(&hint, t.muted_foreground)),
             )
             .into_any_element()
     }
@@ -908,9 +941,9 @@ impl TuskApp {
             return;
         };
         if !pool.caps().edit_structure {
-            self.toast_info(format!(
-                "Designing tables isn't available for {} yet — use CREATE TABLE in a query tab.",
-                pool.engine().label()
+            self.toast_info(tr!(
+                "objects.design_unavailable",
+                engine = pool.engine().label()
             ));
             cx.notify();
             return;
@@ -1015,7 +1048,7 @@ impl TuskApp {
         if let Some(ix) = self.active_tab
             && let Some(WorkspaceTab::Sql(tab)) = self.tabs.get_mut(ix)
         {
-            tab.title = "New View".into();
+            tab.title = tr!("objects.new_view");
             tab.view_draft = Some(draft);
         }
         cx.notify();

@@ -18,6 +18,7 @@ use gpui_kit::*;
 use crate::app::{TuskHandle, short_version};
 use crate::conn::ConnectionForm;
 use crate::db::{self, SslMode};
+use crate::tr;
 
 /// The open dialog window, so cmd-n focuses it instead of stacking a second one.
 #[derive(Default)]
@@ -41,8 +42,22 @@ pub struct ConnDialog {
     _subs: Vec<Subscription>,
 }
 
-const NO_TAG: &str = "none";
-const NO_GROUP: &str = "No group";
+/// Tag labels in the current language. The kit's Select items double as the
+/// confirmed value, so pickers get these and the Confirm handlers reverse-
+/// match them; `db::ConnTag::label()` stays English (saved data uses it).
+pub(crate) fn tag_label(t: db::ConnTag) -> String {
+    match t {
+        db::ConnTag::Local => tr!("conn.tag.local"),
+        db::ConnTag::Development => tr!("conn.tag.development"),
+        db::ConnTag::Testing => tr!("conn.tag.testing"),
+        db::ConnTag::Staging => tr!("conn.tag.staging"),
+        db::ConnTag::Production => tr!("conn.tag.production"),
+    }
+}
+
+fn tag_from_label(s: &str) -> Option<db::ConnTag> {
+    db::ConnTag::ALL.into_iter().find(|t| tag_label(*t) == s)
+}
 
 /// Spells SSL modes in capitals.
 fn ssl_label(m: SslMode) -> &'static str {
@@ -59,12 +74,8 @@ const TITLE_H: f32 = 34.;
 
 impl ConnDialog {
     pub fn new(form: ConnectionForm, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut items: Vec<SharedString> = vec![NO_TAG.into()];
-        items.extend(
-            db::ConnTag::ALL
-                .iter()
-                .map(|t| SharedString::from(t.label())),
-        );
+        let mut items: Vec<SharedString> = vec![tr!("conn.tag.none").into()];
+        items.extend(db::ConnTag::ALL.iter().map(|t| tag_label(*t).into()));
         let selected = form
             .tag
             .and_then(|t| db::ConnTag::ALL.iter().position(|x| *x == t))
@@ -76,7 +87,7 @@ impl ConnDialog {
             &tag_select,
             |this, _, ev: &SelectEvent<Vec<SharedString>>, cx| {
                 let SelectEvent::Confirm(value) = ev;
-                this.form.tag = value.as_deref().and_then(db::ConnTag::from_label);
+                this.form.tag = value.as_deref().and_then(tag_from_label);
                 cx.notify();
             },
         );
@@ -113,7 +124,7 @@ impl ConnDialog {
         }
         groups.sort_by_key(|g| g.to_lowercase());
         groups.dedup();
-        let mut group_items: Vec<SharedString> = vec![NO_GROUP.into()];
+        let mut group_items: Vec<SharedString> = vec![tr!("dialog.no_group").into()];
         group_items.extend(groups.into_iter().map(SharedString::from));
         let group_ix = group_items
             .iter()
@@ -126,9 +137,10 @@ impl ConnDialog {
             window,
             |this, _, ev: &SelectEvent<Vec<SharedString>>, window, cx| {
                 let SelectEvent::Confirm(value) = ev;
+                // Sentinel vs folder name: compare against the translated item.
                 let v = value
                     .as_deref()
-                    .filter(|v| *v != NO_GROUP)
+                    .filter(|v| *v != tr!("dialog.no_group"))
                     .unwrap_or("")
                     .to_string();
                 this.form
@@ -220,7 +232,7 @@ impl ConnDialog {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Choose".into()),
+            prompt: Some(tr!("dialog.choose").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else {
@@ -335,15 +347,15 @@ impl ConnDialog {
         if !conn.is_valid() {
             use crate::engine::Form;
             let what = match conn.engine.form() {
-                Form::File => "Fill in the name and the database file.",
-                Form::UrlToken => "Fill in the name and the server URL.",
-                Form::CloudflareD1 => "Fill in the name, account id and database id.",
-                Form::Snowflake => "Fill in the name, account and user.",
-                Form::BigQuery => "Fill in the name and the project.",
-                Form::DynamoDb => "Fill in the name and the region (or an endpoint).",
-                Form::Server => "Fill in name, host, port, database and user.",
+                Form::File => tr!("dialog.fill.file"),
+                Form::UrlToken => tr!("dialog.fill.url_token"),
+                Form::CloudflareD1 => tr!("dialog.fill.cloudflare_d1"),
+                Form::Snowflake => tr!("dialog.fill.snowflake"),
+                Form::BigQuery => tr!("dialog.fill.bigquery"),
+                Form::DynamoDb => tr!("dialog.fill.dynamodb"),
+                Form::Server => tr!("dialog.fill.server"),
             };
-            self.form.notice = Some((false, what.to_string()));
+            self.form.notice = Some((false, what));
             cx.notify();
             return None;
         }
@@ -356,14 +368,14 @@ impl ConnDialog {
         };
         let ssh_secret = self.form.ssh_secret_text(cx);
         self.form.busy = true;
-        self.form.notice = Some((true, "Testing connection…".to_string()));
+        self.form.notice = Some((true, tr!("conn.testing")));
         cx.notify();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
             let result = db::test_connect(conn, password, Some(ssh_secret)).await;
             let _ = weak.update(cx, |this: &mut ConnDialog, cx| {
                 this.form.busy = false;
                 this.form.notice = Some(match result {
-                    Ok(v) => (true, format!("OK — {}", short_version(&v))),
+                    Ok(v) => (true, tr!("conn.test_ok", version = short_version(&v))),
                     Err(e) => (false, e),
                 });
                 cx.notify();
@@ -378,10 +390,7 @@ impl ConnDialog {
         if !db::connection_name_taken(name, self.form.editing.as_deref()) {
             return false;
         }
-        self.form.notice = Some((
-            false,
-            format!("A connection named “{name}” already exists. Pick another name."),
-        ));
+        self.form.notice = Some((false, tr!("dialog.name_taken", name = name)));
         cx.notify();
         true
     }
@@ -401,27 +410,36 @@ impl ConnDialog {
         // leaves the user locked out on restart with no explanation.
         let mut keychain_warning: Option<String> = None;
         if self.form.save_password {
-            db::save_password(&conn.name, password)
-                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
+            db::save_password(&conn.name, password).map_err(|e| {
+                tr!(
+                    "conn.credential_error",
+                    store = db::CREDENTIAL_STORE,
+                    error = e
+                )
+            })?;
             match db::load_password(&conn.name) {
                 Ok(back) if back == password => {}
                 Ok(_) => {
-                    keychain_warning = Some(format!(
-                        "the {} gave back a different password",
-                        db::CREDENTIAL_STORE
-                    ));
+                    keychain_warning =
+                        Some(tr!("conn.keychain_mismatch", store = db::CREDENTIAL_STORE));
                 }
                 Err(e) => {
-                    keychain_warning = Some(format!(
-                        "the password can't be read back from the {} ({e})",
-                        db::CREDENTIAL_STORE
+                    keychain_warning = Some(tr!(
+                        "conn.keychain_unreadable",
+                        store = db::CREDENTIAL_STORE,
+                        error = e
                     ));
                 }
             }
         }
         if conn.ssh.is_some() && !ssh_secret.is_empty() {
-            db::save_ssh_secret(&conn.name, ssh_secret)
-                .map_err(|e| format!("{} error: {e}", db::CREDENTIAL_STORE))?;
+            db::save_ssh_secret(&conn.name, ssh_secret).map_err(|e| {
+                tr!(
+                    "conn.credential_error",
+                    store = db::CREDENTIAL_STORE,
+                    error = e
+                )
+            })?;
         }
         // Editing an existing profile: replace it in place (a rename moves
         // its Keychain secrets along); otherwise add or update by name.
@@ -440,7 +458,7 @@ impl ConnDialog {
             db::delete_secrets(old);
         }
         let (list, ix) = db::upsert_connection(conn.clone(), original.as_deref())
-            .map_err(|e| format!("Save failed: {e:#}"))?;
+            .map_err(|e| tr!("conn.save_failed", error = format!("{e:#}")))?;
         self.form.saved = list;
         self.form.selected = Some(ix);
         self.form.editing = Some(conn.name.clone());
@@ -469,10 +487,7 @@ impl ConnDialog {
             Ok(Some(w)) => {
                 self.form.notice = Some((
                     false,
-                    format!(
-                        "Saved “{}” — but {w}; it won't survive a restart.",
-                        conn.name
-                    ),
+                    tr!("conn.saved_warning", name = conn.name, warning = w),
                 ));
             }
             Err(e) => self.form.notice = Some((false, e)),
@@ -489,7 +504,7 @@ impl ConnDialog {
         }
         let ssh_secret = self.form.ssh_secret_text(cx);
         self.form.busy = true;
-        self.form.notice = Some((true, format!("Connecting to {}…", conn.name)));
+        self.form.notice = Some((true, tr!("conn.connecting", name = conn.name)));
         cx.notify();
         let dialog_window = window.window_handle();
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -506,9 +521,14 @@ impl ConnDialog {
                         main.update(cx, |app, cx| {
                             match saved {
                                 Ok(None) => {}
-                                Ok(Some(w)) => {
-                                    app.toast(false, format!("Saved “{}” — but {w}.", conn.name))
-                                }
+                                Ok(Some(w)) => app.toast(
+                                    false,
+                                    tr!(
+                                        "conn.saved_connect_warning",
+                                        name = conn.name,
+                                        warning = w
+                                    ),
+                                ),
                                 Err(e) => app.toast(false, e),
                             }
                             app.connected_with(c, &conn, &password, cx);
@@ -631,15 +651,15 @@ impl ConnDialog {
 
         let identity = card(vec![
             line(vec![
-                label("Name").into_any_element(),
+                label(&tr!("dialog.name")).into_any_element(),
                 grow(Input::new(&self.form.name).into_any_element()),
             ])
             .into_any_element(),
             line(vec![
-                label("Status Color").into_any_element(),
+                label(&tr!("dialog.status_color")).into_any_element(),
                 swatches.into_any_element(),
                 div().flex_1().into_any_element(),
-                small_label("Tag"),
+                small_label(&tr!("dialog.tag")),
                 fixed(
                     150.,
                     Select::new(&self.tag_select).small().into_any_element(),
@@ -647,7 +667,7 @@ impl ConnDialog {
             ])
             .into_any_element(),
             line(vec![
-                label("Group").into_any_element(),
+                label(&tr!("dialog.group")).into_any_element(),
                 grow(Select::new(&self.group_select).small().into_any_element()),
             ])
             .into_any_element(),
@@ -656,7 +676,7 @@ impl ConnDialog {
         use crate::engine::{Engine, Form};
         let engine = self.form.engine;
         let keychain = Checkbox::new("dlg-save-pw")
-            .label(format!("Store in {}", db::CREDENTIAL_STORE))
+            .label(tr!("dialog.store_in", store = db::CREDENTIAL_STORE))
             .checked(self.form.save_password)
             .on_click(cx.listener(|this, checked: &bool, _, cx| {
                 this.form.save_password = *checked;
@@ -682,7 +702,7 @@ impl ConnDialog {
         };
         let browse = |id: &'static str, target: Option<&'static str>| {
             Button::new(id)
-                .label("Browse…")
+                .label(tr!("dialog.browse"))
                 .small()
                 .on_click(
                     cx.listener(move |this, _, window, cx| this.browse_file(target, window, cx)),
@@ -694,9 +714,9 @@ impl ConnDialog {
             Form::Server => {
                 rows.push(
                     line(vec![
-                        label("Host/Socket").into_any_element(),
+                        label(&tr!("dialog.host_socket")).into_any_element(),
                         grow(Input::new(&self.form.host).into_any_element()),
-                        small_label("Port"),
+                        small_label(&tr!("dialog.port")),
                         fixed(90., Input::new(&self.form.port).into_any_element()),
                     ])
                     .into_any_element(),
@@ -704,20 +724,19 @@ impl ConnDialog {
                 if engine != Engine::Redis {
                     rows.push(
                         line(vec![
-                            label("User").into_any_element(),
+                            label(&tr!("dialog.user")).into_any_element(),
                             grow(Input::new(&self.form.user).into_any_element()),
                         ])
                         .into_any_element(),
                     );
                 }
-                rows.push(secret_row("Password", keychain));
+                rows.push(secret_row(&tr!("dialog.password"), keychain));
                 rows.push(
                     line(vec![
-                        label(match engine {
-                            Engine::Oracle => "Service",
-                            Engine::Cassandra => "Keyspace",
-                            Engine::Redis => "Database",
-                            _ => "Database",
+                        label(&match engine {
+                            Engine::Oracle => tr!("dialog.service"),
+                            Engine::Cassandra => tr!("dialog.keyspace"),
+                            _ => tr!("dialog.database"),
                         })
                         .into_any_element(),
                         grow(Input::new(&self.form.database).into_any_element()),
@@ -727,7 +746,7 @@ impl ConnDialog {
                 if !matches!(engine, Engine::Redis | Engine::Cassandra | Engine::MongoDb) {
                     rows.push(
                         line(vec![
-                            label("SSL mode").into_any_element(),
+                            label(&tr!("dialog.ssl_mode")).into_any_element(),
                             fixed(
                                 200.,
                                 Select::new(&self.ssl_select).small().into_any_element(),
@@ -740,7 +759,7 @@ impl ConnDialog {
             Form::File => {
                 rows.push(
                     line(vec![
-                        label("Path").into_any_element(),
+                        label(&tr!("dialog.path")).into_any_element(),
                         grow(Input::new(&self.form.path).into_any_element()),
                         browse("dlg-browse", None),
                     ])
@@ -752,83 +771,83 @@ impl ConnDialog {
                         .pb_1()
                         .text_caption()
                         .text_color(muted)
-                        .child("A file that doesn't exist yet is created.")
+                        .child(tr!("dialog.file_created_hint"))
                         .into_any_element(),
                 );
             }
             Form::UrlToken => {
                 rows.push(
                     line(vec![
-                        label("URL").into_any_element(),
+                        label(&tr!("dialog.url")).into_any_element(),
                         grow(Input::new(&self.form.path).into_any_element()),
                     ])
                     .into_any_element(),
                 );
-                rows.push(secret_row("Auth Token", keychain));
+                rows.push(secret_row(&tr!("dialog.auth_token"), keychain));
             }
             Form::CloudflareD1 => {
-                rows.extend(opt_row("Account ID", "account_id"));
+                rows.extend(opt_row(&tr!("conn.field.account_id"), "account_id"));
                 rows.push(
                     line(vec![
-                        label("Database ID").into_any_element(),
+                        label(&tr!("dialog.database_id")).into_any_element(),
                         grow(Input::new(&self.form.database).into_any_element()),
                     ])
                     .into_any_element(),
                 );
-                rows.push(secret_row("API Token", keychain));
+                rows.push(secret_row(&tr!("dialog.api_token"), keychain));
             }
             Form::Snowflake => {
-                rows.extend(opt_row("Account", "account"));
+                rows.extend(opt_row(&tr!("conn.field.account"), "account"));
                 rows.push(
                     line(vec![
-                        label("User").into_any_element(),
+                        label(&tr!("dialog.user")).into_any_element(),
                         grow(Input::new(&self.form.user).into_any_element()),
                     ])
                     .into_any_element(),
                 );
-                rows.push(secret_row("Access Token", keychain));
+                rows.push(secret_row(&tr!("dialog.access_token"), keychain));
                 // Key-pair sign-in instead of a token.
                 if let Some(e) = self.option("key_file") {
                     rows.push(
                         line(vec![
-                            label("Private Key").into_any_element(),
+                            label(&tr!("dialog.private_key")).into_any_element(),
                             grow(Input::new(&e).into_any_element()),
                             browse("dlg-browse-sf-key", Some("key_file")),
                         ])
                         .into_any_element(),
                     );
                 }
-                rows.extend(opt_row("Warehouse", "warehouse"));
+                rows.extend(opt_row(&tr!("conn.field.warehouse"), "warehouse"));
                 rows.push(
                     line(vec![
-                        label("Database").into_any_element(),
+                        label(&tr!("dialog.database")).into_any_element(),
                         grow(Input::new(&self.form.database).into_any_element()),
                     ])
                     .into_any_element(),
                 );
-                rows.extend(opt_row("Schema", "schema"));
-                rows.extend(opt_row("Role", "role"));
+                rows.extend(opt_row(&tr!("conn.field.schema"), "schema"));
+                rows.extend(opt_row(&tr!("conn.field.role"), "role"));
             }
             Form::BigQuery => {
-                rows.extend(opt_row("Project", "project"));
-                rows.extend(opt_row("Dataset", "dataset"));
+                rows.extend(opt_row(&tr!("conn.field.project"), "project"));
+                rows.extend(opt_row(&tr!("conn.field.dataset"), "dataset"));
                 if let Some(e) = self.option("key_file") {
                     rows.push(
                         line(vec![
-                            label("Key File").into_any_element(),
+                            label(&tr!("conn.field.key_file")).into_any_element(),
                             grow(Input::new(&e).into_any_element()),
                             browse("dlg-browse-key", Some("key_file")),
                         ])
                         .into_any_element(),
                     );
                 }
-                rows.extend(opt_row("Endpoint", "endpoint"));
+                rows.extend(opt_row(&tr!("conn.field.endpoint"), "endpoint"));
             }
             Form::DynamoDb => {
-                rows.extend(opt_row("Region", "region"));
-                rows.extend(opt_row("Access Key", "access_key"));
-                rows.push(secret_row("Secret Key", keychain));
-                rows.extend(opt_row("Endpoint", "endpoint"));
+                rows.extend(opt_row(&tr!("conn.field.region"), "region"));
+                rows.extend(opt_row(&tr!("conn.field.access_key"), "access_key"));
+                rows.push(secret_row(&tr!("dialog.secret_key"), keychain));
+                rows.extend(opt_row(&tr!("conn.field.endpoint"), "endpoint"));
             }
         }
         let server = card(rows);
@@ -836,22 +855,22 @@ impl ConnDialog {
         let ssh_card = self.form.ssh_enabled.then(|| {
             card(vec![
                 line(vec![
-                    label("Server").into_any_element(),
+                    label(&tr!("dialog.server")).into_any_element(),
                     grow(Input::new(&self.form.ssh_host).into_any_element()),
-                    small_label("Port"),
+                    small_label(&tr!("dialog.port")),
                     fixed(90., Input::new(&self.form.ssh_port).into_any_element()),
                 ])
                 .into_any_element(),
                 line(vec![
-                    label("User").into_any_element(),
+                    label(&tr!("dialog.user")).into_any_element(),
                     grow(Input::new(&self.form.ssh_user).into_any_element()),
                 ])
                 .into_any_element(),
                 line(vec![
-                    label(if self.form.ssh_use_key {
-                        "Passphrase"
+                    label(&if self.form.ssh_use_key {
+                        tr!("dialog.passphrase")
                     } else {
-                        "Password"
+                        tr!("dialog.password")
                     })
                     .into_any_element(),
                     grow(Input::new(&self.form.ssh_secret).into_any_element()),
@@ -865,7 +884,7 @@ impl ConnDialog {
                         .justify_end()
                         .child(
                             Checkbox::new("dlg-ssh-key")
-                                .label("Use SSH key")
+                                .label(tr!("dialog.use_ssh_key"))
                                 .checked(self.form.ssh_use_key)
                                 .on_click(cx.listener(|this, checked: &bool, _, cx| {
                                     this.form.ssh_use_key = *checked;
@@ -885,14 +904,13 @@ impl ConnDialog {
                     .pb_1()
                     .text_caption()
                     .text_color(muted)
-                    .child("Leave the key empty to use ~/.ssh/id_ed25519 or id_rsa.")
+                    .child(tr!("dialog.ssh_key_hint"))
                     .into_any_element(),
             ])
         });
 
-        let footer_btn = |id: &'static str, text: &'static str| {
-            Button::new(id).label(text).disabled(busy).w(px(84.))
-        };
+        let footer_btn =
+            |id: &'static str, text: String| Button::new(id).label(text).disabled(busy).w(px(84.));
         let ssh_on = self.form.ssh_enabled;
         let can_ssh = engine.form() == Form::Server;
         let (accent, accent_fg) = (cx.theme().accent, cx.theme().accent_foreground);
@@ -901,18 +919,20 @@ impl ConnDialog {
             .items_center()
             .gap_2()
             .when(self.form.editing.is_none(), |d| {
-                d.child(Button::new("dlg-back").label("Back").on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.picked = this.form.engine;
-                        this.choosing = true;
-                        cx.notify();
-                    },
-                )))
+                d.child(
+                    Button::new("dlg-back")
+                        .label(tr!("dialog.back"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.picked = this.form.engine;
+                            this.choosing = true;
+                            cx.notify();
+                        })),
+                )
             })
             .when(can_ssh, |d| {
                 d.child(
                     Button::new("dlg-ssh")
-                        .label("Over SSH")
+                        .label(tr!("dialog.over_ssh"))
                         // blue while the SSH section is on.
                         .when(ssh_on, |b| b.bg(accent).text_color(accent_fg))
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -922,20 +942,20 @@ impl ConnDialog {
                 )
             })
             .child(div().flex_1())
-            .child(footer_btn("dlg-save", "Save").on_click(cx.listener(Self::on_save)))
-            .child(footer_btn("dlg-test", "Test").on_click(cx.listener(Self::on_test)))
+            .child(footer_btn("dlg-save", tr!("dialog.save")).on_click(cx.listener(Self::on_save)))
+            .child(footer_btn("dlg-test", tr!("dialog.test")).on_click(cx.listener(Self::on_test)))
             .child(
-                footer_btn("dlg-connect", "Connect")
+                footer_btn("dlg-connect", tr!("dialog.connect"))
                     .primary()
                     .on_click(cx.listener(Self::on_connect)),
             );
 
         let title = if self.choosing {
-            "Create a new connection".to_string()
+            tr!("dialog.new_connection")
         } else if self.form.editing.is_some() {
-            format!("Edit {} Connection", engine.label())
+            tr!("dialog.edit_connection", engine = engine.label())
         } else {
-            format!("{} Connection", engine.label())
+            tr!("dialog.connection", engine = engine.label())
         };
 
         // Content-fit height (capped to the screen): measure the form.
@@ -1082,7 +1102,7 @@ impl ConnDialog {
                     .child(div().flex_1().child(Input::new(url)))
                     .child(
                         Button::new("dlg-url-import")
-                            .label("Import")
+                            .label(tr!("dialog.import"))
                             .primary()
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.import_url(window, cx)),
@@ -1106,7 +1126,7 @@ impl ConnDialog {
                     .when(self.url.is_none(), |d| {
                         d.child(
                             Button::new("dlg-import-url")
-                                .label("Import from URL")
+                                .label(tr!("dialog.import_url"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.show_url_field(window, cx)
                                 })),
@@ -1115,13 +1135,13 @@ impl ConnDialog {
                     .child(div().flex_1())
                     .child(
                         Button::new("dlg-cancel")
-                            .label("Cancel")
+                            .label(tr!("common.cancel"))
                             .w(px(84.))
                             .on_click(cx.listener(|_, _, window, _| window.remove_window())),
                     )
                     .child(
                         Button::new("dlg-create")
-                            .label("Create")
+                            .label(tr!("dialog.create"))
                             // Import is the default while the URL field is open.
                             .when(self.url.is_none(), |b| b.primary())
                             .w(px(84.))
@@ -1182,10 +1202,7 @@ impl ConnDialog {
             .map(|u| u.read(cx).value().to_string())
             .unwrap_or_default();
         let Some(parsed) = crate::engine::parse_url(text.trim()) else {
-            self.form.notice = Some((
-                false,
-                "Enter a connection URL like mysql://user@host/db.".into(),
-            ));
+            self.form.notice = Some((false, tr!("dialog.enter_url")));
             cx.notify();
             return;
         };

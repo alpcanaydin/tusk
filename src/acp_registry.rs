@@ -370,7 +370,7 @@ fn curl(url: &str, out: &Path) -> Result<()> {
         .context("curl")?;
     if !st.success() {
         let _ = std::fs::remove_file(out);
-        bail!("download failed: {url}");
+        bail!("{}", crate::tr!("agent.install.download_failed", url = url));
     }
     Ok(())
 }
@@ -408,8 +408,12 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
     match &spec.source {
         Source::Custom(cmd) => Ok(cmd.clone()),
         Source::Uvx { package, args, env } => {
-            let uvx =
-                which("uvx").ok_or_else(|| anyhow!("{} needs uv (uvx) installed", spec.name))?;
+            let uvx = which("uvx").ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::tr!("agent.install.needs_uv", agent = spec.name)
+                )
+            })?;
             let mut a = vec![package.clone()];
             a.extend(args.iter().cloned());
             let dir = install_dir("uvx", spec);
@@ -430,8 +434,8 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
                 }
                 let npm = which("npm").ok_or_else(|| {
                     anyhow!(
-                        "{} needs Node.js — install it from nodejs.org, then try again",
-                        spec.name
+                        "{}",
+                        crate::tr!("agent.install.needs_node", agent = spec.name)
                     )
                 })?;
                 std::fs::create_dir_all(&dir)?;
@@ -451,8 +455,12 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
                     .context("npm install")?;
                 if !out.status.success() {
                     bail!(
-                        "npm install {package} failed:\n{}",
-                        String::from_utf8_lossy(&out.stderr).trim()
+                        "{}",
+                        crate::tr!(
+                            "agent.install.npm_failed",
+                            package = package,
+                            error = String::from_utf8_lossy(&out.stderr).trim()
+                        )
                     );
                 }
                 std::fs::write(dir.join(".ok"), b"")?;
@@ -484,7 +492,10 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
                     let got = hex::encode(sha2::Sha256::digest(std::fs::read(&file)?));
                     if !got.eq_ignore_ascii_case(want) {
                         let _ = std::fs::remove_file(&file);
-                        bail!("{} download failed its checksum", spec.name);
+                        bail!(
+                            "{}",
+                            crate::tr!("agent.install.checksum_failed", agent = spec.name)
+                        );
                     }
                 }
                 // Windows has no unzip, but its bundled bsdtar reads zips.
@@ -511,7 +522,10 @@ pub fn resolve(spec: &AgentSpec) -> Result<AgentCommand> {
                     std::process::ExitStatus::default()
                 };
                 if !status.success() {
-                    bail!("unpacking {file_name} failed");
+                    bail!(
+                        "{}",
+                        crate::tr!("agent.install.unpack_failed", file = file_name)
+                    );
                 }
                 let _ = std::fs::remove_file(&file);
                 std::fs::write(dir.join(".ok"), b"")?;
@@ -544,8 +558,16 @@ fn npm_bin(pkg_dir: &Path, name: &str) -> Result<String> {
             .or_else(|| m.values().next())
             .and_then(Value::as_str)
             .map(str::to_string)
-            .ok_or_else(|| anyhow!("{name} has no executable")),
-        _ => bail!("{name} has no executable"),
+            .ok_or_else(|| {
+                anyhow!(
+                    "{}",
+                    crate::tr!("agent.install.no_executable", package = name)
+                )
+            }),
+        _ => bail!(
+            "{}",
+            crate::tr!("agent.install.no_executable", package = name)
+        ),
     }
 }
 

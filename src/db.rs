@@ -301,13 +301,21 @@ fn load_connections_from(path: &std::path::Path) -> Vec<SavedConnection> {
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             let backup = path.with_file_name(format!("{name}.bak-{secs}"));
             let msg = match std::fs::rename(path, &backup) {
-                Ok(()) => format!(
-                    "Couldn't read {name} ({e}). It was kept as {}.",
-                    backup.display()
+                Ok(()) => crate::tr!(
+                    "db.load_notice_kept",
+                    name = name,
+                    error = e.to_string(),
+                    backup = backup.display().to_string()
                 ),
-                Err(err) => format!("Couldn't read {name} ({e}) or set it aside ({err})."),
+                Err(err) => crate::tr!(
+                    "db.load_notice_sideline",
+                    name = name,
+                    error = e.to_string(),
+                    err = err.to_string()
+                ),
             };
-            log::warn!("{msg}");
+            // The log stays English; the notice is the translated one.
+            log::warn!("connections file unreadable: {e}");
             if let Ok(mut n) = LOAD_NOTICE.lock() {
                 *n = Some(msg);
             }
@@ -425,7 +433,8 @@ pub const CREDENTIAL_STORE: &str = if cfg!(target_os = "macos") {
 } else if cfg!(windows) {
     "Credential Manager"
 } else {
-    "system keyring"
+    // The product name, like the other two (GNOME Keyring / KWallet).
+    "Keyring"
 };
 
 const KEYCHAIN_SERVICE: &str = "tusk-postgres";

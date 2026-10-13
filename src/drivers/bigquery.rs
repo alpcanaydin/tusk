@@ -93,10 +93,7 @@ fn load_auth(conn: &SavedConnection, secret: &str) -> DbResult<Auth> {
         });
     match std::fs::read_to_string(&adc) {
         Ok(text) => from_json(&text),
-        Err(_) => Err(
-            "Choose a service-account key file (or run gcloud auth application-default login)."
-                .into(),
-        ),
+        Err(_) => Err(crate::tr!("drivers.bigquery_key")),
     }
 }
 
@@ -108,7 +105,7 @@ pub async fn connect(conn: &SavedConnection, secret: String) -> DbResult<Db> {
         .to_string();
     let project = conn.opt("project").trim().to_string();
     if project.is_empty() {
-        return Err("Fill in the project".into());
+        return Err(crate::tr!("drivers.bigquery_project"));
     }
     let bq = BigQuery {
         base: format!(
@@ -176,10 +173,10 @@ impl BigQuery {
             _ => TOKEN_URL.to_string(),
         };
         let v = http::send_json(http::client().post(uri).form(&form)).await?;
-        let t = v["access_token"]
-            .as_str()
-            .ok_or("No access token in the OAuth reply")?
-            .to_string();
+        let t = match v["access_token"].as_str() {
+            Some(t) => t.to_string(),
+            None => return Err(crate::tr!("drivers.bigquery_token")),
+        };
         *self.token.lock().unwrap() = Some((t.clone(), Instant::now()));
         Ok(Some(t))
     }

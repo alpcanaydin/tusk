@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::tr;
+
 /// Every engine the connection form offers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -264,17 +266,19 @@ impl Engine {
         }
     }
 
-    /// Placeholder for the database field (what it means per engine).
-    pub fn database_hint(self) -> &'static str {
+    /// Placeholder for the database field (what it means per engine). The
+    /// prose is localized; the sample database names (`FREEPDB1`, `master`,
+    /// `defaultdb`, `mydb`, the Redis index `0`) are what you type in.
+    pub fn database_hint(self) -> String {
         match self {
-            Engine::Oracle => "Service name (FREEPDB1)",
-            Engine::Cassandra => "Keyspace (optional)",
-            Engine::Redis => "Database index (0)",
-            Engine::MongoDb => "Database (optional)",
-            Engine::ClickHouse => "default",
-            Engine::MsSql => "master",
-            Engine::Cockroach => "defaultdb",
-            _ => "mydb",
+            Engine::Oracle => tr!("conn.ph.database_service"),
+            Engine::Cassandra => tr!("conn.ph.database_keyspace"),
+            Engine::Redis => tr!("conn.ph.database_index"),
+            Engine::MongoDb => tr!("conn.ph.database_optional"),
+            Engine::ClickHouse => "default".into(),
+            Engine::MsSql => "master".into(),
+            Engine::Cockroach => "defaultdb".into(),
+            _ => "mydb".into(),
         }
     }
 

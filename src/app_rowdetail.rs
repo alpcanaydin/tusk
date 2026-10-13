@@ -442,7 +442,7 @@ impl TuskApp {
         } else {
             serde_json::from_str::<serde_json::Value>(text)
                 .err()
-                .map(|e| format!("Invalid JSON: {e}"))
+                .map(|e| tr!("rowdetail.invalid_json", error = e))
         };
         if f.error != err {
             f.error = err;
@@ -477,7 +477,7 @@ impl TuskApp {
                 match serde_json::from_str::<serde_json::Value>(&text) {
                     Ok(j) => value = Some(j.to_string()),
                     Err(e) => {
-                        self.toast(false, format!("Not saved — invalid JSON: {e}"));
+                        self.toast(false, tr!("rowdetail.not_saved", error = e));
                         cx.notify();
                         return;
                     }
@@ -525,7 +525,7 @@ impl TuskApp {
             .and_then(|j| serde_json::to_string_pretty(&j).ok())
         {
             Some(pretty) => e.update(cx, |st, cx| st.set_value(pretty, window, cx)),
-            None => self.toast(false, "Can't format: the JSON is invalid."),
+            None => self.toast(false, tr!("rowdetail.cant_format")),
         }
         cx.notify();
     }
@@ -543,7 +543,7 @@ impl TuskApp {
         } else {
             self.row_panel.width
         };
-        let icon_btn = |id: &'static str, icon: IconName, tip: &'static str| {
+        let icon_btn = |id: &'static str, icon: IconName, tip: String| {
             div()
                 .id(id)
                 .w(px(22.))
@@ -556,15 +556,21 @@ impl TuskApp {
                 .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
                 .child(Icon::new(icon).size(px(13.)))
                 .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(tip).build(window, cx)
+                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
                 })
         };
         let title = match &self.row_panel.detail {
             Some(d) => self
                 .grid_tab(d.tab)
-                .map(|g| format!("{} · row {}", g.table.name, d.row + 1))
+                .map(|g| {
+                    tr!(
+                        "rowdetail.title",
+                        table = g.table.name.clone(),
+                        row = d.row + 1
+                    )
+                })
                 .unwrap_or_default(),
-            None => "Row".into(),
+            None => tr!("rowdetail.row"),
         };
         let header = div()
             .h(px(crate::settings::bar_h() + 8.))
@@ -593,9 +599,9 @@ impl TuskApp {
                         IconName::Maximize
                     },
                     if self.row_panel.wide {
-                        "Narrow"
+                        tr!("rowdetail.narrow")
                     } else {
-                        "Wide"
+                        tr!("rowdetail.wide")
                     },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -604,7 +610,7 @@ impl TuskApp {
                 })),
             )
             .child(
-                icon_btn("row-detail-close", IconName::Close, "Close")
+                icon_btn("row-detail-close", IconName::Close, tr!("common.close"))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_row_detail(cx))),
             );
         let body: AnyElement = match &self.row_panel.detail {
@@ -612,7 +618,7 @@ impl TuskApp {
                 .p_4()
                 .text_caption()
                 .text_color(muted)
-                .child("Select a row in the data grid to see it here.")
+                .child(tr!("rowdetail.hint"))
                 .into_any_element(),
             Some(d) => {
                 let null_cols: Vec<bool> = d
@@ -674,7 +680,7 @@ impl TuskApp {
                                                                 .items_center()
                                                                 .gap_2()
                                                                 .px_1()
-                                                                .child(div().text_sm().text_color(muted).child("Time"))
+                                                                .child(div().text_sm().text_color(muted).child(tr!("rowdetail.time")))
                                                                 .child(div().flex_1().child(
                                                                     Input::new(&t).small().font_family(crate::settings::table_font()),
                                                                 )),
@@ -730,7 +736,7 @@ impl TuskApp {
                                                 .text_caption()
                                                 .text_color(muted)
                                                 .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
-                                                .child("Format")
+                                                .child(tr!("rowdetail.format"))
                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                     this.format_json_field(col, window, cx)
                                                 })),
@@ -745,6 +751,7 @@ impl TuskApp {
                                             .text_color(if is_null { fg } else { muted })
                                             .when(is_null, |d| d.bg(muted.opacity(0.18)))
                                             .hover(|d| d.bg(muted.opacity(0.12)).text_color(fg))
+                                            // SQL NULL: kept verbatim.
                                             .child("NULL")
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.set_detail_null(col, cx)
@@ -812,7 +819,7 @@ impl TuskApp {
             })
             .child(Icon::new(IconName::PanelRight).size(px(13.)))
             .tooltip(|window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new("Row Detail")
+                gpui_kit::component::tooltip::Tooltip::new(tr!("rowdetail.panel"))
                     .key_binding(crate::kbd::tip("cmd-shift-j"))
                     .build(window, cx)
             })

@@ -5,6 +5,7 @@ use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
 use gpui_kit::*;
 
 use crate::actions::*;
+use crate::tr;
 
 const REPO: &str = "https://github.com/alpcanaydin/tusk";
 
@@ -70,148 +71,156 @@ pub fn install(cx: &mut App) {
 }
 
 /// (Re)build the menu bar; the app menu's update item follows the updater.
+/// Rebuilt on every language switch (`i18n::set_language`) — `set_menus` is
+/// not part of the window render pass.
 pub fn refresh(cx: &mut App) {
     let update = if crate::updater::ready(cx).is_some() {
-        Some(MenuItem::action("Restart to Update…", RestartToUpdate))
+        Some(MenuItem::action(
+            tr!("menu.app.restart_update"),
+            RestartToUpdate,
+        ))
     } else if crate::updater::enabled(cx) {
-        Some(MenuItem::action("Check for Updates…", CheckForUpdates))
+        Some(MenuItem::action(
+            tr!("menu.app.check_updates"),
+            CheckForUpdates,
+        ))
     } else {
         None
     };
     let mut app_menu = vec![
-        MenuItem::action("About Tusk", ShowAbout),
-        MenuItem::action("Release Notes", ShowReleaseNotes),
+        MenuItem::action(tr!("menu.app.about"), ShowAbout),
+        MenuItem::action(tr!("menu.app.release_notes"), ShowReleaseNotes),
         MenuItem::separator(),
-        MenuItem::action("Settings…", OpenSettings),
+        MenuItem::action(tr!("menu.app.settings"), OpenSettings),
     ];
     app_menu.extend(update);
-    app_menu.push(MenuItem::action("Command Palette…", TogglePalette));
+    app_menu.push(MenuItem::action(
+        tr!("menu.app.command_palette"),
+        TogglePalette,
+    ));
     cx.set_menus([
         Menu::new("Tusk").items(app_menu.into_iter().chain([
             MenuItem::separator(),
-            MenuItem::action("Hide Tusk", HideApp),
-            MenuItem::action("Quit Tusk", Quit),
+            MenuItem::action(tr!("menu.app.hide"), HideApp),
+            MenuItem::action(tr!("menu.app.quit"), Quit),
         ])),
-        Menu::new("File").items([
-            MenuItem::action("New Connection…", NewConnection),
-            MenuItem::action("Open Connection…", OpenConnections),
+        Menu::new(tr!("menu.title.file")).items([
+            MenuItem::action(tr!("menu.file.new_connection"), NewConnection),
+            MenuItem::action(tr!("menu.file.open_connection"), OpenConnections),
             MenuItem::separator(),
-            MenuItem::action("New SQL Query", NewSqlTab),
-            MenuItem::action("Open…", OpenSqlFile),
-            MenuItem::action("Save As…", SaveQueryAs),
-            MenuItem::action("Open Table…", QuickOpenTables),
+            MenuItem::action(tr!("menu.file.new_sql"), NewSqlTab),
+            MenuItem::action(tr!("menu.file.open_sql"), OpenSqlFile),
+            MenuItem::action(tr!("menu.file.save_as"), SaveQueryAs),
+            MenuItem::action(tr!("menu.file.open_table"), QuickOpenTables),
             MenuItem::separator(),
-            MenuItem::action("Backup Database…", BackupDatabase),
-            MenuItem::action("Restore Database…", RestoreDatabase),
-            MenuItem::submenu(Menu::new("Export").items([
-                MenuItem::action("Export Tables…", ExportTables),
-                MenuItem::action(
-                    "Export this Table with Column Selection…",
-                    ExportActiveTable,
-                ),
+            MenuItem::action(tr!("menu.file.backup"), BackupDatabase),
+            MenuItem::action(tr!("menu.file.restore"), RestoreDatabase),
+            MenuItem::submenu(Menu::new(tr!("menu.file.export")).items([
+                MenuItem::action(tr!("menu.file.export_tables"), ExportTables),
+                MenuItem::action(tr!("menu.file.export_active_table"), ExportActiveTable),
             ])),
-            MenuItem::submenu(Menu::new("Import").items([
-                MenuItem::action("From CSV…", ImportCsv),
-                MenuItem::action("From JSON…", ImportJson),
-                MenuItem::action("From SQL Dump…", ImportSqlDump),
+            MenuItem::submenu(Menu::new(tr!("menu.file.import")).items([
+                MenuItem::action(tr!("menu.file.import_csv"), ImportCsv),
+                MenuItem::action(tr!("menu.file.import_json"), ImportJson),
+                MenuItem::action(tr!("menu.file.import_sql"), ImportSqlDump),
                 MenuItem::separator(),
-                MenuItem::action("Connections from Docker Compose…", ImportDockerCompose),
+                MenuItem::action(tr!("menu.file.import_compose"), ImportDockerCompose),
             ])),
             MenuItem::separator(),
-            MenuItem::action("Close Tab", CloseTab),
-            MenuItem::action("Close All Tabs", CloseAllTabs),
+            MenuItem::action(tr!("menu.file.close_tab"), CloseTab),
+            MenuItem::action(tr!("menu.file.close_all_tabs"), CloseAllTabs),
         ]),
-        Menu::new("Edit").items([
-            MenuItem::os_action("Undo", Undo, OsAction::Undo),
-            MenuItem::os_action("Redo", Redo, OsAction::Redo),
+        Menu::new(tr!("menu.title.edit")).items([
+            MenuItem::os_action(tr!("common.undo"), Undo, OsAction::Undo),
+            MenuItem::os_action(tr!("common.redo"), Redo, OsAction::Redo),
             MenuItem::separator(),
-            MenuItem::action("Commit", SaveChanges),
-            MenuItem::action("Discard", DiscardChanges),
-            MenuItem::action("Preview", PreviewChanges),
+            MenuItem::action(tr!("menu.edit.commit"), SaveChanges),
+            MenuItem::action(tr!("menu.edit.discard"), DiscardChanges),
+            MenuItem::action(tr!("menu.edit.preview"), PreviewChanges),
             MenuItem::separator(),
-            MenuItem::action("Add Row", GridInsertRow),
-            MenuItem::action("Duplicate Row", GridDuplicateRow),
+            MenuItem::action(tr!("menu.edit.add_row"), GridInsertRow),
+            MenuItem::action(tr!("menu.edit.duplicate_row"), GridDuplicateRow),
             MenuItem::separator(),
-            MenuItem::os_action("Cut", Cut, OsAction::Cut),
-            MenuItem::os_action("Copy", Copy, OsAction::Copy),
-            MenuItem::os_action("Paste", Paste, OsAction::Paste),
-            MenuItem::action("Copy Selected Cells", GridCopyCells),
-            MenuItem::action("Paste to Selected Cells", GridPaste),
-            MenuItem::action("Delete", DeleteSelection),
-            MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+            MenuItem::os_action(tr!("common.cut"), Cut, OsAction::Cut),
+            MenuItem::os_action(tr!("common.copy"), Copy, OsAction::Copy),
+            MenuItem::os_action(tr!("common.paste"), Paste, OsAction::Paste),
+            MenuItem::action(tr!("menu.edit.copy_cells"), GridCopyCells),
+            MenuItem::action(tr!("menu.edit.paste_cells"), GridPaste),
+            MenuItem::action(tr!("menu.edit.delete"), DeleteSelection),
+            MenuItem::os_action(tr!("common.select_all"), SelectAll, OsAction::SelectAll),
             MenuItem::separator(),
-            MenuItem::action("Toggle Line Comment", ToggleLineComment),
-            MenuItem::action("Toggle Block Comment", ToggleBlockComment),
-            MenuItem::action("Increase Font Size", IncreaseFontSize),
-            MenuItem::action("Decrease Font Size", DecreaseFontSize),
-            MenuItem::submenu(Menu::new("Transformations").items([
-                MenuItem::action("Make Upper Case", MakeUpperCase),
-                MenuItem::action("Make Lower Case", MakeLowerCase),
-                MenuItem::action("Capitalize", Capitalize),
+            MenuItem::action(tr!("menu.edit.line_comment"), ToggleLineComment),
+            MenuItem::action(tr!("menu.edit.block_comment"), ToggleBlockComment),
+            MenuItem::action(tr!("menu.edit.increase_font"), IncreaseFontSize),
+            MenuItem::action(tr!("menu.edit.decrease_font"), DecreaseFontSize),
+            MenuItem::submenu(Menu::new(tr!("menu.edit.transformations")).items([
+                MenuItem::action(tr!("menu.edit.make_upper"), MakeUpperCase),
+                MenuItem::action(tr!("menu.edit.make_lower"), MakeLowerCase),
+                MenuItem::action(tr!("menu.edit.capitalize"), Capitalize),
             ])),
             MenuItem::separator(),
-            MenuItem::action("Filter…", ToggleFilters),
+            MenuItem::action(tr!("menu.edit.filter"), ToggleFilters),
         ]),
-        Menu::new("View").items([
-            MenuItem::action("Tables", ShowTablesPanel),
-            MenuItem::action("Views", ShowViewsPanel),
-            MenuItem::action("Functions", ShowFunctionsPanel),
+        Menu::new(tr!("menu.title.view")).items([
+            MenuItem::action(tr!("menu.view.tables"), ShowTablesPanel),
+            MenuItem::action(tr!("menu.view.views"), ShowViewsPanel),
+            MenuItem::action(tr!("menu.view.functions"), ShowFunctionsPanel),
             MenuItem::separator(),
-            MenuItem::action("Toggle Left Sidebar", ToggleSidebar),
-            MenuItem::action("Toggle Right Sidebar (Row Detail)", ToggleRowDetail),
-            MenuItem::action("Toggle AI Chat", ToggleAiPanel),
-            MenuItem::action("Send to Chat", SendToChat),
-            MenuItem::action("Toggle Console", ToggleConsole),
-            MenuItem::action("Query History", ShowHistory),
-            MenuItem::action("Problems", ToggleProblems),
-            MenuItem::action("Toggle Query Results Pane", ToggleResultsPane),
-            MenuItem::action("Show All Tabs", ShowAllTabs),
+            MenuItem::action(tr!("menu.view.toggle_sidebar"), ToggleSidebar),
+            MenuItem::action(tr!("menu.view.toggle_row_detail"), ToggleRowDetail),
+            MenuItem::action(tr!("menu.view.toggle_ai"), ToggleAiPanel),
+            MenuItem::action(tr!("menu.view.send_to_chat"), SendToChat),
+            MenuItem::action(tr!("menu.view.toggle_console"), ToggleConsole),
+            MenuItem::action(tr!("menu.view.history"), ShowHistory),
+            MenuItem::action(tr!("menu.view.problems"), ToggleProblems),
+            MenuItem::action(tr!("menu.view.toggle_results"), ToggleResultsPane),
+            MenuItem::action(tr!("menu.view.show_all_tabs"), ShowAllTabs),
         ]),
-        Menu::new("Tools").items([
-            MenuItem::action("Process List", ProcessList),
-            MenuItem::action("User Management", UserManagement),
-            MenuItem::action("Search in Database…", SearchInDatabase),
+        Menu::new(tr!("menu.title.tools")).items([
+            MenuItem::action(tr!("menu.tools.processes"), ProcessList),
+            MenuItem::action(tr!("menu.tools.users"), UserManagement),
+            MenuItem::action(tr!("menu.tools.search"), SearchInDatabase),
         ]),
-        Menu::new("Connection").items([
-            MenuItem::action("New…", NewConnection),
-            MenuItem::action("Open a Database…", OpenDatabase),
-            MenuItem::action("Open a Connection…", OpenConnection),
+        Menu::new(tr!("menu.title.connection")).items([
+            MenuItem::action(tr!("menu.connection.new"), NewConnection),
+            MenuItem::action(tr!("menu.connection.open_database"), OpenDatabase),
+            MenuItem::action(tr!("menu.connection.open_connection"), OpenConnection),
             MenuItem::separator(),
-            MenuItem::action("Run Current Query", RunCurrent),
-            MenuItem::action("Run All Queries", RunAll),
+            MenuItem::action(tr!("menu.connection.run_current"), RunCurrent),
+            MenuItem::action(tr!("menu.connection.run_all"), RunAll),
             MenuItem::separator(),
-            MenuItem::action("Reload Workspace", ReloadWorkspace),
-            MenuItem::action("Reload Current Tab", RefreshActive),
-            MenuItem::action("Reconnect", Reconnect),
-            MenuItem::action("Disconnect", Disconnect),
+            MenuItem::action(tr!("menu.connection.reload_workspace"), ReloadWorkspace),
+            MenuItem::action(tr!("menu.connection.refresh_tab"), RefreshActive),
+            MenuItem::action(tr!("menu.connection.reconnect"), Reconnect),
+            MenuItem::action(tr!("menu.connection.disconnect"), Disconnect),
         ]),
-        Menu::new("Navigate").items([
-            MenuItem::action("Open Anything", QuickOpenTables),
-            MenuItem::action("Command Palette…", TogglePalette),
-            MenuItem::action("New Tab", NewSqlTab),
-            MenuItem::action("Close Tab", CloseTab),
+        Menu::new(tr!("menu.title.navigate")).items([
+            MenuItem::action(tr!("menu.navigate.open_anything"), QuickOpenTables),
+            MenuItem::action(tr!("menu.navigate.command_palette"), TogglePalette),
+            MenuItem::action(tr!("menu.navigate.new_tab"), NewSqlTab),
+            MenuItem::action(tr!("menu.navigate.close_tab"), CloseTab),
             MenuItem::separator(),
-            MenuItem::action("Show Table Data", ShowData),
-            MenuItem::action("Show Table Structure", ShowStructure),
+            MenuItem::action(tr!("menu.navigate.show_data"), ShowData),
+            MenuItem::action(tr!("menu.navigate.show_structure"), ShowStructure),
             MenuItem::separator(),
-            MenuItem::action("Go Back", GoBack),
-            MenuItem::action("Go Forward", GoForward),
-            MenuItem::action("Select Next Tab", NextTab),
-            MenuItem::action("Select Previous Tab", PrevTab),
+            MenuItem::action(tr!("menu.navigate.go_back"), GoBack),
+            MenuItem::action(tr!("menu.navigate.go_forward"), GoForward),
+            MenuItem::action(tr!("menu.navigate.next_tab"), NextTab),
+            MenuItem::action(tr!("menu.navigate.prev_tab"), PrevTab),
             MenuItem::separator(),
-            MenuItem::action("Split Pane Right", SplitPaneRight),
-            MenuItem::action("Select Next Pane", NextPane),
+            MenuItem::action(tr!("menu.navigate.split_right"), SplitPaneRight),
+            MenuItem::action(tr!("menu.navigate.next_pane"), NextPane),
         ]),
-        Menu::new("Window").items([
-            MenuItem::action("Minimize", MinimizeWindow),
-            MenuItem::action("Zoom", ZoomWindow),
+        Menu::new(tr!("menu.title.window")).items([
+            MenuItem::action(tr!("menu.window.minimize"), MinimizeWindow),
+            MenuItem::action(tr!("menu.window.zoom"), ZoomWindow),
             // "Enter Full Screen" is in View: macOS adds it there itself.
             MenuItem::separator(),
-            MenuItem::action("Bring All to Front", BringAllToFront),
+            MenuItem::action(tr!("menu.window.bring_all"), BringAllToFront),
         ]),
-        Menu::new("Help").items([
-            MenuItem::action("Tusk on GitHub", OpenHelp),
-            MenuItem::action("Report an Issue…", ReportIssue),
+        Menu::new(tr!("menu.title.help")).items([
+            MenuItem::action(tr!("menu.help.github"), OpenHelp),
+            MenuItem::action(tr!("menu.help.report"), ReportIssue),
         ]),
     ]);
 }

@@ -18,6 +18,7 @@ use gpui_kit::*;
 
 use crate::db::{self, GridColumnMeta, Stmt};
 use crate::icons::DbIcon;
+use crate::tr;
 
 /// Structure grid columns.
 const FIELDS: [(&str, f32); 6] = [
@@ -34,6 +35,18 @@ const F_NULLABLE: usize = 2;
 const F_DEFAULT: usize = 3;
 const F_FK: usize = 4;
 const F_COMMENT: usize = 5;
+
+/// Localized header for the grid column at `ix` (the FIELDS ids stay raw keys).
+fn field_label(ix: usize) -> String {
+    match ix {
+        F_NAME => tr!("structure.col_name"),
+        F_TYPE => tr!("structure.data_type"),
+        F_NULLABLE => tr!("structure.nullable"),
+        F_DEFAULT => tr!("structure.col_default"),
+        F_FK => tr!("structure.fk"),
+        _ => tr!("structure.comment"),
+    }
+}
 
 /// One column row: the loaded definition (`None` for a newly added column)
 /// plus its current, possibly edited, values.
@@ -478,7 +491,7 @@ impl StructureDelegate {
             .iter()
             .filter(|r| !r.deleted && r.orig.is_none())
             .any(|r| r.name.trim().is_empty() || r.sql_type.trim().is_empty())
-            .then(|| "Give every new column a name and a data type.".to_string())
+            .then(|| tr!("structure.validation"))
             .or_else(|| self.ddl().err())
     }
 
@@ -588,7 +601,7 @@ impl TableDelegate for StructureDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        crate::theme::empty_state("No columns", cx)
+        crate::theme::empty_state(tr!("structure.no_columns"), cx)
     }
     fn columns_count(&self, _cx: &App) -> usize {
         // A table being designed: name / type / nullable / default only.
@@ -632,7 +645,7 @@ impl TableDelegate for StructureDelegate {
             .font_weight(FontWeight::MEDIUM)
             .font_family(crate::settings::table_font())
             .text_color(cx.theme().foreground)
-            .child(FIELDS[col_ix].0)
+            .child(field_label(col_ix))
     }
 
     fn render_tr(
@@ -816,14 +829,14 @@ impl TableDelegate for StructureDelegate {
             .context_menu(move |menu: PopupMenu, _, _| {
                 let name = col_name.clone();
                 let (add, del) = (entity.clone(), entity.clone());
-                let menu = menu.item(PopupMenuItem::new("Copy Column Name").on_click(
+                let menu = menu.item(PopupMenuItem::new(tr!("grid.copy_column_name")).on_click(
                     move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(name.clone())),
                 ));
                 if !editable {
                     return menu;
                 }
-                menu.item(
-                    PopupMenuItem::new("Add Column").on_click(move |_, window, cx| {
+                menu.item(PopupMenuItem::new(tr!("structure.add_column")).on_click(
+                    move |_, window, cx| {
                         add.update(cx, |st, cx| {
                             let row = st.delegate_mut().add_column();
                             st.scroll_to_row(row, cx);
@@ -834,8 +847,8 @@ impl TableDelegate for StructureDelegate {
                         if let Some(app) = cx.try_global::<crate::app::TuskHandle>() {
                             app.0.clone().update(cx, |_, cx| cx.notify());
                         }
-                    }),
-                )
+                    },
+                ))
                 .separator()
                 .map(|m| {
                     let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
@@ -849,9 +862,12 @@ impl TableDelegate for StructureDelegate {
                         }
                     };
                     if deleted {
-                        m.item(PopupMenuItem::new("Keep Column").on_click(on_click))
+                        m.item(PopupMenuItem::new(tr!("structure.keep_column")).on_click(on_click))
                     } else {
-                        m.item(crate::theme::danger_item("Delete Column", on_click))
+                        m.item(crate::grid::danger_item_owned(
+                            tr!("structure.delete_column"),
+                            on_click,
+                        ))
                     }
                 })
             })

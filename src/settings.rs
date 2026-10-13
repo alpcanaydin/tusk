@@ -18,6 +18,7 @@ use gpui_kit::*;
 use serde::{Deserialize, Serialize};
 
 use crate::themes;
+use crate::tr;
 
 /// Which theme slot is active.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +100,8 @@ pub struct Prefs {
     pub query_timeout_secs: u32,
     /// Linux renderer device ID (four hexadecimal digits); empty = automatic.
     pub gpu_device: String,
+    /// Interface language: `system` | `en` | `zh-CN` (resolved in `i18n.rs`).
+    pub language: String,
     // ---- SQL editor ----
     pub editor_line_numbers: bool,
     pub editor_soft_wrap: bool,
@@ -179,6 +182,7 @@ impl Default for Prefs {
             reopen_last: true,
             query_timeout_secs: 0,
             gpu_device: String::new(),
+            language: crate::i18n::LANG_SYSTEM.to_string(),
             editor_line_numbers: true,
             editor_soft_wrap: false,
             editor_tab_size: 4,
@@ -239,6 +243,9 @@ impl Prefs {
         if self.gpu_device.len() != 4 || !self.gpu_device.bytes().all(|c| c.is_ascii_hexdigit()) {
             self.gpu_device.clear();
         }
+        if !crate::i18n::LANGUAGES.contains(&self.language.as_str()) {
+            self.language = d.language.clone();
+        }
         if self.null_text.trim().is_empty() {
             self.null_text = d.null_text.clone();
         }
@@ -263,6 +270,18 @@ mod tests {
         assert_eq!(prefs.clone().sanitized().gpu_device, "2520");
         prefs.gpu_device = "not-a-device".into();
         assert!(prefs.sanitized().gpu_device.is_empty());
+    }
+
+    #[test]
+    fn language_defaults_to_system_and_rejects_unknown() {
+        assert_eq!(
+            Prefs::default().language,
+            crate::i18n::LANG_SYSTEM.to_string()
+        );
+        let p: Prefs = serde_json::from_str(r#"{"language": "deutsch"}"#).unwrap();
+        assert_eq!(p.sanitized().language, crate::i18n::LANG_SYSTEM);
+        let p: Prefs = serde_json::from_str(r#"{"language": "zh-CN"}"#).unwrap();
+        assert_eq!(p.sanitized().language, "zh-CN");
     }
 
     #[test]
@@ -343,7 +362,7 @@ pub fn apply_gpu_preference() {
 
 #[cfg(target_os = "linux")]
 fn gpu_options() -> Vec<(SharedString, SharedString)> {
-    let mut options = vec![("".into(), "Automatic".into())];
+    let mut options = vec![("".into(), crate::tr!("settings.gpu.automatic").into())];
     let Ok(entries) = std::fs::read_dir("/sys/class/drm") else {
         return options;
     };
@@ -631,15 +650,28 @@ impl SettingsWindow {
 
     fn pages(&self) -> Vec<SettingPage> {
         let d = Prefs::default();
+        // Theme names are brand / data identifiers: shown raw, like the palette.
         let options = |light: bool| -> Vec<(SharedString, SharedString)> {
             themes::names(light)
                 .into_iter()
                 .map(|n| (SharedString::from(n), SharedString::from(n)))
                 .collect()
         };
+        // The dropdown separates storage from display: the value (first slot)
+        // is what `Appearance::from_label` matches, so it stays English; only
+        // the label is translated.
+        let mode_label = |a: Appearance| -> SharedString {
+            match a {
+                Appearance::System => tr!("settings.appearance.system").into(),
+                Appearance::Light => tr!("settings.appearance.light").into(),
+                Appearance::Dark => tr!("settings.appearance.dark").into(),
+                // A desktop brand name.
+                Appearance::Omarchy => a.label().into(),
+            }
+        };
         let modes: Vec<(SharedString, SharedString)> = Appearance::available()
             .into_iter()
-            .map(|a| (SharedString::from(a.label()), SharedString::from(a.label())))
+            .map(|a| (SharedString::from(a.label()), mode_label(a)))
             .collect();
         let size_opts = |(min, max): (f32, f32)| NumberFieldOptions {
             min: min as f64,
@@ -650,79 +682,90 @@ impl SettingsWindow {
         // One group per page, so the sidebar lists pages only (a page with
         // several titled groups also lists them as scroll-to entries, which
         // looked broken on pages too short to scroll).
-        let appearance = SettingPage::new("Appearance")
+        let appearance = SettingPage::new(tr!("settings.page.appearance"))
             .icon(IconName::Palette)
             .group(
-            SettingGroup::new()
-                .title("Theme")
-                .item(
-                    SettingItem::new(
-                        "Mode",
-                        SettingField::dropdown(
-                            modes,
-                            |_| get().appearance.label().into(),
-                            |v: SharedString, cx| {
-                                update(cx, |p| p.appearance = Appearance::from_label(&v))
-                            },
-                        )
-                        .default_value(SharedString::from(d.appearance.label())),
-                    )
-                    .description("System follows the desktop light / dark appearance."),
-                )
-                .item(
-                    SettingItem::new(
-                        "Accent Color",
-                        SettingField::dropdown(
-                            ACCENTS
-                                .iter()
-                                .map(|(n, _, _)| (SharedString::from(*n), SharedString::from(*n)))
-                                .collect(),
-                            |_| get().accent.clone().into(),
-                            |v: SharedString, cx| update(cx, |p| p.accent = v.to_string()),
-                        )
-                        .default_value(SharedString::from(d.accent.clone())),
-                    )
-                    .description(
-                        "Buttons, focus, caret, selection frames. \"Theme\" keeps the theme's own.",
-                    ),
-                )
-                .item(
-                    SettingItem::new(
-                        "Light Theme",
-                        SettingField::scrollable_dropdown(
-                            options(true),
-                            |_| get().light_theme.clone().into(),
-                            |v: SharedString, cx| update(cx, |p| p.light_theme = v.to_string()),
-                        )
-                        .default_value(SharedString::from(d.light_theme.clone())),
-                    )
-                    .description("Used in light mode."),
-                )
-                .item(
-                    SettingItem::new(
-                        "Dark Theme",
-                        SettingField::scrollable_dropdown(
-                            options(false),
-                            |_| get().dark_theme.clone().into(),
-                            |v: SharedString, cx| update(cx, |p| p.dark_theme = v.to_string()),
-                        )
-                        .default_value(SharedString::from(d.dark_theme.clone())),
-                    )
-                    .description("Used in dark mode."),
-                ),
-        );
-        let interface = SettingPage::new("Interface")
-            .icon(IconName::PanelLeft)
-            .group(
                 SettingGroup::new()
-                    .title("UI Font")
+                    .title(tr!("settings.group.theme"))
                     .item(
-                        SettingItem::new("Font Family", Self::font_field(&self.ui_font, true))
-                            .description("Sidebar, tabs, title bar, menus and dialogs."),
+                        SettingItem::new(
+                            tr!("settings.mode.title"),
+                            SettingField::dropdown(
+                                modes,
+                                |_| get().appearance.label().into(),
+                                |v: SharedString, cx| {
+                                    update(cx, |p| p.appearance = Appearance::from_label(&v))
+                                },
+                            )
+                            .default_value(SharedString::from(d.appearance.label())),
+                        )
+                        .description(tr!("settings.mode.description")),
                     )
                     .item(
                         SettingItem::new(
-                            "Font Size",
+                            tr!("settings.accent.title"),
+                            SettingField::dropdown(
+                                ACCENTS
+                                    .iter()
+                                    .map(|(n, _, _)| {
+                                        let label: SharedString = match *n {
+                                            "Teal" => tr!("settings.accent.teal").into(),
+                                            "Blue" => tr!("settings.accent.blue").into(),
+                                            "Violet" => tr!("settings.accent.violet").into(),
+                                            "Magenta" => tr!("settings.accent.magenta").into(),
+                                            "Sky" => tr!("settings.accent.sky").into(),
+                                            _ => tr!("settings.accent.theme").into(),
+                                        };
+                                        (SharedString::from(*n), label)
+                                    })
+                                    .collect(),
+                                |_| get().accent.clone().into(),
+                                |v: SharedString, cx| update(cx, |p| p.accent = v.to_string()),
+                            )
+                            .default_value(SharedString::from(d.accent.clone())),
+                        )
+                        .description(tr!("settings.accent.description")),
+                    )
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.light_theme.title"),
+                            SettingField::scrollable_dropdown(
+                                options(true),
+                                |_| get().light_theme.clone().into(),
+                                |v: SharedString, cx| update(cx, |p| p.light_theme = v.to_string()),
+                            )
+                            .default_value(SharedString::from(d.light_theme.clone())),
+                        )
+                        .description(tr!("settings.light_theme.description")),
+                    )
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.dark_theme.title"),
+                            SettingField::scrollable_dropdown(
+                                options(false),
+                                |_| get().dark_theme.clone().into(),
+                                |v: SharedString, cx| update(cx, |p| p.dark_theme = v.to_string()),
+                            )
+                            .default_value(SharedString::from(d.dark_theme.clone())),
+                        )
+                        .description(tr!("settings.dark_theme.description")),
+                    ),
+            );
+        let interface = SettingPage::new(tr!("settings.page.interface"))
+            .icon(IconName::PanelLeft)
+            .group(
+                SettingGroup::new()
+                    .title(tr!("settings.group.ui_font"))
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.font_family.title"),
+                            Self::font_field(&self.ui_font, true),
+                        )
+                        .description(tr!("settings.font_family.ui_description")),
+                    )
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.font_size.title"),
                             SettingField::number_input(
                                 size_opts(UI_SIZE_RANGE),
                                 |_| get().ui_font_size as f64,
@@ -730,52 +773,66 @@ impl SettingsWindow {
                             )
                             .default_value(d.ui_font_size as f64),
                         )
-                        .description("Scales the whole interface."),
+                        .description(tr!("settings.font_size.ui_description")),
                     ),
             )
             .group(
-                SettingGroup::new().title("Layout").item(
-                    SettingItem::new(
-                        "Sidebar Layout",
-                        SettingField::dropdown(
-                            SIDEBAR_LAYOUTS
-                                .iter()
-                                .map(|n| (SharedString::from(*n), SharedString::from(*n)))
-                                .collect(),
-                            |_| get().sidebar_layout.clone().into(),
-                            |v: SharedString, cx| update(cx, |p| p.sidebar_layout = v.to_string()),
+                SettingGroup::new()
+                    .title(tr!("settings.group.layout"))
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.sidebar_layout.title"),
+                            SettingField::dropdown(
+                                SIDEBAR_LAYOUTS
+                                    .iter()
+                                    .map(|n| {
+                                        let label: SharedString = match *n {
+                                            "Objects" => {
+                                                tr!("settings.sidebar_layout.objects").into()
+                                            }
+                                            _ => tr!("settings.sidebar_layout.connections_tree")
+                                                .into(),
+                                        };
+                                        (SharedString::from(*n), label)
+                                    })
+                                    .collect(),
+                                |_| get().sidebar_layout.clone().into(),
+                                |v: SharedString, cx| {
+                                    update(cx, |p| p.sidebar_layout = v.to_string())
+                                },
+                            )
+                            .default_value(SharedString::from(d.sidebar_layout.clone())),
                         )
-                        .default_value(SharedString::from(d.sidebar_layout.clone())),
-                    )
-                    .description(
-                        "Objects lists the connected database only. Connections tree lists \
-                         every saved connection by group, with the connected one's objects \
-                         nested under it.",
+                        .description(tr!("settings.sidebar_layout.description")),
                     ),
-                ),
             );
-        let data = SettingPage::new("Data Grid").icon(IconName::Table2).group(
-            SettingGroup::new()
-                .title("Table Font")
-                .item(
-                    SettingItem::new("Font Family", Self::font_field(&self.table_font, false))
-                        .description("Data grid, structure view and the SQL editor."),
-                )
-                .item(
-                    SettingItem::new(
-                        "Font Size",
-                        SettingField::number_input(
-                            size_opts(TABLE_SIZE_RANGE),
-                            |_| get().table_font_size as f64,
-                            |v, cx| update(cx, |p| p.table_font_size = v as f32),
+        let data = SettingPage::new(tr!("settings.page.data_grid"))
+            .icon(IconName::Table2)
+            .group(
+                SettingGroup::new()
+                    .title(tr!("settings.group.table_font"))
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.font_family.title"),
+                            Self::font_field(&self.table_font, false),
                         )
-                        .default_value(d.table_font_size as f64),
+                        .description(tr!("settings.font_family.data_description")),
                     )
-                    .description("Column widths scale with it."),
-                ),
-        );
-        let switch = |title: &'static str,
-                      desc: &'static str,
+                    .item(
+                        SettingItem::new(
+                            tr!("settings.font_size.title"),
+                            SettingField::number_input(
+                                size_opts(TABLE_SIZE_RANGE),
+                                |_| get().table_font_size as f64,
+                                |v, cx| update(cx, |p| p.table_font_size = v as f32),
+                            )
+                            .default_value(d.table_font_size as f64),
+                        )
+                        .description(tr!("settings.font_size.data_description")),
+                    ),
+            );
+        let switch = |title: String,
+                      desc: String,
                       get_v: fn(&Prefs) -> bool,
                       set_v: fn(&mut Prefs, bool),
                       default: bool| {
@@ -790,17 +847,40 @@ impl SettingsWindow {
             .description(desc)
         };
         let general_group = SettingGroup::new()
-            .title("Startup & Connections")
+            .title(tr!("settings.group.startup"))
+            .item(
+                SettingItem::new(
+                    tr!("settings.language.title"),
+                    SettingField::dropdown(
+                        vec![
+                            (
+                                SharedString::from(crate::i18n::LANG_SYSTEM),
+                                tr!("settings.language.system").into(),
+                            ),
+                            // Language names shown in their own script (autonyms).
+                            (SharedString::from(crate::i18n::LANG_EN), "English".into()),
+                            (
+                                SharedString::from(crate::i18n::LANG_ZH_CN),
+                                "简体中文".into(),
+                            ),
+                        ],
+                        |_| get().language.clone().into(),
+                        |v: SharedString, cx| crate::i18n::set_language(cx, &v),
+                    )
+                    .default_value(SharedString::from(d.language.clone())),
+                )
+                .description(tr!("settings.language.description")),
+            )
             .item(switch(
-                "Reopen Last Connection",
-                "Connect to the last used database when the app starts.",
+                tr!("settings.reopen_last.title"),
+                tr!("settings.reopen_last.description"),
                 |p| p.reopen_last,
                 |p, v| p.reopen_last = v,
                 d.reopen_last,
             ))
             .item(
                 SettingItem::new(
-                    "Query Timeout",
+                    tr!("settings.query_timeout.title"),
                     SettingField::number_input(
                         NumberFieldOptions {
                             min: 0.,
@@ -812,14 +892,12 @@ impl SettingsWindow {
                     )
                     .default_value(d.query_timeout_secs as f64),
                 )
-                .description(
-                    "Seconds before a statement is cancelled (0 = never). New connections.",
-                ),
+                .description(tr!("settings.query_timeout.description")),
             );
         #[cfg(target_os = "linux")]
         let general_group = general_group.item(
             SettingItem::new(
-                "Graphics Device",
+                tr!("settings.gpu_device.title"),
                 SettingField::dropdown(
                     gpu_options(),
                     |_| get().gpu_device.clone().into(),
@@ -827,33 +905,33 @@ impl SettingsWindow {
                 )
                 .default_value(SharedString::default()),
             )
-            .description("GPU used for rendering. Restart Tusk to apply."),
+            .description(tr!("settings.gpu_device.description")),
         );
-        let general = SettingPage::new("General")
+        let general = SettingPage::new(tr!("settings.page.general"))
             .icon(IconName::Settings2)
             .group(general_group);
-        let editor = SettingPage::new("SQL Editor")
+        let editor = SettingPage::new(tr!("settings.page.sql_editor"))
             .icon(IconName::SquareTerminal)
             .group(
                 SettingGroup::new()
-                    .title("Editor")
+                    .title(tr!("settings.group.editor"))
                     .item(switch(
-                        "Line Numbers",
-                        "Show the gutter with line numbers.",
+                        tr!("settings.line_numbers.title"),
+                        tr!("settings.line_numbers.description"),
                         |p| p.editor_line_numbers,
                         |p, v| p.editor_line_numbers = v,
                         d.editor_line_numbers,
                     ))
                     .item(switch(
-                        "Soft Wrap",
-                        "Wrap long lines instead of scrolling sideways.",
+                        tr!("settings.soft_wrap.title"),
+                        tr!("settings.soft_wrap.description"),
                         |p| p.editor_soft_wrap,
                         |p, v| p.editor_soft_wrap = v,
                         d.editor_soft_wrap,
                     ))
                     .item(
                         SettingItem::new(
-                            "Tab Size",
+                            tr!("settings.tab_size.title"),
                             SettingField::number_input(
                                 NumberFieldOptions {
                                     min: 1.,
@@ -865,11 +943,11 @@ impl SettingsWindow {
                             )
                             .default_value(d.editor_tab_size as f64),
                         )
-                        .description("Spaces per indent level."),
+                        .description(tr!("settings.tab_size.description")),
                     )
                     .item(switch(
-                        "Uppercase Keywords",
-                        "Completions insert SQL keywords in UPPERCASE.",
+                        tr!("settings.uppercase_keywords.title"),
+                        tr!("settings.uppercase_keywords.description"),
                         |p| p.editor_uppercase_keywords,
                         |p, v| p.editor_uppercase_keywords = v,
                         d.editor_uppercase_keywords,
@@ -877,46 +955,46 @@ impl SettingsWindow {
             );
         let data = data.group(
             SettingGroup::new()
-                .title("Display")
+                .title(tr!("settings.group.display"))
                 .item(switch(
-                    "Alternating Row Colors",
-                    "Stripe every other row.",
+                    tr!("settings.stripes.title"),
+                    tr!("settings.stripes.description"),
                     |p| p.grid_stripes,
                     |p, v| p.grid_stripes = v,
                     d.grid_stripes,
                 ))
                 .item(
                     SettingItem::new(
-                        "NULL Display",
+                        tr!("settings.null_display.title"),
                         SettingField::input(
                             |_| get().null_text.clone().into(),
                             |v: SharedString, cx| update(cx, |p| p.null_text = v.to_string()),
                         )
                         .default_value(SharedString::from(d.null_text.clone())),
                     )
-                    .description("How NULL values are shown in grids."),
+                    .description(tr!("settings.null_display.description")),
                 ),
         );
-        let safety = SettingPage::new("Safe Mode")
+        let safety = SettingPage::new(tr!("settings.page.safe_mode"))
             .icon(IconName::ShieldCheck)
             .group(
-            SettingGroup::new()
-                .title("Confirmations")
-                .item(switch(
-                    "Confirm Dangerous Queries",
-                    "Ask before DROP, TRUNCATE, ALTER, or UPDATE / DELETE without WHERE.",
-                    |p| p.confirm_destructive,
-                    |p, v| p.confirm_destructive = v,
-                    d.confirm_destructive,
-                ))
-                .item(switch(
-                    "Confirm Before Saving",
-                    "Ask before saving pending changes, or before a query writes to the database.",
-                    |p| p.confirm_save,
-                    |p, v| p.confirm_save = v,
-                    d.confirm_save,
-                )),
-        );
+                SettingGroup::new()
+                    .title(tr!("settings.group.confirmations"))
+                    .item(switch(
+                        tr!("settings.confirm_destructive.title"),
+                        tr!("settings.confirm_destructive.description"),
+                        |p| p.confirm_destructive,
+                        |p, v| p.confirm_destructive = v,
+                        d.confirm_destructive,
+                    ))
+                    .item(switch(
+                        tr!("settings.confirm_save.title"),
+                        tr!("settings.confirm_save.description"),
+                        |p| p.confirm_save,
+                        |p, v| p.confirm_save = v,
+                        d.confirm_save,
+                    )),
+            );
         vec![general, appearance, interface, editor, data, safety]
     }
 }
@@ -962,7 +1040,7 @@ impl Render for SettingsWindow {
                             .justify_center()
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
-                            .child("Settings"),
+                            .child(tr!("settings.window.title")),
                     )
                     .child(div().w(px(60.))),
             )

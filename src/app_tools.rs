@@ -56,7 +56,7 @@ impl TuskApp {
                             cx.notify();
                         });
                     }
-                    Err(e) => this.toast(false, format!("Process list: {e}")),
+                    Err(e) => this.toast(false, tr!("tools.list_failed", error = e)),
                 }
                 cx.notify();
             });
@@ -78,14 +78,17 @@ impl TuskApp {
             .map(|r| st.read(cx).delegate().cell_text_at(r, 0))
             .filter(|p| !p.is_empty())
         else {
-            self.toast(false, "Select a process first.");
+            self.toast(false, tr!("tools.select_first"));
             cx.notify();
             return;
         };
-        let what = if kill {
-            "Kill session"
+        let (ask, verb) = if kill {
+            (tr!("tools.kill_q", pid = pid.clone()), tr!("tools.kill"))
         } else {
-            "Cancel the query of session"
+            (
+                tr!("tools.cancel_q", pid = pid.clone()),
+                tr!("tools.cancel_query"),
+            )
         };
         let answer = crate::dialog_keys::confirm(
             window,
@@ -94,9 +97,9 @@ impl TuskApp {
             } else {
                 PromptLevel::Warning
             },
-            &format!("{what} {pid}?"),
+            &ask,
             None,
-            if kill { "Kill" } else { "Cancel Query" },
+            &verb,
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -106,8 +109,15 @@ impl TuskApp {
             let r = pool.driver().signal_session(pid.clone(), kill).await;
             let _ = weak.update(cx, |this: &mut TuskApp, cx| {
                 match r {
-                    Ok(_) => this.toast(true, format!("Signalled session {pid}")),
-                    Err(e) => this.toast(false, format!("{what} {pid}: {e}")),
+                    Ok(_) => this.toast(true, tr!("tools.signalled", pid = pid)),
+                    Err(e) => this.toast(
+                        false,
+                        if kill {
+                            tr!("tools.kill_failed", pid = pid, error = e)
+                        } else {
+                            tr!("tools.cancel_failed", pid = pid, error = e)
+                        },
+                    ),
                 }
                 this.load_processes(st.clone(), cx);
             });
@@ -169,11 +179,11 @@ impl TuskApp {
                                     .flex_1()
                                     .text_sm()
                                     .text_color(fg)
-                                    .child("Process List"),
+                                    .child(tr!("menu.tools.processes")),
                             )
                             .child(
                                 Button::new("proc-refresh")
-                                    .label("Refresh")
+                                    .label(tr!("common.refresh"))
                                     .small()
                                     .outline()
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -182,7 +192,7 @@ impl TuskApp {
                             )
                             .child(
                                 Button::new("proc-cancel")
-                                    .label("Cancel Query")
+                                    .label(tr!("tools.cancel_query"))
                                     .small()
                                     .outline()
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -191,7 +201,7 @@ impl TuskApp {
                             )
                             .child(
                                 Button::new("proc-kill")
-                                    .label("Kill")
+                                    .label(tr!("tools.kill"))
                                     .small()
                                     .danger()
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -241,7 +251,7 @@ impl TuskApp {
         }
         self.processes = None;
         self.users = None;
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search every table for…"));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr!("tools.search_ph")));
         let sub = cx.subscribe_in(&input, window, |this, _, ev: &InputEvent, _, cx| {
             if let InputEvent::PressEnter { .. } = ev {
                 this.run_db_search(cx);
@@ -351,16 +361,13 @@ impl TuskApp {
         let (border, bg, fg, muted) = (t.border, t.popover, t.foreground, t.muted_foreground);
         let backdrop = gpui_kit::black().opacity(if t.is_dark() { 0.45 } else { 0.2 });
         let status = if s.running {
-            "Searching…".to_string()
+            tr!("tools.searching")
         } else {
             match &s.searched {
-                None => "Enter searches the rows of every table and view in this schema.".into(),
-                Some(q) if s.hits.is_empty() => format!("No rows contain “{q}”."),
-                Some(q) => format!(
-                    "“{q}” found in {} table{}",
-                    s.hits.len(),
-                    if s.hits.len() == 1 { "" } else { "s" }
-                ),
+                None => tr!("tools.search_hint"),
+                Some(q) if s.hits.is_empty() => tr!("tools.search_none", query = q),
+                Some(q) if s.hits.len() == 1 => tr!("tools.found_one", query = q, count = 1),
+                Some(q) => tr!("tools.found_many", query = q, count = s.hits.len()),
             }
         };
         div()
@@ -437,10 +444,13 @@ impl TuskApp {
                                             .text_color(fg)
                                             .child(table.clone()),
                                     )
-                                    .child(div().text_caption().text_color(muted).child(format!(
-                                        "{n} row{}",
-                                        if *n == 1 { "" } else { "s" }
-                                    )))
+                                    .child(div().text_caption().text_color(muted).child(
+                                        if *n == 1 {
+                                            tr!("result.row_count_one", count = n)
+                                        } else {
+                                            tr!("result.row_count_many", count = n)
+                                        },
+                                    ))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.open_search_hit(table_c.clone(), window, cx)
                                     }))

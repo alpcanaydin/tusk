@@ -11,6 +11,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::theme::TextCaption as _;
+use crate::tr;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -90,7 +91,7 @@ fn card(version: &str, url: &str, cx: &mut Context<Notification>) -> AnyElement 
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(accent)
                 .child(Icon::new(gpui_kit::assets::IconName::Sparkles).size(px(12.)))
-                .child("WHAT'S NEW"),
+                .child(tr!("whats_new.label")),
         )
         // Right padding clears the close button in the corner.
         .child(
@@ -98,13 +99,13 @@ fn card(version: &str, url: &str, cx: &mut Context<Notification>) -> AnyElement 
                 .pr_6()
                 .text_sm()
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(format!("Updated to Tusk {version}")),
+                .child(tr!("whats_new.updated", version = version)),
         )
         .child(
             div()
                 .text_sm()
                 .text_color(muted)
-                .child("See what changed in this release."),
+                .child(tr!("whats_new.summary")),
         )
         .child(
             Button::new("release-notes")
@@ -112,7 +113,7 @@ fn card(version: &str, url: &str, cx: &mut Context<Notification>) -> AnyElement 
                 .small()
                 .w_full()
                 .mt_2()
-                .label("View Release Notes")
+                .label(tr!("whats_new.release_notes"))
                 .on_click(cx.listener(move |note, _, window, cx| {
                     cx.open_url(&url);
                     note.dismiss(window, cx);

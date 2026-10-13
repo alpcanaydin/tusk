@@ -6,6 +6,7 @@ use gpui_kit::component::{ActiveTheme as _, Root, TitleBar};
 use gpui_kit::*;
 
 use crate::icons::DbIcon;
+use crate::tr;
 
 #[derive(Default)]
 struct OpenAbout(Option<AnyWindowHandle>);
@@ -85,7 +86,7 @@ impl Render for AboutWindow {
                         div()
                             .text_size(px(12.))
                             .text_color(t.muted_foreground)
-                            .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+                            .child(tr!("about.version", version = env!("CARGO_PKG_VERSION"))),
                     ),
             )
     }

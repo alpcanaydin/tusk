@@ -38,7 +38,7 @@ impl TuskApp {
 
     fn persist_saved(&mut self, cx: &mut Context<Self>) {
         if let Err(e) = db::save_connections(&self.form.saved) {
-            self.form.notice = Some((false, format!("Save failed: {e:#}")));
+            self.form.notice = Some((false, tr!("conn.save_failed", error = format!("{e:#}"))));
         }
         cx.notify();
     }
@@ -56,12 +56,14 @@ impl TuskApp {
     }
 
     /// "New Group": add `New Group`, `New Group 2`… and edit its name inline.
+    /// The seeded name is stored user data (groups match by name), created in
+    /// the current language and editable right away.
     pub(super) fn new_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let existing = self.folders();
-        let mut name = "New Group".to_string();
+        let mut name = tr!("common.new_group");
         let mut n = 2;
         while existing.contains(&name) {
-            name = format!("New Group {n}");
+            name = tr!("common.new_group_n", n = n);
             n += 1;
         }
         self.groups.push(name.clone());
@@ -132,12 +134,17 @@ impl TuskApp {
         let Some(name) = self.form.saved.get(ix).map(|c| c.name.clone()) else {
             return;
         };
+        let (ask, detail, verb) = (
+            tr!("conn.delete_q", name = name.clone()),
+            tr!("conn.delete_detail"),
+            tr!("dialog.delete"),
+        );
         let answer = crate::dialog_keys::confirm(
             window,
             PromptLevel::Critical,
-            &format!("Delete “{name}”?"),
-            Some("The saved profile and its stored passwords are removed."),
-            "Delete",
+            &ask,
+            Some(&detail),
+            &verb,
             cx,
         );
         cx.spawn(async move |weak, cx: &mut AsyncApp| {
@@ -219,7 +226,7 @@ impl TuskApp {
                     .flex_none()
                     .text_caption()
                     .text_color(rgb(tag.color()))
-                    .child(tag.label())
+                    .child(crate::dialog::tag_label(tag))
             }))
             .child(
                 div()
@@ -257,10 +264,12 @@ impl TuskApp {
             }
         };
         let move_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
-            m = m.item(PopupMenuItem::new("No Group").on_click(move |_, _, cx| {
-                let view = cx.global::<TuskHandle>().0.clone();
-                view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
-            }));
+            m = m.item(
+                PopupMenuItem::new(tr!("conn.no_group_item")).on_click(move |_, _, cx| {
+                    let view = cx.global::<TuskHandle>().0.clone();
+                    view.update(cx, |this, cx| this.move_to_folder(ix, None, cx));
+                }),
+            );
             for f in &folders {
                 let go = f.clone();
                 m = m.item(PopupMenuItem::new(f.clone()).on_click(move |_, _, cx| {
@@ -271,29 +280,33 @@ impl TuskApp {
             m
         });
         let new_menu = PopupMenu::build(window, cx, |m, _, _| {
-            m.item(PopupMenuItem::new("Connection…").on_click(|_, window, cx| {
-                window.dispatch_action(Box::new(NewConnection), cx);
-            }))
-            .item(PopupMenuItem::new("Group").on_click(|_, window, cx| {
-                let view = cx.global::<TuskHandle>().0.clone();
-                view.update(cx, |this, cx| this.new_group(window, cx));
-            }))
+            m.item(
+                PopupMenuItem::new(tr!("conn.connection_dots")).on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(NewConnection), cx);
+                }),
+            )
+            .item(
+                PopupMenuItem::new(tr!("conn.group_item")).on_click(|_, window, cx| {
+                    let view = cx.global::<TuskHandle>().0.clone();
+                    view.update(cx, |this, cx| this.new_group(window, cx));
+                }),
+            )
         });
         menu.item(
-            PopupMenuItem::new("Connect")
+            PopupMenuItem::new(tr!("dialog.connect"))
                 .on_click(call(|this, ix, w, cx| this.open_saved(ix, w, cx))),
         )
         .separator()
-        .item(PopupMenuItem::submenu("New", new_menu))
+        .item(PopupMenuItem::submenu(tr!("conn.new"), new_menu))
         .item(
-            PopupMenuItem::new("Edit…").on_click(call(|this, ix, _w, cx| {
+            PopupMenuItem::new(tr!("conn.edit_dots")).on_click(call(|this, ix, _w, cx| {
                 if let Some(c) = this.form.saved.get(ix).cloned() {
                     ConnDialog::open_edit(c, false, cx);
                 }
             })),
         )
         .item(
-            PopupMenuItem::new("Duplicate").on_click(call(|this, ix, _w, cx| {
+            PopupMenuItem::new(tr!("objects.duplicate")).on_click(call(|this, ix, _w, cx| {
                 if let Some(c) = this.form.saved.get(ix).cloned() {
                     ConnDialog::open_edit(c, true, cx);
                 }
@@ -301,16 +314,19 @@ impl TuskApp {
         )
         .separator()
         .item(
-            PopupMenuItem::new("Copy as URL").on_click(call(|this, ix, _w, cx| {
+            PopupMenuItem::new(tr!("conn.copy_url")).on_click(call(|this, ix, _w, cx| {
                 if let Some(c) = this.form.saved.get(ix) {
                     cx.write_to_clipboard(ClipboardItem::new_string(c.url()));
                 }
             })),
         )
-        .item(PopupMenuItem::submenu("Move to Group", move_menu))
+        .item(PopupMenuItem::submenu(
+            tr!("objects.move_to_group"),
+            move_menu,
+        ))
         .separator()
         .item(crate::theme::danger_item(
-            "Delete…",
+            tr!("conn.delete_dots"),
             call(|this, ix, w, cx| this.delete_connection(ix, w, cx)),
         ))
     }
@@ -418,13 +434,13 @@ impl TuskApp {
         row.context_menu(move |menu, _, _| {
             let (r, d) = (g.clone(), g.clone());
             menu.item(
-                PopupMenuItem::new("New Connection…").on_click(|_, window, cx| {
+                PopupMenuItem::new(tr!("conn.new_dots")).on_click(|_, window, cx| {
                     window.dispatch_action(Box::new(NewConnection), cx);
                 }),
             )
             .separator()
             .item(
-                PopupMenuItem::new("Rename Group").on_click(move |_, window, cx| {
+                PopupMenuItem::new(tr!("conn.rename_group")).on_click(move |_, window, cx| {
                     let view = cx.global::<TuskHandle>().0.clone();
                     view.update(cx, |this, cx| {
                         this.start_group_rename(r.clone(), window, cx)
@@ -432,7 +448,7 @@ impl TuskApp {
                 }),
             )
             .item(crate::theme::danger_item(
-                "Delete Group",
+                tr!("conn.delete_group"),
                 move |_, _, cx| {
                     let view = cx.global::<TuskHandle>().0.clone();
                     view.update(cx, |this, cx| this.delete_group(d.clone(), cx));
@@ -455,17 +471,19 @@ impl TuskApp {
             .ghost()
             .small()
             .icon(Icon::new(IconName::Plus).size(px(13.)))
-            .label("New")
+            .label(tr!("conn.new"))
             .dropdown_menu(|menu, _, _| {
                 menu.item(
-                    PopupMenuItem::new("New Connection…").on_click(|_, window, cx| {
+                    PopupMenuItem::new(tr!("conn.new_dots")).on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(NewConnection), cx);
                     }),
                 )
-                .item(PopupMenuItem::new("New Group").on_click(|_, window, cx| {
-                    let view = cx.global::<TuskHandle>().0.clone();
-                    view.update(cx, |this, cx| this.new_group(window, cx));
-                }))
+                .item(
+                    PopupMenuItem::new(tr!("conn.new_group_item")).on_click(|_, window, cx| {
+                        let view = cx.global::<TuskHandle>().0.clone();
+                        view.update(cx, |this, cx| this.new_group(window, cx));
+                    }),
+                )
             });
         let header = div()
             .flex()
@@ -481,7 +499,7 @@ impl TuskApp {
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(fg)
-                    .child("Connections"),
+                    .child(tr!("conn.title")),
             )
             .child(new_button);
         let search = div()
@@ -512,7 +530,7 @@ impl TuskApp {
             .child(self.folder_item(
                 FolderPick::All,
                 IconName::Layers,
-                "All Connections".into(),
+                tr!("conn.all_connections"),
                 saved.len(),
                 cx,
             ));
@@ -525,7 +543,7 @@ impl TuskApp {
                     .pb_1()
                     .text_caption()
                     .text_color(muted.opacity(0.7))
-                    .child("GROUPS"),
+                    .child(tr!("conn.groups_label")),
             );
         }
         for folder in folders {
@@ -543,7 +561,7 @@ impl TuskApp {
             rail = rail.child(div().h(px(6.))).child(self.folder_item(
                 FolderPick::Ungrouped,
                 IconName::Inbox,
-                "No Group".into(),
+                tr!("conn.no_group_item"),
                 loose,
                 cx,
             ));
@@ -563,9 +581,9 @@ impl TuskApp {
                     .text_sm()
                     .text_color(muted)
                     .child(if q.is_empty() {
-                        "No connections here"
+                        tr!("conn.empty_here")
                     } else {
-                        "No matches"
+                        tr!("conn.no_matches")
                     })
                     .into_any_element()
             } else {
@@ -598,7 +616,8 @@ impl TuskApp {
             .border_color(border)
             .text_caption()
             .text_color(muted.opacity(0.7))
-            .child("click to connect · right-click for more")
+            .child(tr!("conn.manager_hint"))
+            // Key cap: technical, not translated.
             .child("esc");
 
         div()

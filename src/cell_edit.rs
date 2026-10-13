@@ -27,6 +27,7 @@ use serde_json::Value;
 
 use crate::db::GridColumnMeta;
 use crate::grid::cell_text;
+use crate::tr;
 
 pub(crate) const NULL_LABEL: &str = "NULL";
 
@@ -392,7 +393,10 @@ impl CellEditor {
                                                 .gap_2()
                                                 .px_1()
                                                 .child(
-                                                    div().text_sm().text_color(muted).child("Time"),
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(muted)
+                                                        .child(tr!("cell.time")),
                                                 )
                                                 .child(
                                                     div().flex_1().child(
@@ -473,10 +477,11 @@ pub fn invalid_for(sql_type: &str, text: &str) -> Option<String> {
     if is_int && !ty.starts_with('_') && !ty.ends_with("[]") {
         let digits = t.strip_prefix(['-', '+']).unwrap_or(t);
         if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
-            return Some(format!("“{text}” isn't a whole number ({sql_type})."));
+            // "type" is a Rust keyword — the interpolation name must be a literal.
+            return Some(tr!("cell.not_integer", value = text, "type" = sql_type));
         }
     } else if is_num && !ty.starts_with('_') && !ty.ends_with("[]") && t.parse::<f64>().is_err() {
-        return Some(format!("“{text}” isn't a number ({sql_type})."));
+        return Some(tr!("cell.not_number", value = text, "type" = sql_type));
     }
     None
 }

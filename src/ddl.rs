@@ -10,6 +10,7 @@ use crate::db::IndexDef;
 use crate::engine::{Dialect, Engine};
 use crate::indexes::IndexRow;
 use crate::structure::StructRow;
+use crate::tr;
 
 fn q(e: Engine, name: &str) -> String {
     e.dialect().quote(name)
@@ -475,7 +476,7 @@ fn comment_stmt(
                 ),
             }
         }
-        _ => return Err(format!("{} columns have no comments", e.label())),
+        _ => return Err(tr!("ddl.no_comments", engine = e.label())),
     })
 }
 
@@ -539,15 +540,10 @@ pub fn alter_columns(
             Engine::Sqlite | Engine::LibSql | Engine::CloudflareD1
                 if retyped || renulled || redefaulted =>
             {
-                return Err(format!(
-                    "SQLite can't change the type, nullability or default of {} in place — rename, add or drop columns, or rebuild the table.",
-                    r.name
-                ));
+                return Err(tr!("ddl.sqlite_retype", column = &r.name));
             }
             Engine::Cassandra if retyped || renulled || redefaulted || recommented => {
-                return Err(
-                    "Cassandra columns can only be added, dropped or (key columns) renamed.".into(),
-                );
+                return Err(tr!("ddl.cassandra_columns"));
             }
             _ => {}
         }
@@ -622,7 +618,7 @@ pub fn alter_columns(
                 }
                 if renulled {
                     if !r.nullable && e == Engine::BigQuery {
-                        return Err("BigQuery can't make a column NOT NULL after the fact.".into());
+                        return Err(tr!("ddl.bigquery_not_null"));
                     }
                     out.push(format!(
                         "ALTER TABLE {t} ALTER COLUMN {col} {} NOT NULL",
@@ -633,10 +629,7 @@ pub fn alter_columns(
                     out.push(match (&r.default, e) {
                         (None, _) => format!("ALTER TABLE {t} ALTER COLUMN {col} DROP DEFAULT"),
                         (Some(_), Engine::Snowflake) => {
-                            return Err(
-                                "Snowflake can only set a column default when the column is added."
-                                    .into(),
-                            );
+                            return Err(tr!("ddl.snowflake_default"));
                         }
                         (Some(d), _) => {
                             format!("ALTER TABLE {t} ALTER COLUMN {col} SET DEFAULT {d}")
@@ -659,7 +652,7 @@ pub fn alter_columns(
                 }
                 if renulled {
                     if e == Engine::Redshift {
-                        return Err("Redshift can't change a column's nullability.".into());
+                        return Err(tr!("ddl.redshift_nullable"));
                     }
                     out.push(format!(
                         "ALTER TABLE {t} ALTER COLUMN {col} {} NOT NULL",
@@ -668,7 +661,7 @@ pub fn alter_columns(
                 }
                 if redefaulted {
                     if e == Engine::Redshift {
-                        return Err("Redshift can't change a column's default.".into());
+                        return Err(tr!("ddl.redshift_default"));
                     }
                     out.push(match &r.default {
                         Some(d) => format!("ALTER TABLE {t} ALTER COLUMN {col} SET DEFAULT {d}"),
@@ -713,7 +706,7 @@ pub fn create_table(
         .map(|r| q(e, &r.name))
         .collect();
     if e == Engine::Cassandra && pk.is_empty() {
-        return Err("A Cassandra table needs a primary key: mark its key columns.".into());
+        return Err(tr!("ddl.cassandra_pk"));
     }
     let mut defs: Vec<String> = cols.iter().map(|r| column_def(e, r)).collect();
     if !pk.is_empty() && e != Engine::ClickHouse {
@@ -825,14 +818,14 @@ pub fn create_index(
         }
         Engine::Cassandra => {
             if row.unique {
-                return Err("Cassandra secondary indexes can't be unique.".into());
+                return Err(tr!("ddl.cassandra_unique_index"));
             }
             format!("CREATE INDEX {} ON {t} ({cols})", q(e, name))
         }
         Engine::Sqlite | Engine::LibSql | Engine::CloudflareD1 | Engine::DuckDb => {
             format!("CREATE {unique}INDEX {} ON {t} ({cols})", q(e, name))
         }
-        _ => return Err(format!("{} has no indexes to create", e.label())),
+        _ => return Err(tr!("ddl.no_index_support", engine = e.label())),
     };
     if let Some(c) = &row.condition {
         match e {
@@ -843,7 +836,7 @@ pub fn create_index(
             | Engine::Sqlite
             | Engine::LibSql
             | Engine::CloudflareD1 => sql.push_str(&format!(" WHERE {c}")),
-            _ => return Err(format!("{} indexes can't be partial", e.label())),
+            _ => return Err(tr!("ddl.no_partial_index", engine = e.label())),
         }
     }
     Ok(sql)
@@ -937,7 +930,7 @@ pub fn rename_object(
         }
         Engine::ClickHouse => format!("RENAME TABLE {from} TO {}", target(e, schema, new)),
         Engine::Oracle if keyword != "TABLE" => format!("RENAME {} TO {}", q(e, old), q(e, new)),
-        Engine::Cassandra => return Err("Cassandra tables can't be renamed.".into()),
+        Engine::Cassandra => return Err(tr!("ddl.cassandra_rename")),
         Engine::Snowflake | Engine::BigQuery | Engine::Oracle => {
             format!(
                 "ALTER {keyword} {from} RENAME TO {}",

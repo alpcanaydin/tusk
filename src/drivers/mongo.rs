@@ -986,7 +986,7 @@ impl Mongo {
                     .await
                     .map_err(err)?;
                 if r.matched_count == 0 {
-                    return Err("The document was not found (changed or deleted elsewhere?)".into());
+                    return Err(crate::tr!("drivers.mongo_missing"));
                 }
                 Ok(r.modified_count)
             }

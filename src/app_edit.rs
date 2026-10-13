@@ -246,7 +246,7 @@ impl TuskApp {
                             t.index_count = Some(n);
                         }
                     }
-                    Err(e) => this.toast(false, format!("Indexes: {e}")),
+                    Err(e) => this.toast(false, tr!("toast.indexes_failed", error = e)),
                 }
                 cx.notify();
             });
@@ -456,17 +456,18 @@ impl TuskApp {
     /// each a submenu with the current choice checked.
     fn filter_defaults_menu(muted: gpui::Hsla) -> AnyElement {
         use crate::settings::{self as st, Prefs};
+        // (canonical value, displayed label): prefs always store the English
+        // canonical, only the label is translated.
         fn choices(
             m: PopupMenu,
-            options: Vec<String>,
+            options: Vec<(String, String)>,
             current: String,
             set: fn(&mut Prefs, String),
         ) -> PopupMenu {
-            options.into_iter().fold(m, |m, o| {
-                let checked = o == current;
-                let v = o.clone();
+            options.into_iter().fold(m, |m, (v, label)| {
+                let checked = v == current;
                 m.item(
-                    PopupMenuItem::new(o)
+                    PopupMenuItem::new(label)
                         .checked(checked)
                         .on_click(move |_, _, cx| {
                             let v = v.clone();
@@ -494,10 +495,30 @@ impl TuskApp {
             )
             .dropdown_menu(|menu, window, cx| {
                 let p = st::get();
-                let strs = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-                let ops: Vec<String> = crate::filter::FilterOp::ALL
+                // (canonical value, displayed label): prefs store English,
+                // the label is per-language (keys map from the canonical).
+                let sort_pairs = || {
+                    vec![
+                        ("Table order".to_string(), tr!("filter.sort_table_order")),
+                        ("Alphabetical".to_string(), tr!("filter.sort_alphabetical")),
+                    ]
+                };
+                let tsort_pairs = || {
+                    vec![
+                        (
+                            "Primary key ascending".to_string(),
+                            tr!("filter.tsort_pk_asc"),
+                        ),
+                        (
+                            "Primary key descending".to_string(),
+                            tr!("filter.tsort_pk_desc"),
+                        ),
+                        ("None".to_string(), tr!("filter.tsort_none")),
+                    ]
+                };
+                let ops: Vec<(String, String)> = crate::filter::FilterOp::ALL
                     .iter()
-                    .map(|o| o.label().to_string())
+                    .map(|o| (o.label().to_string(), o.display_label()))
                     .collect();
                 let (cs, dc, dop, ts) = (
                     p.filter_column_sort.clone(),
@@ -509,37 +530,54 @@ impl TuskApp {
                     "Enabled"
                 } else {
                     "Disabled"
-                }
-                .to_string();
-                menu.submenu("Default Filter Column Sort", window, cx, move |m, _, _| {
-                    choices(m, strs(&st::FILTER_COLUMN_SORTS), cs.clone(), |p, v| {
-                        p.filter_column_sort = v
-                    })
+                };
+                menu.submenu(tr!("filter.default_sort"), window, cx, move |m, _, _| {
+                    choices(m, sort_pairs(), cs.clone(), |p, v| p.filter_column_sort = v)
                 })
-                .submenu("Default Filter Column", window, cx, move |m, _, _| {
-                    choices(m, strs(&st::FILTER_DEFAULT_COLUMNS), dc.clone(), |p, v| {
-                        p.filter_default_column = v
-                    })
-                })
-                .submenu("Default Filter Operator", window, cx, move |m, _, _| {
-                    choices(m, ops.clone(), dop.clone(), |p, v| {
-                        p.filter_default_operator = v
-                    })
-                })
-                .submenu("Default Filter State", window, cx, move |m, _, _| {
+                .submenu(tr!("filter.default_column"), window, cx, move |m, _, _| {
                     choices(
                         m,
-                        vec!["Enabled".into(), "Disabled".into()],
-                        state.clone(),
+                        vec![
+                            ("First column".to_string(), tr!("filter.col_first")),
+                            ("Primary key".to_string(), tr!("filter.col_pk")),
+                            ("Raw SQL".to_string(), tr!("filter.raw_sql")),
+                        ],
+                        dc.clone(),
+                        |p, v| p.filter_default_column = v,
+                    )
+                })
+                .submenu(
+                    tr!("filter.default_operator"),
+                    window,
+                    cx,
+                    move |m, _, _| {
+                        choices(m, ops.clone(), dop.clone(), |p, v| {
+                            p.filter_default_operator = v
+                        })
+                    },
+                )
+                .submenu(tr!("filter.default_state"), window, cx, move |m, _, _| {
+                    choices(
+                        m,
+                        vec![
+                            ("Enabled".to_string(), tr!("filter.enabled")),
+                            ("Disabled".to_string(), tr!("filter.disabled")),
+                        ],
+                        state.to_string(),
                         |p, v| p.filter_default_enabled = v == "Enabled",
                     )
                 })
                 .separator()
-                .submenu("Default Table Sort", window, cx, move |m, _, _| {
-                    choices(m, strs(&st::TABLE_SORTS), ts.clone(), |p, v| {
-                        p.default_table_sort = v
-                    })
-                })
+                .submenu(
+                    tr!("filter.default_table_sort"),
+                    window,
+                    cx,
+                    move |m, _, _| {
+                        choices(m, tsort_pairs(), ts.clone(), |p, v| {
+                            p.default_table_sort = v
+                        })
+                    },
+                )
             })
             .into_any_element()
     }
@@ -806,9 +844,9 @@ impl TuskApp {
         };
         if !done {
             self.toast_info(if redo {
-                "Nothing to redo."
+                tr!("changes.none_redo")
             } else {
-                "Nothing to undo."
+                tr!("changes.none_undo")
             });
         }
         cx.notify();
@@ -987,7 +1025,13 @@ impl TuskApp {
         let n = self.pending_drops.len()
             + self.pending_renames.len()
             + self.active_tab.map_or(0, |ix| self.tab_pending(ix, cx));
-        (n > 0).then(|| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" }))
+        (n > 0).then(|| {
+            if n == 1 {
+                tr!("changes.pending_one", count = n)
+            } else {
+                tr!("changes.pending_many", count = n)
+            }
+        })
     }
 
     // ---------- ⌘S ----------
@@ -1003,11 +1047,12 @@ impl TuskApp {
             let Some(summary) = self.pending_summary(cx) else {
                 return;
             };
+            let (title, save) = (tr!("dialog.save_changes"), tr!("dialog.save"));
             let answer = window.prompt(
                 PromptLevel::Info,
-                "Save changes to the database?",
+                &title,
                 Some(&summary),
-                &["Save", "Cancel"],
+                &[save.as_str(), tr!("common.cancel").as_str()],
                 cx,
             );
             cx.spawn_in(window, async move |this, cx| {
@@ -1083,7 +1128,7 @@ impl TuskApp {
         {
             let name = input.read(cx).value().trim().to_string();
             if name.is_empty() {
-                self.toast(false, "Name the new table first.");
+                self.toast(false, tr!("changes.name_table_first"));
                 cx.notify();
                 return;
             }
@@ -1108,7 +1153,7 @@ impl TuskApp {
             let body = t.editor.read(cx).text().to_string();
             let body = body.trim().trim_end_matches(';').trim().to_string();
             if name.is_empty() || body.is_empty() {
-                self.toast(false, "Name the view and write its query first.");
+                self.toast(false, tr!("changes.name_view_first"));
                 cx.notify();
                 return;
             }
@@ -1161,16 +1206,12 @@ impl TuskApp {
             stmts.extend(st.read(cx).delegate().save_statements());
         }
         if stmts.is_empty() {
-            self.toast_info("No changes to save.");
+            self.toast_info(tr!("changes.none_save"));
             cx.notify();
             return;
         }
         self.saving = true;
-        self.status_line = format!(
-            "Saving {} statement{}…",
-            stmts.len(),
-            if stmts.len() == 1 { "" } else { "s" }
-        );
+        self.status_line = Some(StatusLine::Saving { count: stmts.len() });
         cx.notify();
         let n_stmts = stmts.len();
         let struct_changed = struct_state
@@ -1236,19 +1277,29 @@ impl TuskApp {
                                 });
                             }
                         }
-                        this.status_line.clear();
+                        this.status_line = None;
                         this.toast(
                             true,
-                            format!(
-                                "Saved — {n_stmts} statement{}, {} affected · {ms} ms",
-                                if n_stmts == 1 { "" } else { "s" },
-                                crate::sql::n_rows(affected as usize)
-                            ),
+                            if n_stmts == 1 {
+                                tr!(
+                                    "changes.saved_one",
+                                    count = n_stmts,
+                                    rows = crate::sql::n_rows(affected as usize),
+                                    ms = ms
+                                )
+                            } else {
+                                tr!(
+                                    "changes.saved_many",
+                                    count = n_stmts,
+                                    rows = crate::sql::n_rows(affected as usize),
+                                    ms = ms
+                                )
+                            },
                         );
                     }
                     Err(e) => {
-                        this.status_line.clear();
-                        this.toast(false, format!("Save failed (rolled back): {e}"));
+                        this.status_line = None;
+                        this.toast(false, tr!("changes.rolled_back", error = e));
                     }
                 }
                 cx.notify();
@@ -1419,7 +1470,7 @@ impl TuskApp {
                     )
                     .child(
                         Button::new(("flt-apply", row_ix))
-                            .label("Apply")
+                            .label(tr!("filter.apply"))
                             .small()
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.apply_filters(ix, cx);
@@ -1443,10 +1494,10 @@ impl TuskApp {
         }
         // The few keys worth knowing, each label right before its caps.
         let hints = [
-            ("Apply", "cmd-enter"),
-            ("Add", "cmd-i"),
-            ("Remove", "cmd-shift-i"),
-            ("Close", "escape"),
+            (tr!("filter.apply"), "cmd-enter"),
+            (tr!("common.add"), "cmd-i"),
+            (tr!("common.remove"), "cmd-shift-i"),
+            (tr!("common.close"), "escape"),
         ];
         let hint_row = div()
             .flex_1()
@@ -1475,9 +1526,14 @@ impl TuskApp {
                 .pt_1()
                 .child(Self::filter_defaults_menu(muted))
                 // Export the matching rows / open the filter as a SELECT.
-                .child(pill("flt-export", "Export", false, cx).on_click(
-                    cx.listener(move |this, _, window, cx| this.export_filtered(ix, window, cx)),
-                ))
+                .child(
+                    pill("flt-export", tr!("filter.export"), false, cx).on_click(
+                        cx.listener(move |this, _, window, cx| {
+                            this.export_filtered(ix, window, cx)
+                        }),
+                    ),
+                )
+                // "SQL" is the language name — not translated.
                 .child(pill("flt-sql", "SQL", false, cx).on_click(
                     cx.listener(move |this, _, window, cx| this.filter_as_sql(ix, window, cx)),
                 ))
@@ -1485,12 +1541,12 @@ impl TuskApp {
                 .child(hint_row)
                 .child(div().w(px(8.)))
                 .child(
-                    pill("flt-clear", "Clear", false, cx)
+                    pill("flt-clear", tr!("common.clear"), false, cx)
                         .on_click(cx.listener(move |this, _, _, cx| this.clear_filters(ix, cx))),
                 )
                 .child(
                     Button::new("flt-apply-all")
-                        .label("Apply All")
+                        .label(tr!("filter.apply_all"))
                         .small()
                         .on_click(cx.listener(move |this, _, _, cx| this.apply_filters(ix, cx))),
                 ),
@@ -1506,7 +1562,7 @@ impl TuskApp {
         let t = cx.theme();
         let (border, muted, fg) = (t.border, t.muted_foreground, t.foreground);
         let view = tab.view;
-        let seg = |id: &'static str, label: &'static str, v: TabView, cx: &mut Context<Self>| {
+        let seg = |id: &'static str, label: String, v: TabView, cx: &mut Context<Self>| {
             let active = view == v;
             div()
                 .id(id)
@@ -1527,23 +1583,32 @@ impl TuskApp {
         let editable = d.editable;
         let center = match view {
             TabView::Data => match (d.total_rows(), d.page_len()) {
-                (Some(0), _) => "0 rows".to_string(),
+                (Some(0), _) => tr!("result.row_count_many", count = 0),
                 (Some(n), Some(len)) => {
                     let filtered = if d.filter.is_some() {
-                        " (filtered)"
+                        format!(" {}", tr!("tab.filtered"))
                     } else {
-                        ""
+                        String::new()
                     };
-                    let rows = if n == 1 { "row" } else { "rows" };
+                    let rows = |n: i64| {
+                        if n == 1 {
+                            tr!("result.row_count_one", count = super::fmt_int(n))
+                        } else {
+                            tr!("result.row_count_many", count = super::fmt_int(n))
+                        }
+                    };
                     // Every row on screen: just the count, no range.
                     if d.page_offset == 0 && len >= n {
-                        format!("{} {rows}{filtered}", super::fmt_int(n))
+                        format!("{}{filtered}", rows(n))
                     } else {
                         format!(
-                            "{}–{} of {} {rows}{filtered}",
-                            super::fmt_int(d.page_offset + 1),
-                            super::fmt_int(d.page_offset + len),
-                            super::fmt_int(n),
+                            "{}{filtered}",
+                            tr!(
+                                "tab.row_range",
+                                from = super::fmt_int(d.page_offset + 1),
+                                to = super::fmt_int(d.page_offset + len),
+                                rows = rows(n)
+                            ),
                         )
                     }
                 }
@@ -1554,14 +1619,20 @@ impl TuskApp {
                     .structure
                     .as_ref()
                     .map_or(d.metas.len(), |st| st.read(cx).delegate().rows.len());
-                format!("{n} column{}", if n == 1 { "" } else { "s" })
+                if n == 1 {
+                    tr!("tab.cols_one", count = n)
+                } else {
+                    tr!("tab.cols_many", count = n)
+                }
             }
             TabView::Index => match tab.index_count {
-                Some(n) => format!("{n} index{}", if n == 1 { "" } else { "es" }),
+                Some(n) if n == 1 => tr!("tab.indexes_one", count = n),
+                Some(n) => tr!("tab.indexes_many", count = n),
                 None => "…".into(),
             },
             TabView::Triggers => match tab.trigger_count {
-                Some(n) => format!("{n} trigger{}", if n == 1 { "" } else { "s" }),
+                Some(n) if n == 1 => tr!("tab.triggers_count_one", count = n),
+                Some(n) => tr!("tab.triggers_count_many", count = n),
                 None => "…".into(),
             },
             TabView::Ddl => String::new(),
@@ -1581,11 +1652,11 @@ impl TuskApp {
             .border_1()
             .border_color(border)
             .overflow_hidden()
-            .child(seg("tab-view-data", "Data", TabView::Data, cx))
+            .child(seg("tab-view-data", tr!("tab.data"), TabView::Data, cx))
             .child(div().w(px(1.)).h_full().bg(border))
             .child(seg(
                 "tab-view-structure",
-                "Structure",
+                tr!("tab.structure"),
                 TabView::Structure,
                 cx,
             ))
@@ -1593,7 +1664,7 @@ impl TuskApp {
             .when(self.pool.as_ref().is_none_or(|p| p.caps().indexes), |d| {
                 d.child(div().w(px(1.)).h_full().bg(border)).child(seg(
                     "tab-view-index",
-                    "Index",
+                    tr!("tab.index"),
                     TabView::Index,
                     cx,
                 ))
@@ -1610,7 +1681,7 @@ impl TuskApp {
             .child(segmented)
             .when(view == TabView::Data && editable, |this| {
                 this.child(
-                    pill("grid-add-row", "+ Row", false, cx).on_click(cx.listener(
+                    pill("grid-add-row", tr!("tab.add_row"), false, cx).on_click(cx.listener(
                         move |this, _, window, cx| {
                             if let Some(t) = this.grid_tab(ix) {
                                 let st = t.state.clone();
@@ -1624,18 +1695,18 @@ impl TuskApp {
                 )
             })
             .when(view == TabView::Index && editable, |this| {
-                this.child(pill("idx-add", "+ Index", false, cx).on_click(
+                this.child(pill("idx-add", tr!("tab.add_index"), false, cx).on_click(
                     cx.listener(move |this, _, window, cx| this.add_index_row(ix, window, cx)),
                 ))
             })
             .when(view == TabView::Triggers && editable, |this| {
-                this.child(pill("trg-add", "+ Trigger", false, cx).on_click(
+                this.child(pill("trg-add", tr!("tab.add_trigger"), false, cx).on_click(
                     cx.listener(move |this, _, window, cx| this.new_trigger_editor(ix, window, cx)),
                 ))
             })
             .when(view == TabView::Structure && editable, |this| {
                 this.child(
-                    pill("struct-add-col", "+ Column", false, cx).on_click(cx.listener(
+                    pill("struct-add-col", tr!("tab.add_column"), false, cx).on_click(cx.listener(
                         move |this, _, window, cx| {
                             this.add_structure_column(ix, window, cx);
                         },
@@ -1647,7 +1718,7 @@ impl TuskApp {
                 this.child(
                     pill(
                         "tab-view-triggers",
-                        "Triggers",
+                        tr!("tab.triggers"),
                         view == TabView::Triggers,
                         cx,
                     )
@@ -1681,11 +1752,11 @@ impl TuskApp {
                             .ghost()
                             .xsmall()
                             .icon(Icon::new(IconName::SlidersHorizontal).size(px(14.)))
-                            .tooltip("Limit / offset"),
+                            .tooltip(tr!("filter.limit_offset")),
                     )
                     .content(move |_, _, _| {
                         let (l, o) = (limit_in.clone(), offset_in.clone());
-                        let row = |label: &'static str, input: &Entity<InputState>| {
+                        let row = |label: String, input: &Entity<InputState>| {
                             div()
                                 .flex()
                                 .items_center()
@@ -1698,11 +1769,11 @@ impl TuskApp {
                             .flex_col()
                             .gap_2()
                             .p_1()
-                            .child(row("Limit", &l))
-                            .child(row("Offset", &o))
+                            .child(row(tr!("filter.limit"), &l))
+                            .child(row(tr!("filter.offset"), &o))
                             .child(
                                 Button::new("page-go")
-                                    .label("Go")
+                                    .label(tr!("filter.go"))
                                     .small()
                                     .w_full()
                                     .on_click(move |_, _, cx| {
@@ -1710,18 +1781,21 @@ impl TuskApp {
                                         view.update(cx, |this, cx| this.apply_page_inputs(ix, cx));
                                     }),
                             )
-                            .child(div().text_caption().text_color(muted).child(
-                                crate::kbd::rich_colored(
-                                    "[cmd-left] / [cmd-right] previous / next page",
-                                    muted,
+                            .child(
+                                div().text_caption().text_color(muted).child(
+                                    crate::kbd::rich_colored(&tr!("filter.page_hint"), muted),
                                 ),
-                            ))
+                            )
                     });
                 this.child(
                     pill_frame("grid-filters", tab.filters.visible, cx)
                         .gap_1p5()
                         .child(Icon::new(IconName::ListFilter).size(px(12.)))
-                        .child(if filtered { "Filters •" } else { "Filters" })
+                        .child(if filtered {
+                            tr!("filter.toggle_on")
+                        } else {
+                            tr!("filter.toggle")
+                        })
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.toggle_filters(window, cx);
                         })),
@@ -1733,9 +1807,11 @@ impl TuskApp {
                         .child(
                             icon_btn("page-prev", IconName::ChevronLeft, has_prev, cx)
                                 .tooltip(|w, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new("Previous page")
-                                        .key_binding(crate::kbd::tip("cmd-left"))
-                                        .build(w, cx)
+                                    gpui_kit::component::tooltip::Tooltip::new(tr!(
+                                        "filter.prev_page"
+                                    ))
+                                    .key_binding(crate::kbd::tip("cmd-left"))
+                                    .build(w, cx)
                                 })
                                 .on_click(
                                     cx.listener(move |this, _, w, cx| {
@@ -1747,9 +1823,11 @@ impl TuskApp {
                         .child(
                             icon_btn("page-next", IconName::ChevronRight, has_next, cx)
                                 .tooltip(|w, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new("Next page")
-                                        .key_binding(crate::kbd::tip("cmd-right"))
-                                        .build(w, cx)
+                                    gpui_kit::component::tooltip::Tooltip::new(tr!(
+                                        "filter.next_page"
+                                    ))
+                                    .key_binding(crate::kbd::tip("cmd-right"))
+                                    .build(w, cx)
                                 })
                                 .on_click(
                                     cx.listener(move |this, _, w, cx| this.step_page(ix, 1, w, cx)),

@@ -119,9 +119,18 @@ impl AcpConnection {
         let mut child = command
             .spawn()
             .map_err(|e| anyhow!("{}: {e}", cmd.program.display()))?;
-        let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("no stdin"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
-        let stderr_pipe = child.stderr.take().ok_or_else(|| anyhow!("no stderr"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("{}", crate::tr!("agent.error.no_stdin")))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("{}", crate::tr!("agent.error.no_stdout")))?;
+        let stderr_pipe = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("{}", crate::tr!("agent.error.no_stderr")))?;
 
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
         let (in_tx, in_rx) = mpsc::unbounded_channel::<Incoming>();
@@ -207,7 +216,7 @@ impl AcpConnection {
             rx.await.unwrap_or_else(|_| {
                 Err(RpcError {
                     code: INTERNAL_ERROR,
-                    message: "The agent exited".into(),
+                    message: crate::tr!("agent.error.agent_exited"),
                     data: None,
                 })
             })
@@ -261,8 +270,8 @@ fn route(msg: Value, pending: &Pending, in_tx: &mpsc::UnboundedSender<Incoming>)
                         message: e
                             .get("message")
                             .and_then(Value::as_str)
-                            .unwrap_or("error")
-                            .to_string(),
+                            .map(str::to_string)
+                            .unwrap_or_else(|| crate::tr!("agent.error.no_message")),
                         data: e.get("data").cloned(),
                     }),
                     None => Ok(msg.get("result").cloned().unwrap_or(Value::Null)),

@@ -13,6 +13,7 @@ use gpui_kit::component::select::SelectState;
 use gpui_kit::*;
 
 use crate::db::{self, GridColumnMeta, WhereClause};
+use crate::tr;
 
 /// Operators in order.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -76,6 +77,30 @@ impl FilterOp {
             FilterOp::NotContains => "Not contains",
             FilterOp::HasPrefix => "Has prefix",
             FilterOp::HasSuffix => "Has suffix",
+        }
+    }
+
+    /// UI label in the current language. `label()` stays the canonical
+    /// English value (settings stores it, callers match on it); this is for
+    /// display only. SQL keywords (IN, LIKE…) are not translated.
+    pub fn display_label(self) -> String {
+        match self {
+            FilterOp::Eq => tr!("filter.op.eq"),
+            FilterOp::Ne => tr!("filter.op.ne"),
+            FilterOp::Lt => tr!("filter.op.lt"),
+            FilterOp::Gt => tr!("filter.op.gt"),
+            FilterOp::Le => tr!("filter.op.le"),
+            FilterOp::Ge => tr!("filter.op.ge"),
+            FilterOp::In | FilterOp::NotIn | FilterOp::Like | FilterOp::ILike => {
+                self.label().to_string()
+            }
+            FilterOp::IsNull => tr!("filter.op.is_null"),
+            FilterOp::IsNotNull => tr!("filter.op.is_not_null"),
+            FilterOp::Between => tr!("filter.op.between"),
+            FilterOp::Contains => tr!("filter.op.contains"),
+            FilterOp::NotContains => tr!("filter.op.not_contains"),
+            FilterOp::HasPrefix => tr!("filter.op.has_prefix"),
+            FilterOp::HasSuffix => tr!("filter.op.has_suffix"),
         }
     }
 
@@ -254,13 +279,13 @@ impl FilterRow {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        let value = cx.new(|cx| InputState::new(window, cx).placeholder("Value"));
+        let value = cx.new(|cx| InputState::new(window, cx).placeholder(tr!("filter.value_ph")));
         let prefs = crate::settings::get();
         let mut names: Vec<String> = columns.to_vec();
         if prefs.filter_column_sort == "Alphabetical" {
             names.sort_by_key(|n| n.to_lowercase());
         }
-        let items: Vec<SharedString> = std::iter::once(SharedString::from("Raw SQL"))
+        let items: Vec<SharedString> = std::iter::once(SharedString::from(tr!("filter.raw_sql")))
             .chain(names.iter().map(|c| SharedString::from(c.clone())))
             .collect();
         let picked_name = column.and_then(|c| columns.get(c));
@@ -276,7 +301,10 @@ impl FilterRow {
         let column_select = cx.new(|cx| {
             SelectState::new(SearchableVec::new(items), selected, window, cx).searchable(true)
         });
-        let ops: Vec<SharedString> = FilterOp::ALL.iter().map(|o| o.label().into()).collect();
+        let ops: Vec<SharedString> = FilterOp::ALL
+            .iter()
+            .map(|o| o.display_label().into())
+            .collect();
         let op_ix = FilterOp::ALL.iter().position(|o| *o == op).unwrap_or(0);
         let op_select = cx.new(|cx| SelectState::new(ops, Some(IndexPath::new(op_ix)), window, cx));
         Self {
@@ -294,8 +322,13 @@ impl FilterRow {
         self.column = columns.iter().position(|c| c == label);
     }
 
+    /// Accepts either the displayed (localized) label or the canonical
+    /// English one — the kit Select reports the item string it shows.
     pub fn set_op_label(&mut self, label: &str) {
-        if let Some(op) = FilterOp::ALL.into_iter().find(|o| o.label() == label) {
+        if let Some(op) = FilterOp::ALL
+            .into_iter()
+            .find(|o| o.label() == label || o.display_label() == label)
+        {
             self.op = op;
         }
     }
@@ -306,13 +339,51 @@ impl FilterRow {
             .column
             .and_then(|c| columns.get(c))
             .cloned()
-            .unwrap_or_else(|| "Raw SQL".into())
+            .unwrap_or_else(|| tr!("filter.raw_sql"))
             .into();
         self.column_select
             .update(cx, |s, cx| s.set_selected_value(&name, window, cx));
-        let op: SharedString = self.op.label().into();
+        let op: SharedString = self.op.display_label().into();
         self.op_select
             .update(cx, |s, cx| s.set_selected_value(&op, window, cx));
+    }
+
+    /// Language switch: the pickers were built with one locale's labels, so
+    /// rebuild their item lists with the current ones and re-point the
+    /// selections at the same canonical column / operator (by index).
+    pub fn relabel(&self, columns: &[String], window: &mut Window, cx: &mut App) {
+        self.value.update(cx, |s, cx| {
+            s.set_placeholder(tr!("filter.value_ph"), window, cx)
+        });
+        let prefs = crate::settings::get();
+        let ops: Vec<SharedString> = FilterOp::ALL
+            .iter()
+            .map(|o| o.display_label().into())
+            .collect();
+        let op_ix = FilterOp::ALL
+            .iter()
+            .position(|o| *o == self.op)
+            .unwrap_or(0);
+        self.op_select.update(cx, |s, cx| {
+            s.set_items(ops, window, cx);
+            s.set_selected_index(Some(IndexPath::new(op_ix)), window, cx);
+        });
+        let mut names: Vec<String> = columns.to_vec();
+        if prefs.filter_column_sort == "Alphabetical" {
+            names.sort_by_key(|n| n.to_lowercase());
+        }
+        let items: Vec<SharedString> = std::iter::once(SharedString::from(tr!("filter.raw_sql")))
+            .chain(names.iter().map(|c| SharedString::from(c.clone())))
+            .collect();
+        let col_ix = self
+            .column
+            .and_then(|c| columns.get(c))
+            .and_then(|n| names.iter().position(|x| x == n))
+            .map_or(0, |i| i + 1);
+        self.column_select.update(cx, |s, cx| {
+            s.set_items(SearchableVec::new(items), window, cx);
+            s.set_selected_index(Some(IndexPath::new(col_ix)), window, cx);
+        });
     }
 
     pub fn spec(&self, cx: &App) -> FilterSpec {

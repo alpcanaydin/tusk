@@ -564,7 +564,7 @@ impl Driver for Redis {
         let this = self.clone_handle();
         Box::pin(async move {
             if !kill {
-                return Err("Redis can only close a client's connection.".into());
+                return Err(crate::tr!("drivers.redis_close"));
             }
             let id = id
                 .trim()
