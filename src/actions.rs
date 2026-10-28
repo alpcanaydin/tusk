@@ -36,6 +36,8 @@ gpui_kit::actions!(
         SendToChat,
         AiPickUp,
         AiPickDown,
+        ConnPickUp,
+        ConnPickDown,
         AiPickConfirm,
         AiEscape,
         ToggleLineComment,
@@ -244,6 +246,11 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("escape", AiEscape, Some("AiComposer > Input")),
         KeyBinding::new("up", AiPickUp, Some("AiOptionPicker > Input")),
         KeyBinding::new("down", AiPickDown, Some("AiOptionPicker > Input")),
+        KeyBinding::new("up", ConnPickUp, Some("ConnPicker > Input")),
+        KeyBinding::new("down", ConnPickDown, Some("ConnPicker > Input")),
+        // The popover around the picker binds Space to "toggle", which would
+        // close it instead of typing a space into the search box.
+        KeyBinding::new("space", NoAction, Some("ConnPicker > Input")),
         KeyBinding::new("secondary-l", ToggleAiPanel, Some("TuskApp")),
         KeyBinding::new("secondary-shift-l", SendToChat, Some("TuskApp")),
         KeyBinding::new("down", TypePickDown, Some("TypePicker > Input")),

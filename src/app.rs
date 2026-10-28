@@ -10,6 +10,7 @@ use gpui_kit::component::TitleBar;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu, PopupMenuItem};
+use gpui_kit::component::popover::Popover;
 use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::component::theme::ActiveTheme as _;
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _, h_resizable, resizable_panel};
@@ -27,6 +28,8 @@ use crate::structure::{self, StructureDelegate};
 
 #[path = "app_agent.rs"]
 mod agent_panel;
+#[path = "app_connpicker.rs"]
+mod conn_picker;
 #[path = "app_conns.rs"]
 mod conns;
 #[path = "app_ddl.rs"]
@@ -281,6 +284,8 @@ pub struct TuskApp {
     row_panel: rowdetail::RowDetailState,
     /// The AI chat panel (right side).
     ai: agent_panel::AiPanel,
+    /// The open connection switcher in the title bar.
+    conn_picker: Option<Entity<conn_picker::ConnPicker>>,
     /// ⌥⌘P sheet: the pending SQL of the active tab.
     preview: Option<Entity<gpui_kit::component::input::EditorState>>,
     /// ⌘. sheet: the server's sessions.
@@ -394,6 +399,7 @@ impl TuskApp {
             bottom_drag: None,
             row_panel: Default::default(),
             ai: Default::default(),
+            conn_picker: None,
             preview: None,
             processes: None,
             db_search: None,
@@ -529,7 +535,6 @@ impl TuskApp {
                 None => c.endpoint(),
             })
             .unwrap_or_default();
-        let saved = self.form.saved.clone();
         let active = self.active_name.clone();
         // the connection's status color tints its toolbar pill.
         let status: gpui::Hsla = self
@@ -561,41 +566,28 @@ impl TuskApp {
                             .size(px(11.))
                             .text_color(muted),
                     ),
-            )
-            .dropdown_menu_with_anchor(gpui_kit::Anchor::TopRight, move |menu, _, _| {
-                let mut menu = menu;
-                for (ix, conn) in saved.iter().enumerate() {
-                    menu = menu.item(
-                        PopupMenuItem::new(conn.name.clone())
-                            .checked(conn.name == active)
-                            .on_click(move |_, window, cx| {
-                                let view = cx.global::<TuskHandle>().0.clone();
-                                view.update(cx, |this, cx| {
-                                    this.switch_connection_guarded(ix, window, cx)
-                                });
-                            }),
-                    );
-                }
-                menu.separator()
-                    .item(
-                        PopupMenuItem::new("New Connection…").on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(NewConnection), cx);
-                        }),
-                    )
-                    .item(
-                        PopupMenuItem::new("Backup Database…").on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(BackupDatabase), cx);
-                        }),
-                    )
-                    .item(
-                        PopupMenuItem::new("Restore Database…").on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(RestoreDatabase), cx);
-                        }),
-                    )
-                    .separator()
-                    .item(PopupMenuItem::new("Disconnect").on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(Disconnect), cx);
-                    }))
+            );
+        let open = self.conn_picker.clone();
+        let is_open = open.is_some();
+        let pill = Popover::new("title-conn-pop")
+            .anchor(gpui_kit::Anchor::TopRight)
+            .open(is_open)
+            .on_open_change(move |open, window, cx| {
+                let open = *open;
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |app, cx| {
+                    if open {
+                        app.open_conn_picker(window, cx);
+                    } else {
+                        app.conn_picker = None;
+                        cx.notify();
+                    }
+                });
+            })
+            .trigger(pill)
+            .content(move |_, _, _| match &open {
+                Some(p) => p.clone().into_any_element(),
+                None => div().into_any_element(),
             });
 
         TitleBar::new()
